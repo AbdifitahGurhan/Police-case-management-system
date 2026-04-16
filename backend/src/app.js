@@ -1,0 +1,95 @@
+// src/app.js — Main Express entry point
+'use strict';
+
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+require('dotenv').config();
+
+const { testConnection } = require('./config/database');
+const errorHandler = require('./middleware/errorHandler');
+
+// Route imports
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const stateAdministrationRoutes = require('./routes/stateAdministrationRoutes');
+const regionRoutes = require('./routes/regionRoutes');
+const cityRoutes = require('./routes/cityRoutes');
+const districtRoutes = require('./routes/districtRoutes');
+const neighborhoodRoutes = require('./routes/neighborhoodRoutes');
+const rankRoutes = require('./routes/rankRoutes');
+const policeOfficerRoutes = require('./routes/policeOfficerRoutes');
+const caseRoutes = require('./routes/caseRoutes');
+const evidenceRoutes = require('./routes/evidenceRoutes');
+const suspectRoutes = require('./routes/suspectRoutes');
+const victimRoutes = require('./routes/victimRoutes');
+const witnessRoutes = require('./routes/witnessRoutes');
+const referralRoutes = require('./routes/referralRoutes');
+const blockchainRoutes = require('./routes/blockchainRoutes');
+const reportRoutes = require('./routes/reportRoutes');
+const arrestRoutes = require('./routes/arrestRoutes');
+const confirmationRoutes = require('./routes/confirmationRoutes');
+const transferRoutes = require('./routes/transferRoutes');
+const officerTransferRoutes = require('./routes/officerTransferRoutes');
+const specialUserRoutes = require('./routes/specialUserRoutes');
+const stationRoutes = require('./routes/stationRoutes');
+
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve static uploads
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/state-administrations', stateAdministrationRoutes);
+app.use('/api/regions', regionRoutes);
+app.use('/api/cities', cityRoutes);
+app.use('/api/districts', districtRoutes);
+app.use('/api/neighborhoods', neighborhoodRoutes);
+app.use('/api/ranks', rankRoutes);
+app.use('/api/police-officers', policeOfficerRoutes);
+app.use('/api/cases', caseRoutes);
+app.use('/api/evidence', evidenceRoutes);
+app.use('/api/suspects', suspectRoutes);
+app.use('/api/victims', victimRoutes);
+app.use('/api/witnesses', witnessRoutes);
+app.use('/api/referrals', referralRoutes);
+app.use('/api/blockchain', blockchainRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/arrests', arrestRoutes);
+app.use('/api/confirmations', confirmationRoutes);
+app.use('/api/transfers', transferRoutes);
+app.use('/api/officer-transfers', officerTransferRoutes);
+app.use('/api/special-users', specialUserRoutes);
+app.use('/api/stations', stationRoutes);
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({ message: 'Police Case Management System API — Running' });
+});
+
+// Error handling
+app.use(errorHandler);
+
+// Start server
+const PORT = process.env.PORT || 5000;
+
+const start = async () => {
+  try {
+    await testConnection();
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err.message);
+    process.exit(1);
+  }
+};
+
+start();

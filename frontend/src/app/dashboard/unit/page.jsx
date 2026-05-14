@@ -66,7 +66,7 @@ export default function UnitDashboardPage() {
               <Space>
                 <Avatar 
                   size={64} 
-                  src={commander?.profile_image ? `http://localhost:5000${commander.profile_image}` : null} 
+                  src={commander?.profile_image ? `http://localhost:5001${commander.profile_image}` : null} 
                   icon={!commander?.profile_image && <UserOutlined />} 
                 />
                 <div style={{ textAlign: 'left' }}>

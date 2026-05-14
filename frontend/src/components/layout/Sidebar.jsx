@@ -134,17 +134,32 @@ const Sidebar = ({ collapsed }) => {
   };
 
   return (
-    <Sider trigger={null} collapsible collapsed={collapsed} width={260} style={{ height: '100vh', position: 'fixed', left: 0, top: 0, bottom: 0 }}>
-      <div style={{ padding: '16px', color: '#fff', fontSize: '18px', fontWeight: 'bold', textAlign: 'center', background: '#002140', marginBottom: '8px' }}>
+    <Sider
+      trigger={null}
+      collapsible
+      collapsed={collapsed}
+      width={260}
+      style={{
+        height: '100vh',
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        overflow: 'hidden'
+      }}
+    >
+      <div style={{ height: 64, padding: '16px', color: '#fff', fontSize: '18px', fontWeight: 'bold', textAlign: 'center', background: '#002140' }}>
         {collapsed ? 'CMS' : 'POLICE CMS'}
       </div>
-      <Menu
-        theme="dark"
-        mode="inline"
-        selectedKeys={[pathname]}
-        items={getMenuItems()}
-        onClick={handleMenuClick}
-      />
+      <div style={{ height: 'calc(100vh - 64px)', overflowY: 'auto', overflowX: 'hidden' }}>
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[pathname]}
+          items={getMenuItems()}
+          onClick={handleMenuClick}
+        />
+      </div>
     </Sider>
   );
 };

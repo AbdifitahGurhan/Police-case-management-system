@@ -54,7 +54,7 @@ export default function EvidenceBrowserPage() {
             <Button size="small" icon={<FileSearchOutlined />}>Case File</Button>
            </Link>
            {record.file_url && (
-              <Button size="small" type="link" href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${record.file_url}`} target="_blank">
+              <Button size="small" type="link" href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}${record.file_url}`} target="_blank">
                 View File
               </Button>
            )}

@@ -267,7 +267,7 @@ export default function CaseDetailsPage() {
               <HashVerifier entityType="evidence" entityId={ev.id} initialHash={ev.hash_sha256} />
               {ev.file_url && (
                 <div style={{ marginTop: 12 }}>
-                  <Button type="link" size="small" href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${ev.file_url}`} target="_blank">
+                  <Button type="link" size="small" href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}${ev.file_url}`} target="_blank">
                     View File Attachment
                   </Button>
                 </div>

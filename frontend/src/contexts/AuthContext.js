@@ -24,7 +24,18 @@ export const AuthProvider = ({ children }) => {
           setUser(JSON.parse(savedUser));
         } catch (err) {
           console.error("Failed to parse user cookie", err);
-          logout();
+          Cookies.remove('token');
+          Cookies.remove('user');
+          if (!pathname.startsWith('/login')) {
+            router.push('/login');
+          }
+        }
+      } else if (token && !savedUser) {
+        console.warn('Saved user cookie is invalid or missing, clearing auth state.');
+        Cookies.remove('token');
+        Cookies.remove('user');
+        if (!pathname.startsWith('/login')) {
+          router.push('/login');
         }
       } else if (!pathname.startsWith('/login')) {
         // Only redirect if not already on login page

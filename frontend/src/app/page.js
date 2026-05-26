@@ -24,9 +24,10 @@ export default function Home() {
           neighborhood_admin: '/dashboard/unit',
           officer: '/dashboard/officer',
           cid: '/dashboard/cid',
-          prosecutor: '/dashboard/prosecutor'
+          court: '/dashboard/court',
+          jail: '/dashboard/jail'
         };
-        router.push(roleRedirects[user.role] || '/dashboard/unit');
+        router.push(roleRedirects[user.role] || '/cases');
       }
     }
   }, [user, loading, router]);

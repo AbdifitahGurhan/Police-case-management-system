@@ -45,7 +45,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     checkAuth();
-  }, [pathname]);
+  }, [pathname, router]);
 
   const login = async (identifier, password) => {
     try {
@@ -65,14 +65,16 @@ export const AuthProvider = ({ children }) => {
         city_admin: '/dashboard/unit',
         district_admin: '/dashboard/unit',
         neighborhood_admin: '/dashboard/unit',
+        officer: '/dashboard/officer',
+        ward_commander: '/dashboard/ward_commander',
         cid: '/dashboard/cid',
-        prosecutor: '/dashboard/prosecutor'
+        court: '/dashboard/court',
+        jail: '/dashboard/jail'
       };
       
-      router.push(roleRedirects[userData.role] || '/dashboard/unit');
+      router.push(roleRedirects[userData.role] || '/cases');
       return { success: true };
     } catch (error) {
-      console.error('Login error:', error);
       return { 
         success: false, 
         message: error.response?.data?.message || 'Login failed. Please check your credentials.' 
@@ -87,8 +89,13 @@ export const AuthProvider = ({ children }) => {
     router.push('/login');
   };
 
+  const updateUser = (userData) => {
+    Cookies.set('user', JSON.stringify(userData), { expires: 1 });
+    setUser(userData);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

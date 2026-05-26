@@ -29,8 +29,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-      // Clear cookie and potentially redirect to login if on client side
+    if (error.response && error.response.status === 401) {
+      // Clear cookie only when the token is missing or expired.
       Cookies.remove('token');
       Cookies.remove('user');
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {

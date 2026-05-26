@@ -18,17 +18,25 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
         // Redirect to their own dashboard if they try to access a page they aren't allowed to
         const roleRedirects = {
           admin: '/dashboard/admin',
+          officer: '/dashboard/officer',
+          ward_commander: '/dashboard/ward_commander',
           cid: '/dashboard/cid',
-          prosecutor: '/dashboard/prosecutor',
           court: '/dashboard/court',
           jail: '/dashboard/jail',
+          state_commander: '/dashboard/unit',
+          region_commander: '/dashboard/unit',
+          district_commander: '/dashboard/unit',
+          police_station_commander: '/dashboard/unit',
+          waax_commander: '/dashboard/unit',
+          ob_staff: '/ob-register',
+          staff: '/cases',
           state_admin: '/dashboard/unit',
           region_admin: '/dashboard/unit',
           city_admin: '/dashboard/unit',
           district_admin: '/dashboard/unit',
           neighborhood_admin: '/dashboard/unit'
         };
-        router.push(roleRedirects[user.role] || '/dashboard/unit');
+        router.push(roleRedirects[user.role] || '/cases');
       }
     }
   }, [user, loading, router, allowedRoles]);

@@ -5,6 +5,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Table, Card, Typography, Space, Button, Modal, Form, Input, message, Popconfirm, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, StarOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { codeRules, requiredRule, textLengthRule } from '@/utils/validation';
 
 const { Title, Text } = Typography;
 
@@ -161,7 +162,7 @@ export default function RanksPage() {
           <Form.Item 
             name="rank_name" 
             label="Rank Name" 
-            rules={[{ required: true, message: 'Rank Name is required' }]}
+            rules={[requiredRule('Rank name'), textLengthRule('Rank name', 2, 100)]}
           >
             <Input placeholder="e.g. Inspector General" prefix={<StarOutlined style={{ color: 'rgba(0,0,0,.25)' }}/>} />
           </Form.Item>
@@ -169,12 +170,12 @@ export default function RanksPage() {
           <Form.Item 
             name="rank_code" 
             label="Rank Code" 
-            rules={[{ required: true, message: 'Rank Code is required' }]}
+            rules={codeRules('Rank code')}
           >
             <Input placeholder="e.g. IG" disabled={!!editingRecord} />
           </Form.Item>
           
-          <Form.Item name="description" label="Rank Description (Optional)">
+          <Form.Item name="description" label="Rank Description (Optional)" rules={[textLengthRule('Rank description', 3, 500)]}>
             <Input.TextArea placeholder="Brief description of responsibilities and scope" rows={3}>
             </Input.TextArea>
           </Form.Item>

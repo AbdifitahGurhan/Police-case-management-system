@@ -2,21 +2,20 @@
 import { Tag } from 'antd';
 
 const statusMap = {
-  draft: { color: 'default', label: 'DRAFT' },
-  pending_commander_review: { color: 'processing', label: 'PENDING REVIEW' },
-  returned_for_correction: { color: 'warning', label: 'RETURNED FOR CORRECTION' },
-  confirmed_by_ward_commander: { color: 'success', label: 'CONFIRMED BY COMMANDER' },
-  under_investigation: { color: 'orange', label: 'INVESTIGATING' },
-  referred_cid: { color: 'purple', label: 'REFERRED TO CID' },
-  referred_prosecutor: { color: 'gold', label: 'REFERRED TO PROSECUTOR' },
-  transferred: { color: 'blue', label: 'TRANSFERRED' },
-  reassigned: { color: 'geekblue', label: 'REASSIGNED' },
-  approved_for_court: { color: 'cyan', label: 'APPROVED FOR COURT' },
-  returned_evidence: { color: 'warning', label: 'MORE EVIDENCE REQ' },
-  rejected: { color: 'volcano', label: 'REJECTED' },
-  closed: { color: 'green', label: 'CLOSED' },
-  dismissed: { color: 'red', label: 'DISMISSED' },
-  archived: { color: 'default', label: 'ARCHIVED' },
+  draft: { color: 'default', label: 'QABYO' },
+  pending_commander_review: { color: 'processing', label: 'SUGAYA ANSIXIN' },
+  returned_for_correction: { color: 'warning', label: 'DIB U SAXID' },
+  confirmed_by_ward_commander: { color: 'success', label: 'LA ANSIXIYAY' },
+  under_investigation: { color: 'orange', label: 'BAARIS SOCOTA' },
+  referred_cid: { color: 'purple', label: 'CID LOO GUDBIYAY' },
+  transferred: { color: 'blue', label: 'LA WAREEJIYAY' },
+  reassigned: { color: 'geekblue', label: 'DIB LOO QOONDEEYEY' },
+  referred_to_court: { color: 'cyan', label: 'MAXKAMAD LOO GUDBIYAY' },
+  returned_evidence: { color: 'warning', label: 'CADEYN DHEERI AH' },
+  rejected: { color: 'volcano', label: 'LA DIIDAY' },
+  closed: { color: 'green', label: 'LA XIRAY' },
+  dismissed: { color: 'red', label: 'LA LAALAY' },
+  archived: { color: 'default', label: 'KEYD' },
 };
 
 const CaseStatusTag = ({ status }) => {

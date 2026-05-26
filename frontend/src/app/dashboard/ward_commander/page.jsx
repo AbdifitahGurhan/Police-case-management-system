@@ -1,37 +1,36 @@
 // src/app/dashboard/ward_commander/page.jsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Button, Space, Typography, Tag, App } from 'antd';
-import { 
-  FileSearchOutlined, 
-  CheckCircleOutlined, 
-  ClockCircleOutlined, 
-  ExclamationCircleOutlined 
+import React, { useEffect, useState } from 'react';
+import { Button, Typography } from 'antd';
+import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import api from '@/services/api';
 import Link from 'next/link';
-import CaseStatusTag from '@/components/shared/CaseStatusTag';
 import dayjs from 'dayjs';
-
-const { Title, Text } = Typography;
+import api from '@/services/api';
+import CaseStatusTag from '@/components/shared/CaseStatusTag';
+import StandardDashboard from '@/components/dashboard/StandardDashboard';
 
 export default function WardCommanderDashboard() {
-  const [stats, setStats] = useState({ total_ward_cases: 0, pending_reviews: 0, confirmed_today: 0, active_investigations: 0 });
+  const [stats, setStats] = useState({});
   const [pendingCases, setPendingCases] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const statsRes = await api.get('/cases/stats');
+        const [statsRes, casesRes] = await Promise.all([
+          api.get('/cases/stats'),
+          api.get('/cases?status=pending_commander_review'),
+        ]);
         setStats(statsRes.data.data);
-        
-        const casesRes = await api.get('/cases?status=pending_commander_review');
         setPendingCases(casesRes.data.data);
       } catch (err) {
-        console.error("Dashboard data load failed", err);
+        console.error('Dashboard data load failed', err);
       } finally {
         setLoading(false);
       }
@@ -40,14 +39,19 @@ export default function WardCommanderDashboard() {
   }, []);
 
   const columns = [
-    { title: 'OB Number', dataIndex: 'ob_number', key: 'ob_number', render: (text, record) => <Link href={`/cases/${record.id}`}>{text}</Link> },
-    { title: 'Title', dataIndex: 'title', key: 'title' },
-    { title: 'Date Created', dataIndex: 'created_at', render: d => dayjs(d).format('DD MMM YYYY') },
-    { title: 'Officer', dataIndex: 'officer_name' },
-    { title: 'Status', dataIndex: 'status', render: s => <CaseStatusTag status={s} /> },
-    { 
-      title: 'Action', 
-      key: 'action', 
+    {
+      title: 'OB Number',
+      dataIndex: 'ob_number',
+      key: 'ob_number',
+      render: (text, record) => <Link href={`/cases/${record.id}`}><Typography.Text strong>{text}</Typography.Text></Link>,
+    },
+    { title: 'Title', dataIndex: 'title', key: 'title', ellipsis: true },
+    { title: 'Date Created', dataIndex: 'created_at', key: 'created_at', render: (date) => dayjs(date).format('DD MMM YYYY') },
+    { title: 'Officer', dataIndex: 'officer_name', key: 'officer_name' },
+    { title: 'Status', dataIndex: 'status', key: 'status', render: (status) => <CaseStatusTag status={status} /> },
+    {
+      title: 'Action',
+      key: 'action',
       render: (_, record) => (
         <Link href={`/cases/${record.id}`}>
           <Button type="primary" size="small">Review Case</Button>
@@ -56,46 +60,23 @@ export default function WardCommanderDashboard() {
     }
   ];
 
-  const { Title, Text } = Typography;
-
   return (
-    <ProtectedRoute allowedRoles={['ward_commander', 'admin']}>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Title level={2}>Ward Commander Control Panel</Title>
-        <Text type="secondary">Review and confirm case integrity for your assigned Ward.</Text>
-
-        <Row gutter={16}>
-          <Col span={6}>
-            <Card variant="none" className="shadow-sm">
-              <Statistic title="Total Ward Cases" value={stats.total_cases} prefix={<FileSearchOutlined />} />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card variant="none" className="shadow-sm">
-              <Statistic title="Pending Review" value={pendingCases.length} styles={{ content: { color: '#faad14' } }} prefix={<ClockCircleOutlined />} />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card variant="none" className="shadow-sm">
-              <Statistic title="Confirmed (All Time)" value={stats.confirmed_cases || 0} styles={{ content: { color: '#52c41a' } }} prefix={<CheckCircleOutlined />} />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card variant="none" className="shadow-sm">
-              <Statistic title="Active Investigations" value={stats.under_investigation_cases || 0} prefix={<ExclamationCircleOutlined />} />
-            </Card>
-          </Col>
-        </Row>
-
-        <Card title="Active Case Queue: Pending Confirmation">
-          <Table 
-            dataSource={pendingCases} 
-            columns={columns} 
-            loading={loading} 
-            rowKey="id"
-          />
-        </Card>
-      </Space>
-    </ProtectedRoute>
+    <StandardDashboard
+      allowedRoles={['ward_commander', 'admin']}
+      eyebrow="Commander Workspace"
+      title="Ward Commander Dashboard"
+      subtitle="Review and confirm case integrity for your assigned ward."
+      loading={loading}
+      metrics={[
+        { title: 'Total Ward Cases', value: stats.total_cases || 0, icon: <FileSearchOutlined />, tone: 'blue', note: 'Within your scope' },
+        { title: 'Pending Review', value: pendingCases.length, icon: <ClockCircleOutlined />, tone: 'amber', note: 'Needs confirmation' },
+        { title: 'Confirmed Cases', value: stats.confirmed_cases || 0, icon: <CheckCircleOutlined />, tone: 'green', note: 'Approved records' },
+        { title: 'Active Investigations', value: stats.under_investigation_cases || 0, icon: <ExclamationCircleOutlined />, tone: 'red', note: 'Ongoing work' },
+      ]}
+      tableTitle="Pending Commander Review"
+      tableSubtitle="Cases waiting for commander confirmation"
+      tableColumns={columns}
+      tableData={pendingCases}
+    />
   );
 }

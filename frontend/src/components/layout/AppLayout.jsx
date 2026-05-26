@@ -32,11 +32,11 @@ const AppLayout = ({ children }) => {
   return (
     <ConfigProvider theme={policeTheme}>
       <App>
-        <Layout style={{ minHeight: '100vh' }}>
+        <Layout className="app-shell">
           <Sidebar collapsed={collapsed} />
-          <Layout style={{ marginLeft: collapsed ? 80 : 260, transition: 'margin-left 0.2s' }}>
+          <Layout className="app-main" style={{ marginLeft: collapsed ? 92 : 276 }}>
             <TopNavbar collapsed={collapsed} setCollapsed={setCollapsed} />
-            <Content style={{ margin: '24px 16px', padding: 24, background: '#fff', borderRadius: 8, minHeight: 280 }}>
+            <Content className="app-content">
               {children}
             </Content>
           </Layout>

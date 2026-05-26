@@ -6,7 +6,41 @@ const path = require('path');
 exports.getAll = async (req, res, next) => {
   try {
     let query = `
-      SELECT o.*, r.rank_name 
+      SELECT o.*, r.rank_name,
+        COALESCE(
+          (
+            SELECT CASE
+              WHEN a.assignment_type = 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'Neighborhood' THEN (SELECT neighborhood_name FROM neighborhoods WHERE id = a.assignment_id)
+              ELSE NULL
+            END
+            FROM officer_assignments a
+            WHERE a.officer_id = o.id AND a.is_current = 1
+            ORDER BY a.assigned_at DESC
+            LIMIT 1
+          ),
+          (SELECT district_name FROM districts WHERE commander_officer_id = o.id LIMIT 1),
+          (SELECT neighborhood_name FROM neighborhoods WHERE commander_officer_id = o.id LIMIT 1),
+          (SELECT region_name FROM regions WHERE commander_officer_id = o.id LIMIT 1),
+          (SELECT state_name FROM state_administrations WHERE commander_officer_id = o.id LIMIT 1)
+        ) AS current_assignment_name,
+        COALESCE(
+          (
+            SELECT a.assignment_type
+            FROM officer_assignments a
+            WHERE a.officer_id = o.id AND a.is_current = 1
+            ORDER BY a.assigned_at DESC
+            LIMIT 1
+          ),
+          (SELECT 'District / Police Station' FROM districts WHERE commander_officer_id = o.id LIMIT 1),
+          (SELECT 'Waax Station' FROM neighborhoods WHERE commander_officer_id = o.id LIMIT 1),
+          (SELECT 'Region' FROM regions WHERE commander_officer_id = o.id LIMIT 1),
+          (SELECT 'State Administration' FROM state_administrations WHERE commander_officer_id = o.id LIMIT 1),
+          'Unassigned'
+        ) AS current_assignment_type
       FROM police_officers o
       LEFT JOIN ranks r ON o.rank_id = r.id
       WHERE 1=1

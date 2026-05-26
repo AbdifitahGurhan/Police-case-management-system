@@ -1,30 +1,34 @@
 // src/app/dashboard/admin/page.jsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, Typography, Space, Button } from 'antd';
-import { 
-  UserOutlined, 
-  FileSearchOutlined, 
+import React, { useEffect, useState } from 'react';
+import { Tag, Typography } from 'antd';
+import {
+  AlertOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  DatabaseOutlined,
   EnvironmentOutlined,
-  RiseOutlined,
-  AlertOutlined
+  FileSearchOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
-import dayjs from 'dayjs';
-
-const { Title, Text } = Typography;
+import StandardDashboard from '@/components/dashboard/StandardDashboard';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
+  const [stationStats, setStationStats] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await api.get('/reports/summary');
-        setStats(response.data.data);
+        const [summaryRes, stationRes] = await Promise.all([
+          api.get('/reports/summary'),
+          api.get('/reports/by-station'),
+        ]);
+        setStats(summaryRes.data.data);
+        setStationStats(stationRes.data.data);
       } catch (err) {
         console.error('Failed to fetch admin stats', err);
       } finally {
@@ -33,6 +37,15 @@ export default function AdminDashboard() {
     };
     fetchStats();
   }, []);
+
+  const caseStats = stats?.caseStats || {};
+  const totalCases = Number(caseStats.total_cases || 0);
+  const openCases = Number(caseStats.confirmed_active || 0) + Number(caseStats.pending_review || 0) + Number(caseStats.draft || 0);
+  const closedCases = Number(caseStats.closed || 0);
+  const criticalCases = Number(caseStats.critical_priority || 0);
+  const activeUsers = Number(stats?.userStats?.total_users || 0);
+  const stationsCount = Number(stats?.stationsStats?.total_stations || 0);
+  const evidenceCount = Number(stats?.evidenceStats?.total_evidence || 0);
 
   const columns = [
     {
@@ -52,99 +65,53 @@ export default function AdminDashboard() {
       key: 'total_cases',
     },
     {
-      title: 'Open Cases',
-      dataIndex: 'open_cases',
-      key: 'open_cases',
-      render: (val) => <Typography.Text type="danger">{val}</Typography.Text>
+      title: 'Pending',
+      dataIndex: 'pending_cases',
+      key: 'pending_cases',
+      render: (val) => <Typography.Text type={val > 0 ? 'warning' : 'secondary'}>{val || 0}</Typography.Text>
+    },
+    {
+      title: 'Confirmed',
+      dataIndex: 'confirmed_cases',
+      key: 'confirmed_cases',
+      render: (val) => <Typography.Text style={{ color: '#1967d2' }}>{val || 0}</Typography.Text>
     },
     {
       title: 'Closed Cases',
       dataIndex: 'closed_cases',
       key: 'closed_cases',
-      render: (val) => <Typography.Text type="success">{val}</Typography.Text>
+      render: (val) => <Typography.Text type="success">{val || 0}</Typography.Text>
     }
   ];
 
-  const [stationStats, setStationStats] = useState([]);
-  
-  useEffect(() => {
-    const fetchStationStats = async () => {
-      try {
-        const res = await api.get('/reports/by-station');
-        setStationStats(res.data.data);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchStationStats();
-  }, []);
-
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <div>
-          <Title level={2}>Admin Overview</Title>
-          <Typography.Text type="secondary">System-wide monitoring and statistics for all police stations in Somalia.</Typography.Text>
-        </div>
-
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none" className="stat-card">
-              <Statistic
-                title="Total Registered Cases"
-                value={stats?.caseStats?.total_cases || 0}
-                prefix={<FileSearchOutlined style={{ color: '#1677ff' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none" className="stat-card">
-              <Statistic
-                title="Active Users"
-                value={stats?.userStats?.total_users || 0}
-                prefix={<UserOutlined style={{ color: '#52c41a' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none" className="stat-card">
-              <Statistic
-                title="Police Stations"
-                value={stats?.stationsStats?.total_stations || 0}
-                prefix={<EnvironmentOutlined style={{ color: '#faad14' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none" className="stat-card">
-              <Statistic
-                title="Critical Priority"
-                value={stats?.caseStats?.critical_priority || 0}
-                prefix={<AlertOutlined style={{ color: '#ff4d4f' }} />}
-                styles={{ content: { color: '#ff4d4f' } }}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        <Row gutter={[16, 16]}>
-          <Col span={24}>
-            <Card title="Case Distribution by Station" variant="none">
-              <Table 
-                columns={columns} 
-                dataSource={stationStats} 
-                loading={loading} 
-                rowKey="station_name"
-                pagination={false}
-              />
-            </Card>
-          </Col>
-        </Row>
-      </Space>
-    </ProtectedRoute>
+    <StandardDashboard
+      allowedRoles={['admin']}
+      eyebrow="Command Center"
+      title="Admin Dashboard"
+      subtitle="System-wide monitoring for cases, units, users, and evidence."
+      loading={loading}
+      metrics={[
+        { title: 'Total Cases', value: totalCases, icon: <FileSearchOutlined />, tone: 'blue', note: 'Registered records' },
+        { title: 'Critical Cases', value: criticalCases, icon: <AlertOutlined />, tone: 'red', note: 'Requires attention' },
+        { title: 'Open Cases', value: openCases, icon: <ClockCircleOutlined />, tone: 'amber', note: 'Active workflows' },
+        { title: 'Closed Cases', value: closedCases, icon: <CheckCircleOutlined />, tone: 'green', note: 'Completed workflow' },
+      ]}
+      sidePanel={{
+        title: 'System Snapshot',
+        content: (
+          <div className="standard-side-list">
+            <div><UserOutlined /><span>Active Users</span><strong>{activeUsers}</strong></div>
+            <div><EnvironmentOutlined /><span>Stations</span><strong>{stationsCount}</strong></div>
+            <div><DatabaseOutlined /><span>Evidence</span><strong>{evidenceCount}</strong></div>
+          </div>
+        ),
+      }}
+      tableTitle="Case Distribution by Station"
+      tableSubtitle="Operational performance across stations and units"
+      tableColumns={columns}
+      tableData={stationStats}
+      rowKey="station_name"
+    />
   );
 }

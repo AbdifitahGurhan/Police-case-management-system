@@ -1,22 +1,28 @@
 // src/app/stations/page.jsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Table, Card, Typography, Space, Button, Tag, Modal, Form, Input, message, Popconfirm, Row, Col } from 'antd';
-import { EnvironmentOutlined, PlusOutlined, EditOutlined, PhoneOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import { App, Table, Card, Typography, Space, Button, Tag, Modal, Form, Input, Row, Col, Select } from 'antd';
+import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
+import { codeRules, passwordRules, requiredRule, textLengthRule, usernameRules } from '@/utils/validation';
 
 const { Title, Text } = Typography;
 
 export default function StationManagementPage() {
+  const { message } = App.useApp();
+  const { user } = useAuth();
+  const canEditStations = user?.role === 'admin';
   const [stations, setStations] = useState([]);
+  const [cities, setCities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStation, setEditingStation] = useState(null);
   const [form] = Form.useForm();
 
-  const fetchStations = async () => {
+  const fetchStations = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get('/stations');
@@ -26,11 +32,25 @@ export default function StationManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [message]);
+
+  const fetchGeography = useCallback(async () => {
+    try {
+      const res = await api.get('/stations/geography');
+      setCities(res.data.data.cities || []);
+    } catch (err) {
+      if (canEditStations) {
+        message.error("Failed to load cities.");
+      }
+    }
+  }, [canEditStations, message]);
 
   useEffect(() => {
     fetchStations();
-  }, []);
+    if (canEditStations) {
+      fetchGeography();
+    }
+  }, [canEditStations, fetchGeography, fetchStations]);
 
   const handleOpenModal = (station = null) => {
     setEditingStation(station);
@@ -61,26 +81,27 @@ export default function StationManagementPage() {
   const columns = [
     { title: 'Name', dataIndex: 'name', key: 'name', render: (t) => <Typography.Text strong>{t}</Typography.Text> },
     { title: 'Code', dataIndex: 'code', key: 'code', render: (c) => <Tag color="blue">{c}</Tag> },
-    { title: 'Region', dataIndex: 'region', key: 'region' },
-    { title: 'District', dataIndex: 'district', key: 'district' },
-    { title: 'Phone', dataIndex: 'phone', key: 'phone', render: (p) => p && <><PhoneOutlined /> {p}</> },
+    { title: 'Region', dataIndex: 'region_name', key: 'region_name' },
+    { title: 'City', dataIndex: 'city_name', key: 'city_name' },
+    { title: 'Username', dataIndex: 'username', key: 'username' },
+    { title: 'Commander', dataIndex: 'commander_name', key: 'commander_name', render: (v) => v || 'N/A' },
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', render: (a) => a ? <Tag color="success">OPERATIONAL</Tag> : <Tag color="error">INACTIVE</Tag> },
     {
       title: 'Action',
       key: 'action',
-      render: (_, record) => <Button icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />,
+      render: (_, record) => <Button icon={<EditOutlined />} onClick={() => handleOpenModal(record)} disabled={!canEditStations} />,
     },
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'region_admin']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <Title level={2}>Police Station Registry</Title>
-            <Typography.Text type="secondary">Manage the physical locations and logistical details of police stations.</Typography.Text>
+            <Title level={2}>District Police Station Registry</Title>
+            <Typography.Text type="secondary">Manage district stations, their login accounts, and their assigned command area.</Typography.Text>
           </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()}>Add Station</Button>
+          {canEditStations && <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()}>Add Station</Button>}
         </div>
 
         <Card variant="none">
@@ -94,30 +115,31 @@ export default function StationManagementPage() {
           onOk={() => form.submit()}
         >
           <Form form={form} layout="vertical" onFinish={handleSave}>
-            <Form.Item name="name" label="Station Name" rules={[{ required: true }]}>
+            <Form.Item name="name" label="Station Name" rules={[requiredRule('Station name'), textLengthRule('Station name', 3, 150)]}>
               <Input placeholder="e.g. Hodan Central Station" />
             </Form.Item>
-            <Form.Item name="code" label="Station Code (Unique)" rules={[{ required: true }]}>
+            <Form.Item name="code" label="Station Code (Unique)" rules={codeRules('Station code')}>
               <Input placeholder="e.g. HPS-01" />
             </Form.Item>
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="region" label="Region">
-                  <Input placeholder="e.g. Banadir" />
+                <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
+                  <Select placeholder="Select city">
+                    {cities.map((city) => <Select.Option key={city.id} value={city.id}>{city.name}</Select.Option>)}
+                  </Select>
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="district" label="District">
-                  <Input placeholder="e.g. Hodan" />
+                <Form.Item name="username" label="Login Username" rules={usernameRules}>
+                  <Input placeholder="e.g. hodan_station" />
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item name="phone" label="Contact Number">
-              <Input />
-            </Form.Item>
-            <Form.Item name="address" label="Street Address">
-              <Input />
-            </Form.Item>
+            {!editingStation && (
+              <Form.Item name="password" label="Login Password" rules={passwordRules}>
+                <Input.Password />
+              </Form.Item>
+            )}
           </Form>
         </Modal>
       </Space>

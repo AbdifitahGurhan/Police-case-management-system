@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, message, Tag } from 'antd';
+import React, { useCallback, useState, useEffect } from 'react';
+import { App, Table, Card, Typography, Space, Button, Modal, Form, Input, Select, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, UserOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { codeRules, passwordRules, requiredRule, textLengthRule, usernameRules } from '@/utils/validation';
 
 const { Title } = Typography;
 
@@ -18,6 +19,7 @@ export default function TierManager({
   parentNameKey, // e.g. "state_name"
   entityKey // Optional: manual override for field prefix e.g. "state"
 }) {
+  const { message } = App.useApp();
   const [data, setData] = useState([]);
   const [officers, setOfficers] = useState([]);
   const [parents, setParents] = useState([]);
@@ -28,7 +30,7 @@ export default function TierManager({
   
   const safeEntityKey = entityKey || entityName.toLowerCase();
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [resData, resOfficers] = await Promise.all([
@@ -49,11 +51,11 @@ export default function TierManager({
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiEndpoint, entityName, message, parentEndpoint]);
 
   useEffect(() => {
     fetchData();
-  }, [apiEndpoint]);
+  }, [fetchData]);
 
   const handleOpenModal = (record = null) => {
     setEditingRecord(record);
@@ -112,11 +114,12 @@ export default function TierManager({
         open={isModalOpen} 
         onCancel={() => setIsModalOpen(false)} 
         onOk={() => form.submit()}
+        forceRender
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           
           {parentEndpoint && (
-            <Form.Item name={parentKey} label={parentLabel || `Parent Level`} rules={[{ required: true }]}>
+            <Form.Item name={parentKey} label={parentLabel || `Parent Level`} rules={[requiredRule(parentLabel || 'Parent level')]}>
               <Select placeholder={`Select ${parentLabel || 'Parent Entity'}`}>
                 {parents.map(p => (
                   <Select.Option key={p.id} value={p.id}>{parentNameKey ? p[parentNameKey] : (p[`${parentEndpoint.replace('/', '').replace('-administrations', '_name').replace(/s$/, '')}_name`] || p.name || `ID: ${p.id}`)}</Select.Option>
@@ -127,20 +130,20 @@ export default function TierManager({
 
           {formItems}
 
-          <Form.Item name={`${safeEntityKey}_name`} label={`${entityName} Name`} rules={[{ required: true }]}>
+          <Form.Item name={`${safeEntityKey}_name`} label={`${entityName} Name`} rules={[requiredRule(`${entityName} name`), textLengthRule(`${entityName} name`, 2, 150)]}>
             <Input placeholder={`e.g. Central ${entityName}`} />
           </Form.Item>
           
-          <Form.Item name={`${safeEntityKey}_code`} label={`${entityName} Code`} rules={[{ required: true }]}>
+          <Form.Item name={`${safeEntityKey}_code`} label={`${entityName} Code`} rules={codeRules(`${entityName} code`)}>
             <Input placeholder="e.g. REG-01" disabled={!!editingRecord} />
           </Form.Item>
           
-          <Form.Item name="username" label="Login Username" rules={[{ required: true }]}>
+          <Form.Item name="username" label="Login Username" rules={usernameRules}>
             <Input placeholder={`e.g. ${entityName.toLowerCase()}_user`} />
           </Form.Item>
 
           {!editingRecord && (
-            <Form.Item name="password" label="Login Password" rules={[{ required: true }]}>
+            <Form.Item name="password" label="Login Password" rules={passwordRules}>
               <Input.Password placeholder="Secure password for this unit" />
             </Form.Item>
           )}

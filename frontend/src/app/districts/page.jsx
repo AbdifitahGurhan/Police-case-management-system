@@ -9,7 +9,7 @@ export default function DistrictsPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'state_admin', 'region_admin', 'city_admin']}>
+    <ProtectedRoute allowedRoles={['admin']}>
       <TierManager
         entityName="District"
         apiEndpoint="/districts"

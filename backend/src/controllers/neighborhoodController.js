@@ -13,11 +13,21 @@ exports.getAll = async (req, res, next) => {
     const params = [];
     
     if (req.query.district_id) {
-      query += ` AND n.district_id = ?`;
+      query += ` AND c.district_id = ?`;
       params.push(req.query.district_id);
     }
 
-    if (req.user.scopeType === 'district') {
+    if (req.user.scopeType === 'region') {
+      query += `
+        AND EXISTS (
+          SELECT 1
+          FROM districts d
+          JOIN cities ci ON d.city_id = ci.id
+          WHERE d.id = c.district_id AND ci.region_id = ?
+        )
+      `;
+      params.push(req.user.scopeId);
+    } else if (req.user.scopeType === 'district') {
       query += ` AND c.district_id = ?`;
       params.push(req.user.scopeId);
     } else if (req.user.scopeType) {

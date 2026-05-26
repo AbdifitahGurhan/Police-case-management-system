@@ -17,7 +17,7 @@ const getBlockchainRecords = async (req, res, next) => {
 
     const [rows] = await db.query(
       `SELECT br.*, u.full_name AS created_by_name FROM blockchain_records br
-       JOIN users u ON br.created_by = u.id
+       LEFT JOIN users u ON br.created_by = u.username OR br.created_by = CAST(u.id AS CHAR)
        WHERE ${where} ORDER BY br.created_at DESC LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );

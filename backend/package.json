@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "seed": "node database/seed.js"
+    "seed": "node database/seed.js",
+    "test:system": "node scripts/systemSmokeTest.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -15,6 +16,7 @@
     "express": "^4.19.2",
     "express-validator": "^7.2.0",
     "jsonwebtoken": "^9.0.2",
+    "mongoose": "^9.6.2",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.11.0",
     "uuid": "^10.0.0"

@@ -2,9 +2,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, Typography, Space, Button } from 'antd';
-import { 
-  AuditOutlined, 
+import { Row, Col, Card, Statistic, Table, Tag, Typography, Space } from 'antd';
+import {
+  AuditOutlined,
   BookOutlined,
   CheckSquareOutlined,
   ContainerOutlined
@@ -14,7 +14,7 @@ import api from '@/services/api';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 export default function ProsecutorDashboard() {
   const [data, setData] = useState(null);
@@ -52,7 +52,7 @@ export default function ProsecutorDashboard() {
       key: 'priority',
       render: (priority) => {
         const colors = { low: 'blue', medium: 'cyan', high: 'orange', critical: 'red' };
-        return <Tag color={colors[priority]}>{priority.toUpperCase()}</Tag>;
+        return <Tag color={colors[priority]}>{priority?.toUpperCase()}</Tag>;
       }
     },
     {
@@ -120,11 +120,11 @@ export default function ProsecutorDashboard() {
           </Col>
         </Row>
 
-        <Card title="Prosecution Queue — Case Files for Review" variant="none">
-          <Table 
-            columns={columns} 
-            dataSource={data?.recentCases || []} 
-            loading={loading} 
+        <Card title="Prosecution Queue - Case Files for Review" variant="none">
+          <Table
+            columns={columns}
+            dataSource={data?.recentCases || []}
+            loading={loading}
             rowKey="id"
             pagination={false}
           />

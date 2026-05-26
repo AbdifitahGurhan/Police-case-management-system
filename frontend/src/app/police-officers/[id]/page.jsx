@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect, use, useCallback } from 'react';
 import { Card, Descriptions, Table, Typography, Tag, Space, Button, Modal, Form, Select, Input, message, Avatar, Row, Col, Divider } from 'antd';
 import { SwapOutlined, ArrowLeftOutlined, AuditOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import dayjs from 'dayjs';
+import { requiredRule, textLengthRule } from '@/utils/validation';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -67,7 +68,7 @@ export default function OfficerDetailsPage({ params }) {
   }, [selectedDistrict, transferForm]);
 
 
-  const fetchOfficerDetails = async () => {
+  const fetchOfficerDetails = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/police-officers/${id}`);
@@ -79,11 +80,11 @@ export default function OfficerDetailsPage({ params }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     if (id) fetchOfficerDetails();
-  }, [id]);
+  }, [fetchOfficerDetails, id]);
 
   const handleTransfer = async () => {
     try {
@@ -118,7 +119,7 @@ export default function OfficerDetailsPage({ params }) {
   };
 
   if (!officer && !loading) {
-    return <Card><h2>Officer not found or you don't have access.</h2><Button onClick={() => router.back()}>Go Back</Button></Card>;
+    return <Card><h2>Officer not found or you do not have access.</h2><Button onClick={() => router.back()}>Go Back</Button></Card>;
   }
 
   const assignmentCols = [
@@ -222,7 +223,7 @@ export default function OfficerDetailsPage({ params }) {
           okText="Confirm Transfer"
         >
            <Form form={transferForm} layout="vertical">
-              <Form.Item name="to_assignment_type" label="Target Level" rules={[{ required: true }]}>
+              <Form.Item name="to_assignment_type" label="Target Level" rules={[requiredRule('Target level')]}>
                  <Select placeholder="e.g. City" onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, city_id: undefined, district_id: undefined, neighborhood_id: undefined })}>
                     <Option value="State Administration">State Administration</Option>
                     <Option value="Region">Region</Option>
@@ -233,7 +234,7 @@ export default function OfficerDetailsPage({ params }) {
               </Form.Item>
               
               {assignmentType && (
-                <Form.Item name="state_id" label="State Administration" rules={[{ required: true }]}>
+                <Form.Item name="state_id" label="State Administration" rules={[requiredRule('State administration')]}>
                   <Select placeholder="Select State Administration" showSearch optionFilterProp="children">
                     {states.map(s => <Option key={s.id} value={s.id}>{s.state_name}</Option>)}
                   </Select>
@@ -241,7 +242,7 @@ export default function OfficerDetailsPage({ params }) {
               )}
 
               {assignmentType && ['Region', 'City', 'District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="region_id" label="Region" rules={[{ required: true }]}>
+                <Form.Item name="region_id" label="Region" rules={[requiredRule('Region')]}>
                   <Select placeholder="Select Region" showSearch optionFilterProp="children" disabled={!selectedState}>
                     {regions.map(r => <Option key={r.id} value={r.id}>{r.region_name}</Option>)}
                   </Select>
@@ -249,7 +250,7 @@ export default function OfficerDetailsPage({ params }) {
               )}
 
               {assignmentType && ['City', 'District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="city_id" label="City" rules={[{ required: true }]}>
+                <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
                   <Select placeholder="Select City" showSearch optionFilterProp="children" disabled={!selectedRegion}>
                     {cities.map(c => <Option key={c.id} value={c.id}>{c.city_name}</Option>)}
                   </Select>
@@ -257,7 +258,7 @@ export default function OfficerDetailsPage({ params }) {
               )}
 
               {assignmentType && ['District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="district_id" label="District" rules={[{ required: true }]}>
+                <Form.Item name="district_id" label="District" rules={[requiredRule('District')]}>
                   <Select placeholder="Select District" showSearch optionFilterProp="children" disabled={!selectedCity}>
                     {districts.map(d => <Option key={d.id} value={d.id}>{d.district_name}</Option>)}
                   </Select>
@@ -265,17 +266,17 @@ export default function OfficerDetailsPage({ params }) {
               )}
 
               {assignmentType === 'Neighborhood' && (
-                <Form.Item name="neighborhood_id" label="Neighborhood / Station" rules={[{ required: true }]}>
+                <Form.Item name="neighborhood_id" label="Neighborhood / Station" rules={[requiredRule('Neighborhood / station')]}>
                   <Select placeholder="Select Neighborhood" showSearch optionFilterProp="children" disabled={!selectedDistrict}>
                     {neighborhoods.map(n => <Option key={n.id} value={n.id}>{n.neighborhood_name}</Option>)}
                   </Select>
                 </Form.Item>
               )}
 
-              <Form.Item name="transfer_reason" label="Reason for Transfer" rules={[{ required: true }]}>
+              <Form.Item name="transfer_reason" label="Reason for Transfer" rules={[requiredRule('Transfer reason'), textLengthRule('Transfer reason', 5, 1000)]}>
                 <Input.TextArea rows={2} />
               </Form.Item>
-              <Form.Item name="remarks" label="Additional Remarks (Optional)">
+              <Form.Item name="remarks" label="Additional Remarks (Optional)" rules={[textLengthRule('Remarks', 3, 1000)]}>
                 <Input.TextArea rows={2} />
               </Form.Item>
            </Form>

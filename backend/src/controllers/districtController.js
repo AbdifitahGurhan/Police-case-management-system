@@ -7,18 +7,22 @@ exports.getAll = async (req, res, next) => {
     let query = `
       SELECT c.id, c.district_name, c.district_code, c.username, c.commander_officer_id, c.city_id, p.full_name as commander_name
       FROM districts c
+      LEFT JOIN cities ci ON c.city_id = ci.id
       LEFT JOIN police_officers p ON c.commander_officer_id = p.id
       WHERE 1=1
     `;
     const params = [];
     
     if (req.query.city_id) {
-      query += ` AND d.city_id = ?`;
+      query += ` AND c.city_id = ?`;
       params.push(req.query.city_id);
     }
 
     if (req.user.scopeType === 'city') {
       query += ` AND c.city_id = ?`;
+      params.push(req.user.scopeId);
+    } else if (req.user.scopeType === 'region') {
+      query += ` AND ci.region_id = ?`;
       params.push(req.user.scopeId);
     } else if (req.user.scopeType) {
       if (req.user.role !== 'admin') return res.status(403).json({success: false, message: 'Forbidden'});
@@ -33,8 +37,9 @@ exports.getById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const [rows] = await db.query(`
-      SELECT c.*, p.full_name as commander_name, p.rank_id, rnk.rank_name as commander_rank, p.profile_image as commander_photo
+      SELECT c.*, ci.region_id, p.full_name as commander_name, p.rank_id, rnk.rank_name as commander_rank, p.profile_image as commander_photo
       FROM districts c
+      LEFT JOIN cities ci ON c.city_id = ci.id
       LEFT JOIN police_officers p ON c.commander_officer_id = p.id
       LEFT JOIN ranks rnk ON p.rank_id = rnk.id
       WHERE c.id = ?
@@ -46,6 +51,7 @@ exports.getById = async (req, res, next) => {
     // Authorize
     if (req.user.scopeType === 'district' && req.user.scopeId !== center.id) return res.status(403).json({ success: false, message: 'Forbidden' });
     if (req.user.scopeType === 'city' && req.user.scopeId !== center.city_id) return res.status(403).json({ success: false, message: 'Forbidden' });
+    if (req.user.scopeType === 'region' && Number(req.user.scopeId) !== Number(center.region_id)) return res.status(403).json({ success: false, message: 'Forbidden' });
     
     const [officerRows] = await db.query(`
       SELECT count(id) as count FROM officer_assignments WHERE assignment_type = 'District' AND assignment_id = ? AND is_current = 1
@@ -62,6 +68,10 @@ exports.create = async (req, res, next) => {
     
     if (req.user.scopeType === 'city' && req.user.scopeId !== parseInt(city_id)) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    if (req.user.scopeType === 'region') {
+      const [[city]] = await db.query('SELECT id FROM cities WHERE id = ? AND region_id = ?', [city_id, req.user.scopeId]);
+      if (!city) return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
     const hash = await bcrypt.hash(password, 10);
@@ -89,6 +99,13 @@ exports.update = async (req, res, next) => {
 
     if (req.user.scopeType === 'district' && req.user.scopeId !== parseInt(id)) return res.status(403).json({ success: false, message: 'Forbidden' });
     if (req.user.scopeType === 'city' && req.user.scopeId !== center.city_id) return res.status(403).json({ success: false, message: 'Forbidden' });
+    if (req.user.scopeType === 'region') {
+      const [[currentCity]] = await db.query('SELECT region_id FROM cities WHERE id = ?', [center.city_id]);
+      const [[targetCity]] = await db.query('SELECT region_id FROM cities WHERE id = ?', [city_id]);
+      if (Number(currentCity?.region_id) !== Number(req.user.scopeId) || Number(targetCity?.region_id) !== Number(req.user.scopeId)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+    }
 
     await db.query(`
       UPDATE districts SET city_id=?, district_name=?, district_code=?, username=?, commander_officer_id=?

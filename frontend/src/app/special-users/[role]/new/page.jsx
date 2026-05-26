@@ -6,6 +6,7 @@ import { Card, Typography, Form, Input, Button, message } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/services/api';
+import { passwordRules, textLengthRule, usernameRules } from '@/utils/validation';
 
 const { Title, Text } = Typography;
 
@@ -48,7 +49,7 @@ export default function NewSpecialUserPage() {
           <Form.Item 
             label="Username" 
             name="username" 
-            rules={[{ required: true, message: 'Please input username!' }]}
+            rules={usernameRules}
           >
             <Input placeholder="Unique username" />
           </Form.Item>
@@ -56,7 +57,7 @@ export default function NewSpecialUserPage() {
           <Form.Item 
             label="Password" 
             name="password" 
-            rules={[{ required: true, message: 'Please input password!' }]}
+            rules={passwordRules}
           >
             <Input.Password placeholder="Secure password" />
           </Form.Item>
@@ -64,6 +65,7 @@ export default function NewSpecialUserPage() {
           <Form.Item 
             label="Assigned Unit (Optional)" 
             name="assigned_unit" 
+            rules={[textLengthRule('Assigned unit', 2, 255)]}
           >
             <Input placeholder="e.g. Headquarters, High Court, Central Jail" />
           </Form.Item>

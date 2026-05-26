@@ -6,6 +6,15 @@ import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import dayjs from 'dayjs';
+import {
+  disabledFutureDate,
+  emailRule,
+  nameRules,
+  noFutureDateRule,
+  phoneRules,
+  requiredRule,
+  textLengthRule,
+} from '@/utils/validation';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -195,6 +204,18 @@ export default function PoliceOfficersPage() {
     { title: 'Full Name', dataIndex: 'full_name', key: 'full_name' },
     { title: 'Force No.', dataIndex: 'force_number', key: 'force_number', render: f => <Tag color="blue">{f}</Tag> },
     { title: 'Rank', dataIndex: 'rank_name', key: 'rank_name' },
+    {
+      title: 'Station / Assignment',
+      key: 'current_assignment',
+      render: (_, record) => (
+        <Space orientation="vertical" size={0}>
+          <Typography.Text strong>{record.current_assignment_name || 'Headquarters'}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {record.current_assignment_type || 'Unassigned'}
+          </Typography.Text>
+        </Space>
+      ),
+    },
     { title: 'Status', dataIndex: 'employment_status', key: 'employment_status', render: s => <Tag color={s === 'Active' ? 'green' : 'red'}>{s}</Tag> },
     {
       title: 'Action',
@@ -235,12 +256,12 @@ export default function PoliceOfficersPage() {
           <Form form={form} layout="vertical">
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
+                <Form.Item name="full_name" label="Full Name" rules={nameRules('Officer name')}>
                   <Input placeholder="e.g. John Doe" />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="force_number" label="Force Number" rules={[{ required: true }]}>
+                <Form.Item name="force_number" label="Force Number" rules={[requiredRule('Force number'), textLengthRule('Force number', 2, 50)]}>
                   <Input placeholder="e.g. F-987" disabled={!!editingRecord} />
                 </Form.Item>
               </Col>
@@ -248,7 +269,7 @@ export default function PoliceOfficersPage() {
 
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="rank_id" label="Rank" rules={[{ required: true }]}>
+                <Form.Item name="rank_id" label="Rank" rules={[requiredRule('Rank')]}>
                   <Select placeholder="Select Rank">
                     {ranks.map(r => <Option key={r.id} value={r.id}>{r.rank_name}</Option>)}
                   </Select>
@@ -273,12 +294,15 @@ export default function PoliceOfficersPage() {
 
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="phone" label="Phone"><Input /></Form.Item>
+                <Form.Item name="phone" label="Phone" rules={phoneRules}><Input /></Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="email" label="Email"><Input type="email" /></Form.Item>
+                <Form.Item name="email" label="Email" rules={[emailRule]}><Input type="email" /></Form.Item>
               </Col>
             </Row>
+            <Form.Item name="date_of_birth" label="Date of Birth" rules={[noFutureDateRule('Date of birth')]}>
+              <DatePicker style={{ width: '100%' }} disabledDate={disabledFutureDate} />
+            </Form.Item>
           </Form>
         </Modal>
 
@@ -290,7 +314,7 @@ export default function PoliceOfficersPage() {
           onOk={handleTransfer}
         >
            <Form form={transferForm} layout="vertical">
-              <Form.Item name="to_assignment_type" label="Target Level" rules={[{ required: true }]}>
+              <Form.Item name="to_assignment_type" label="Target Level" rules={[requiredRule('Target level')]}>
                  <Select placeholder="e.g. City" onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, city_id: undefined, district_id: undefined, neighborhood_id: undefined })}>
                     <Option value="State Administration">State Administration</Option>
                     <Option value="Region">Region</Option>
@@ -301,7 +325,7 @@ export default function PoliceOfficersPage() {
               </Form.Item>
               
               {assignmentType && (
-                <Form.Item name="state_id" label="State Administration" rules={[{ required: true }]}>
+                <Form.Item name="state_id" label="State Administration" rules={[requiredRule('State administration')]}>
                   <Select placeholder="Select State Administration" showSearch optionFilterProp="children">
                     {states.map(s => <Option key={s.id} value={s.id}>{s.state_name}</Option>)}
                   </Select>
@@ -309,7 +333,7 @@ export default function PoliceOfficersPage() {
               )}
 
               {assignmentType && ['Region', 'City', 'District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="region_id" label="Region" rules={[{ required: true }]}>
+                <Form.Item name="region_id" label="Region" rules={[requiredRule('Region')]}>
                   <Select placeholder="Select Region" showSearch optionFilterProp="children" disabled={!selectedState}>
                     {regions.map(r => <Option key={r.id} value={r.id}>{r.region_name}</Option>)}
                   </Select>
@@ -317,7 +341,7 @@ export default function PoliceOfficersPage() {
               )}
 
               {assignmentType && ['City', 'District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="city_id" label="City" rules={[{ required: true }]}>
+                <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
                   <Select placeholder="Select City" showSearch optionFilterProp="children" disabled={!selectedRegion}>
                     {cities.map(c => <Option key={c.id} value={c.id}>{c.city_name}</Option>)}
                   </Select>
@@ -325,7 +349,7 @@ export default function PoliceOfficersPage() {
               )}
 
               {assignmentType && ['District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="district_id" label="District" rules={[{ required: true }]}>
+                <Form.Item name="district_id" label="District" rules={[requiredRule('District')]}>
                   <Select placeholder="Select District" showSearch optionFilterProp="children" disabled={!selectedCity}>
                     {districts.map(d => <Option key={d.id} value={d.id}>{d.district_name}</Option>)}
                   </Select>
@@ -333,14 +357,14 @@ export default function PoliceOfficersPage() {
               )}
 
               {assignmentType === 'Neighborhood' && (
-                <Form.Item name="neighborhood_id" label="Neighborhood / Station" rules={[{ required: true }]}>
+                <Form.Item name="neighborhood_id" label="Neighborhood / Station" rules={[requiredRule('Neighborhood / station')]}>
                   <Select placeholder="Select Neighborhood" showSearch optionFilterProp="children" disabled={!selectedDistrict}>
                     {neighborhoods.map(n => <Option key={n.id} value={n.id}>{n.neighborhood_name}</Option>)}
                   </Select>
                 </Form.Item>
               )}
 
-              <Form.Item name="transfer_reason" label="Reason for deployment" rules={[{ required: true }]}>
+              <Form.Item name="transfer_reason" label="Reason for deployment" rules={[requiredRule('Deployment reason'), textLengthRule('Deployment reason', 5, 1000)]}>
                 <Input.TextArea rows={3} />
               </Form.Item>
            </Form>

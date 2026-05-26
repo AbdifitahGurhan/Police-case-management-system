@@ -1,5 +1,6 @@
 // src/app/layout.js
 import { Inter } from "next/font/google";
+import { App as AntdApp } from 'antd';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { AuthProvider } from '@/contexts/AuthContext';
 import AppLayout from '@/components/layout/AppLayout';
@@ -11,8 +12,8 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "Police CMS | Criminal Case Management System",
-  description: "Secure Case Management System for Somalia Police Stations",
+  title: "Somali Police Force | Case Management System",
+  description: "Secure case management system for the Somali Police Force",
 };
 
 export default function RootLayout({ children }) {
@@ -20,11 +21,13 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className={inter.variable}>
         <AntdRegistry>
-          <AuthProvider>
-            <AppLayout>
-              {children}
-            </AppLayout>
-          </AuthProvider>
+          <AntdApp>
+            <AuthProvider>
+              <AppLayout>
+                {children}
+              </AppLayout>
+            </AuthProvider>
+          </AntdApp>
         </AntdRegistry>
       </body>
     </html>

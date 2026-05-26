@@ -7,6 +7,7 @@ const path = require('path');
 require('dotenv').config();
 
 const { testConnection } = require('./config/database');
+const { connectMongoDB } = require('./config/mongodb');
 const errorHandler = require('./middleware/errorHandler');
 
 // Route imports
@@ -33,13 +34,16 @@ const transferRoutes = require('./routes/transferRoutes');
 const officerTransferRoutes = require('./routes/officerTransferRoutes');
 const specialUserRoutes = require('./routes/specialUserRoutes');
 const stationRoutes = require('./routes/stationRoutes');
+const custodyRoutes = require('./routes/custodyRoutes');
+const obEntryRoutes = require('./routes/obEntryRoutes');
+const administrationStructureRoutes = require('./routes/administrationStructureRoutes');
 
 const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -68,6 +72,9 @@ app.use('/api/transfers', transferRoutes);
 app.use('/api/officer-transfers', officerTransferRoutes);
 app.use('/api/special-users', specialUserRoutes);
 app.use('/api/stations', stationRoutes);
+app.use('/api/custody', custodyRoutes);
+app.use('/api/ob-entries', obEntryRoutes);
+app.use('/api/administration-structure', administrationStructureRoutes);
 
 // Root route
 app.get('/', (req, res) => {
@@ -83,6 +90,7 @@ const PORT = process.env.PORT || 5000;
 const start = async () => {
   try {
     await testConnection();
+    await connectMongoDB();
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });

@@ -6,13 +6,44 @@ const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { generateHash, saveBlockchainRecord } = require('../utils/hashUtil');
 
+const applyCaseScope = (user, sql, params, alias = 'c') => {
+  if (user.scopeType === 'state_administration') { sql += ` AND ${alias}.state_administration_id = ?`; params.push(user.scopeId); }
+  if (user.scopeType === 'region') { sql += ` AND ${alias}.region_id = ?`; params.push(user.scopeId); }
+  if (user.scopeType === 'city') { sql += ` AND ${alias}.city_id = ?`; params.push(user.scopeId); }
+  if (user.scopeType === 'district') { sql += ` AND ${alias}.district_id = ?`; params.push(user.scopeId); }
+  if (user.scopeType === 'neighborhood') { sql += ` AND ${alias}.neighborhood_id = ?`; params.push(user.scopeId); }
+  return sql;
+};
+
+const canAccessCase = async (user, caseId) => {
+  const [[row]] = await db.query(
+    'SELECT state_administration_id, region_id, city_id, district_id, neighborhood_id FROM cases WHERE id = ?',
+    [caseId]
+  );
+  if (!row) return false;
+  if (!user.scopeType) return true;
+  const columnMap = {
+    state_administration: 'state_administration_id',
+    region: 'region_id',
+    city: 'city_id',
+    district: 'district_id',
+    neighborhood: 'neighborhood_id',
+  };
+  return Number(row[columnMap[user.scopeType]]) === Number(user.scopeId);
+};
+
 /** GET /api/evidence?case_id=X */
 const getEvidence = async (req, res, next) => {
   try {
     const { case_id } = req.query;
-    let sql = `SELECT e.*, u.full_name AS collected_by_name FROM evidence e JOIN users u ON e.collected_by = u.id`;
+    let sql = `SELECT e.*, u.full_name AS collected_by_name
+               FROM evidence e
+               LEFT JOIN users u ON e.collected_by = u.username OR e.collected_by = CAST(u.id AS CHAR)
+               JOIN cases c ON c.id = e.case_id
+               WHERE 1=1`;
     const params = [];
-    if (case_id) { sql += ' WHERE e.case_id = ?'; params.push(case_id); }
+    if (case_id) { sql += ' AND e.case_id = ?'; params.push(case_id); }
+    sql = applyCaseScope(req.user, sql, params);
     sql += ' ORDER BY e.created_at DESC';
     const [rows] = await db.query(sql, params);
     res.json({ success: true, data: rows });
@@ -22,11 +53,19 @@ const getEvidence = async (req, res, next) => {
 /** GET /api/evidence/:id */
 const getEvidenceById = async (req, res, next) => {
   try {
-    const [[ev]] = await db.query(`SELECT e.*, u.full_name AS collected_by_name FROM evidence e JOIN users u ON e.collected_by = u.id WHERE e.id = ?`, [req.params.id]);
+    const [[ev]] = await db.query(
+      `SELECT e.*, u.full_name AS collected_by_name
+       FROM evidence e
+       LEFT JOIN users u ON e.collected_by = u.username OR e.collected_by = CAST(u.id AS CHAR)
+       WHERE e.id = ?`,
+      [req.params.id]
+    );
     if (!ev) return res.status(404).json({ success: false, message: 'Evidence not found.' });
     const [custody] = await db.query(
       `SELECT coc.*, f.full_name AS from_name, t.full_name AS to_name
-       FROM chain_of_custody coc LEFT JOIN users f ON coc.transferred_from = f.id JOIN users t ON coc.transferred_to = t.id
+       FROM chain_of_custody coc
+       LEFT JOIN users f ON coc.transferred_from = f.username OR coc.transferred_from = CAST(f.id AS CHAR)
+       LEFT JOIN users t ON coc.transferred_to = t.username OR coc.transferred_to = CAST(t.id AS CHAR)
        WHERE coc.evidence_id = ? ORDER BY coc.transfer_date ASC`, [req.params.id]);
     res.json({ success: true, data: { ...ev, custodyLog: custody } });
   } catch (err) { next(err); }
@@ -37,6 +76,9 @@ const createEvidence = async (req, res, next) => {
   try {
     const { case_id, title, description, type, collection_date, location_found } = req.body;
     if (!case_id || !title) return res.status(400).json({ success: false, message: 'case_id and title are required.' });
+    if (!(await canAccessCase(req.user, case_id))) {
+      return res.status(403).json({ success: false, message: 'You cannot add evidence to a case outside your station scope.' });
+    }
 
     const year = new Date().getFullYear();
     const [[{ count }]] = await db.query('SELECT COUNT(*)+1 AS count FROM evidence WHERE case_id = ?', [case_id]);

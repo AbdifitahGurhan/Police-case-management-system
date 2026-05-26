@@ -1,10 +1,11 @@
 // src/app/cases/page.jsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Table, Card, Typography, Space, Input, Select, Tag, Button, Breadcrumb } from 'antd';
 import { SearchOutlined, FilterOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import CaseStatusTag from '@/components/shared/CaseStatusTag';
 import dayjs from 'dayjs';
@@ -14,12 +15,13 @@ const { Title } = Typography;
 const { Option } = Select;
 
 export default function CaseListPage() {
+  const { user } = useAuth();
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 15, total: 0 });
   const [filters, setFilters] = useState({ search: '', status: '', priority: '' });
 
-  const fetchCases = async (page = 1, size = 15) => {
+  const fetchCases = useCallback(async (page = 1, size = 15) => {
     setLoading(true);
     try {
       const params = {
@@ -31,21 +33,21 @@ export default function CaseListPage() {
       };
       const res = await api.get('/cases', { params });
       setCases(res.data.data);
-      setPagination({
-        ...pagination,
+      setPagination((current) => ({
+        ...current,
         current: page,
         total: res.data.pagination.total
-      });
+      }));
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
   useEffect(() => {
     fetchCases();
-  }, [filters]);
+  }, [fetchCases]);
 
   const handleTableChange = (pagination) => {
     fetchCases(pagination.current, pagination.pageSize);
@@ -105,48 +107,50 @@ export default function CaseListPage() {
       ),
     },
   ];
+  const canRegisterCase = ['admin', 'officer'].includes(user?.role);
 
   return (
     <ProtectedRoute>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <Breadcrumb items={[{ title: 'Home' }, { title: 'Cases' }]} />
+        <Breadcrumb items={[{ title: 'Bogga Hore' }, { title: 'Kiisaska' }]} />
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Title level={2}>Case Inventory</Title>
-          <Link href="/cases/new">
-            <Button type="primary" icon={<PlusOutlined />}>New Case Registration</Button>
-          </Link>
+          <Title level={2}>Diiwaanka Kiisaska</Title>
+          {canRegisterCase && (
+            <Link href="/cases/new">
+              <Button type="primary" icon={<PlusOutlined />}>Diiwaan Geli Kiis Cusub</Button>
+            </Link>
+          )}
         </div>
 
         <Card variant="none">
           <Space style={{ marginBottom: 16 }} wrap>
             <Input
-              placeholder="Search OB No, Title, Location..."
+              placeholder="Raadi OB, cinwaan, ama goob..."
               prefix={<SearchOutlined />}
               style={{ width: 250 }}
               onPressEnter={(e) => setFilters({ ...filters, search: e.target.value })}
             />
             <Select
-              placeholder="Filter Status"
+              placeholder="Xaaladda"
               style={{ width: 150 }}
               allowClear
               onChange={(v) => setFilters({ ...filters, status: v })}
             >
-              <Option value="open">Open</Option>
-              <Option value="under_investigation">Investigating</Option>
+              <Option value="open">Furan</Option>
+              <Option value="under_investigation">Baaris</Option>
               <Option value="referred_cid">CID</Option>
-              <Option value="referred_prosecutor">Prosecutor</Option>
-              <Option value="closed">Closed</Option>
+              <Option value="closed">Xiran</Option>
             </Select>
             <Select
-              placeholder="Filter Priority"
+              placeholder="Mudnaanta"
               style={{ width: 150 }}
               allowClear
               onChange={(v) => setFilters({ ...filters, priority: v })}
             >
-              <Option value="high">High</Option>
-              <Option value="medium">Medium</Option>
-              <Option value="low">Low</Option>
+              <Option value="high">Sare</Option>
+              <Option value="medium">Dhexdhexaad</Option>
+              <Option value="low">Hoose</Option>
             </Select>
           </Space>
 

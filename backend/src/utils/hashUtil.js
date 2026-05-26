@@ -25,9 +25,9 @@ function generateHash(data) {
 async function saveBlockchainRecord(entityType, entityId, dataSnapshot, createdBy) {
   const hash = generateHash(dataSnapshot);
   const [result] = await db.query(
-    `INSERT INTO blockchain_records (entity_type, entity_id, hash_sha256, data_snapshot, created_by)
-     VALUES (?, ?, ?, ?, ?)`,
-    [entityType, entityId, hash, JSON.stringify(dataSnapshot), createdBy]
+    `INSERT INTO blockchain_records (entity_type, entity_id, sha256_hash, hash_sha256, data_snapshot, created_by)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [entityType, entityId, hash, hash, JSON.stringify(dataSnapshot), createdBy]
   );
   return result.insertId;
 }

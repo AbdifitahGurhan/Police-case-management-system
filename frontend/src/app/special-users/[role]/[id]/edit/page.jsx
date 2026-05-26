@@ -6,6 +6,7 @@ import { Card, Typography, Form, Input, Button, message, Spin, Select } from 'an
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/services/api';
+import { optionalPasswordRules, requiredRule, textLengthRule } from '@/utils/validation';
 
 const { Title, Text } = Typography;
 
@@ -74,6 +75,7 @@ export default function EditSpecialUserPage() {
             label="New Password" 
             name="password" 
             help="Leave blank to keep current password"
+            rules={optionalPasswordRules}
           >
             <Input.Password placeholder="New secure password (optional)" />
           </Form.Item>
@@ -81,11 +83,12 @@ export default function EditSpecialUserPage() {
           <Form.Item 
             label="Assigned Unit" 
             name="assigned_unit" 
+            rules={[textLengthRule('Assigned unit', 2, 255)]}
           >
             <Input placeholder="e.g. Headquarters, High Court, Central Jail" />
           </Form.Item>
 
-          <Form.Item label="Account Status" name="is_active" rules={[{ required: true }]}>
+          <Form.Item label="Account Status" name="is_active" rules={[requiredRule('Account status')]}>
             <Select>
               <Select.Option value={1}>Active</Select.Option>
               <Select.Option value={0}>Inactive</Select.Option>

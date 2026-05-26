@@ -1,20 +1,20 @@
 // src/app/dashboard/officer/page.jsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, Typography, Space, Button, Empty } from 'antd';
-import { 
-  PlusOutlined, 
-  FileTextOutlined, 
+import React, { useEffect, useState } from 'react';
+import { Button, Tag, Typography } from 'antd';
+import {
+  CheckCircleOutlined,
   ClockCircleOutlined,
-  CheckCircleOutlined
+  FileTextOutlined,
+  PlusOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import api from '@/services/api';
-import dayjs from 'dayjs';
 import Link from 'next/link';
-
-const { Title, Text } = Typography;
+import dayjs from 'dayjs';
+import api from '@/services/api';
+import CaseStatusTag from '@/components/shared/CaseStatusTag';
+import StandardDashboard from '@/components/dashboard/StandardDashboard';
 
 export default function OfficerDashboard() {
   const [data, setData] = useState(null);
@@ -48,10 +48,16 @@ export default function OfficerDashboard() {
       ellipsis: true,
     },
     {
+      title: 'Priority',
+      dataIndex: 'priority',
+      key: 'priority',
+      render: (priority) => <Tag color={priority === 'critical' ? 'red' : 'blue'}>{priority?.toUpperCase()}</Tag>,
+    },
+    {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => <CaseStatusTag status={status} />
+      render: (status) => <CaseStatusTag status={status} />,
     },
     {
       title: 'Date Registered',
@@ -62,73 +68,25 @@ export default function OfficerDashboard() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['officer', 'admin']}>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <Title level={2}>Officer Dashboard</Title>
-            <Typography.Text type="secondary">Manage reports, register new cases, and track station activities.</Typography.Text>
-          </div>
-          <Link href="/cases/new">
-            <Button type="primary" icon={<PlusOutlined />} size="large">
-              Register New Case
-            </Button>
-          </Link>
-        </div>
-
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none">
-              <Statistic
-                title="Total Cases"
-                value={data?.total || 0}
-                prefix={<FileTextOutlined style={{ color: '#1677ff' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none">
-              <Statistic
-                title="Draft / Pending"
-                value={(data?.draft || 0) + (data?.pending_review || 0)}
-                prefix={<ClockCircleOutlined style={{ color: '#faad14' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none">
-              <Statistic
-                title="Active Cases"
-                value={data?.active || 0}
-                prefix={<ClockCircleOutlined style={{ color: '#1890ff' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none">
-              <Statistic
-                title="Closed Cases"
-                value={data?.closed || 0}
-                prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        <Card title="Recent Cases at Station" variant="none">
-          <Table 
-            columns={columns} 
-            dataSource={data?.recentCases || []} 
-            loading={loading} 
-            rowKey="id"
-            pagination={false}
-          />
-        </Card>
-      </Space>
-    </ProtectedRoute>
+    <StandardDashboard
+      allowedRoles={['officer', 'admin']}
+      eyebrow="Officer Workspace"
+      title="Officer Dashboard"
+      subtitle="Register cases, track pending reviews, and monitor active station work."
+      loading={loading}
+      metrics={[
+        { title: 'Total Cases', value: data?.total || 0, icon: <FileTextOutlined />, tone: 'blue', note: 'Registered records' },
+        { title: 'Draft / Pending', value: (data?.draft || 0) + (data?.pending_review || 0), icon: <ClockCircleOutlined />, tone: 'amber', note: 'Needs review' },
+        { title: 'Active Cases', value: data?.active || 0, icon: <SafetyCertificateOutlined />, tone: 'purple', note: 'In progress' },
+        { title: 'Closed Cases', value: data?.closed || 0, icon: <CheckCircleOutlined />, tone: 'green', note: 'Completed workflow' },
+      ]}
+      actions={[
+        { label: 'Register Case', type: 'primary', icon: <PlusOutlined />, href: '/cases/new' },
+      ]}
+      tableTitle="Recent Cases at Station"
+      tableSubtitle="Latest case records available to this account"
+      tableColumns={columns}
+      tableData={data?.recentCases || []}
+    />
   );
 }

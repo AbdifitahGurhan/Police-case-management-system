@@ -9,7 +9,7 @@ CREATE DATABASE IF NOT EXISTS police_cms CHARACTER SET utf8mb4 COLLATE utf8mb4_u
 USE police_cms;
 
 -- ============================================================
--- 1. ROLES & USERS (For Admin, CID, Prosecutor)
+-- 1. ROLES & USERS (For Admin and CID)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS roles (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -21,7 +21,14 @@ CREATE TABLE IF NOT EXISTS roles (
 INSERT INTO roles (name, description) VALUES
   ('admin', 'System Administrator with full access'),
   ('cid', 'CID Investigator who handles referred investigations'),
-  ('prosecutor', 'Prosecutor who reviews and decides on cases');
+  ('STATE_COMMANDER', 'Commander responsible for one state'),
+  ('REGION_COMMANDER', 'Commander responsible for one region'),
+  ('DISTRICT_COMMANDER', 'Commander responsible for one district / police station'),
+  ('POLICE_STATION_COMMANDER', 'Commander responsible for one district / police station'),
+  ('WAAX_COMMANDER', 'Commander responsible for one waax'),
+  ('OB_STAFF', 'Occurrence Book staff member'),
+  ('STAFF', 'Operational staff member')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
 
 CREATE TABLE IF NOT EXISTS users (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -30,11 +37,25 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(150),
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(150),
+  phone VARCHAR(30),
+  rank VARCHAR(100),
+  user_type ENUM('COMMANDER','OB_STAFF','STAFF') DEFAULT 'STAFF',
+  assigned_level ENUM('ADMINISTRATION','STATE','REGION','DISTRICT_POLICE_STATION','WAAX') DEFAULT NULL,
+  state_administration_id INT,
+  region_id INT,
+  district_id INT,
+  neighborhood_id INT,
+  is_commander TINYINT(1) DEFAULT 0,
+  status ENUM('ACTIVE','INACTIVE','SUSPENDED') DEFAULT 'ACTIVE',
+  profile_image VARCHAR(500),
   is_active TINYINT(1) DEFAULT 1,
   last_login TIMESTAMP NULL,
+  created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id)
+  CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id),
+  INDEX idx_users_location (state_administration_id, region_id, district_id, neighborhood_id),
+  INDEX idx_users_type (user_type, assigned_level)
 );
 
 CREATE TABLE IF NOT EXISTS special_users (
@@ -75,7 +96,7 @@ CREATE TABLE IF NOT EXISTS police_officers (
   rank_id INT,
   phone VARCHAR(30),
   email VARCHAR(150),
-  gender ENUM('male','female','other') DEFAULT 'male',
+  gender ENUM('male','female') DEFAULT 'male',
   date_of_birth DATE,
   address TEXT,
   profile_image VARCHAR(500),
@@ -196,10 +217,18 @@ CREATE TABLE IF NOT EXISTS officer_transfers (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS cases (
   id INT PRIMARY KEY AUTO_INCREMENT,
+  case_number VARCHAR(50) UNIQUE,
   case_title VARCHAR(255) NOT NULL,
   ob_number VARCHAR(30) NOT NULL UNIQUE,
+  ob_entry_id INT,
+  original_ob_staff_id INT,
+  original_ob_staff_name VARCHAR(150),
+  incident_type VARCHAR(100),
+  complainant_name VARCHAR(150),
+  complainant_phone VARCHAR(30),
+  victim_name VARCHAR(150),
   description TEXT,
-  incident_date DATE,
+  incident_date DATETIME,
   incident_location VARCHAR(255),
   status VARCHAR(100) DEFAULT 'DRAFT',
   priority ENUM('low','medium','high','critical') DEFAULT 'medium',
@@ -217,7 +246,50 @@ CREATE TABLE IF NOT EXISTS cases (
   CONSTRAINT fk_case_city FOREIGN KEY (city_id) REFERENCES cities(id),
   CONSTRAINT fk_case_district FOREIGN KEY (district_id) REFERENCES districts(id),
   CONSTRAINT fk_case_neighborhood FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id),
-  CONSTRAINT fk_case_officer FOREIGN KEY (assigned_officer_id) REFERENCES police_officers(id)
+  CONSTRAINT fk_case_officer FOREIGN KEY (assigned_officer_id) REFERENCES police_officers(id),
+  INDEX idx_case_ob_entry (ob_entry_id),
+  INDEX idx_case_original_ob_staff (original_ob_staff_id)
+);
+
+CREATE TABLE IF NOT EXISTS ob_entries (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  ob_number VARCHAR(50) NOT NULL UNIQUE,
+  incident_type VARCHAR(100) NOT NULL,
+  incident_location VARCHAR(255) NOT NULL,
+  description TEXT,
+  reported_by VARCHAR(150) NOT NULL,
+  reporter_phone VARCHAR(30),
+  registered_by_user_id INT NOT NULL,
+  registered_by_name VARCHAR(150) NOT NULL,
+  registered_by_role VARCHAR(100) NOT NULL,
+  registered_by_rank VARCHAR(100),
+  state_administration_id INT,
+  region_id INT,
+  district_id INT,
+  neighborhood_id INT,
+  registration_date DATE NOT NULL,
+  registration_time TIME NOT NULL,
+  status ENUM('OB_REGISTERED','FORWARDED_FOR_REVIEW','CONVERTED_TO_CASE','CASE_OPENED','CLOSED') DEFAULT 'OB_REGISTERED',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ob_user FOREIGN KEY (registered_by_user_id) REFERENCES users(id),
+  CONSTRAINT fk_ob_state FOREIGN KEY (state_administration_id) REFERENCES state_administrations(id),
+  CONSTRAINT fk_ob_region FOREIGN KEY (region_id) REFERENCES regions(id),
+  CONSTRAINT fk_ob_district FOREIGN KEY (district_id) REFERENCES districts(id),
+  CONSTRAINT fk_ob_waax FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id),
+  INDEX idx_ob_registered_by (registered_by_user_id),
+  INDEX idx_ob_location (state_administration_id, region_id, district_id, neighborhood_id)
+);
+
+CREATE TABLE IF NOT EXISTS login_logs (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id VARCHAR(100),
+  username VARCHAR(150),
+  success TINYINT(1) NOT NULL DEFAULT 0,
+  failure_reason VARCHAR(255),
+  ip_address VARCHAR(50),
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS case_confirmations (
@@ -277,6 +349,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   entity_type VARCHAR(100),
   entity_id INT,
   details JSON,
+  old_data JSON,
+  new_data JSON,
   ip_address VARCHAR(50),
   user_agent TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -289,7 +363,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE TABLE IF NOT EXISTS complainants (
   id INT PRIMARY KEY AUTO_INCREMENT,
   full_name VARCHAR(150) NOT NULL,
-  gender ENUM('male','female','other') DEFAULT 'male',
+  gender ENUM('male','female') DEFAULT 'male',
   age INT,
   nationality VARCHAR(100) DEFAULT 'Somali',
   id_type VARCHAR(50),
@@ -303,8 +377,10 @@ CREATE TABLE IF NOT EXISTS complainants (
 CREATE TABLE IF NOT EXISTS suspects (
   id INT PRIMARY KEY AUTO_INCREMENT,
   full_name VARCHAR(150) NOT NULL,
+  mother_name VARCHAR(150),
   alias VARCHAR(150),
-  gender ENUM('male','female','other') DEFAULT 'male',
+  gender ENUM('male','female') DEFAULT 'male',
+  date_of_birth DATE,
   age INT,
   nationality VARCHAR(100) DEFAULT 'Somali',
   id_type VARCHAR(50),
@@ -313,6 +389,13 @@ CREATE TABLE IF NOT EXISTS suspects (
   address TEXT,
   description TEXT,
   photo_url VARCHAR(500),
+  offender_photo VARCHAR(500),
+  face_capture_image VARCHAR(500),
+  face_capture_notes TEXT,
+  profile_notes TEXT,
+  arrest_status ENUM('not_arrested','arrested','released','wanted') DEFAULT 'not_arrested',
+  fingerprint_hash VARCHAR(255),
+  biometric_notes TEXT,
   is_arrested TINYINT(1) DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -322,6 +405,9 @@ CREATE TABLE IF NOT EXISTS case_suspects (
   id INT PRIMARY KEY AUTO_INCREMENT,
   case_id INT NOT NULL,
   suspect_id INT NOT NULL,
+  linked_by_user_id VARCHAR(100),
+  linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  status ENUM('active','removed') DEFAULT 'active',
   role_in_case VARCHAR(150),
   notes TEXT,
   added_by VARCHAR(100),
@@ -334,7 +420,7 @@ CREATE TABLE IF NOT EXISTS case_suspects (
 CREATE TABLE IF NOT EXISTS victims (
   id INT PRIMARY KEY AUTO_INCREMENT,
   full_name VARCHAR(150) NOT NULL,
-  gender ENUM('male','female','other') DEFAULT 'male',
+  gender ENUM('male','female') DEFAULT 'male',
   age INT,
   nationality VARCHAR(100) DEFAULT 'Somali',
   id_type VARCHAR(50),
@@ -360,7 +446,7 @@ CREATE TABLE IF NOT EXISTS case_victims (
 CREATE TABLE IF NOT EXISTS witnesses (
   id INT PRIMARY KEY AUTO_INCREMENT,
   full_name VARCHAR(150) NOT NULL,
-  gender ENUM('male','female','other') DEFAULT 'male',
+  gender ENUM('male','female') DEFAULT 'male',
   age INT,
   phone VARCHAR(30),
   address TEXT,
@@ -416,15 +502,26 @@ CREATE TABLE IF NOT EXISTS arrests (
   id INT PRIMARY KEY AUTO_INCREMENT,
   case_id INT NOT NULL,
   suspect_id INT NOT NULL,
+  police_station_id INT,
   arrested_by VARCHAR(100),
   arrest_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   arrest_location VARCHAR(255),
   charges TEXT,
+  court_decision ENUM('pending','convicted','acquitted','dismissed','adjourned') DEFAULT 'pending',
+  court_decision_notes TEXT,
+  sentence_period_value INT,
+  sentence_period_unit ENUM('days','months','years'),
+  sentence_start_date DATE,
+  expected_release_date DATE,
+  actual_release_date DATE,
+  sentence_status ENUM('awaiting_trial','sentenced','serving','release_review','completed','released','wanted','escaped','acquitted','dismissed') DEFAULT 'awaiting_trial',
+  final_status VARCHAR(100),
   bail_status ENUM('no_bail','bail_granted','bail_pending') DEFAULT 'no_bail',
   bail_amount DECIMAL(12,2),
   notes TEXT,
   CONSTRAINT fk_ar_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
-  CONSTRAINT fk_ar_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE
+  CONSTRAINT fk_ar_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ar_station FOREIGN KEY (police_station_id) REFERENCES neighborhoods(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS case_actions (
@@ -452,5 +549,112 @@ CREATE TABLE IF NOT EXISTS referrals (
   referred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   responded_at TIMESTAMP NULL,
   CONSTRAINT fk_ref_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+
+-- ============================================================
+-- 9. PRISONER CUSTODY MANAGEMENT
+-- ============================================================
+CREATE TABLE IF NOT EXISTS biometric_identifiers (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  suspect_id INT NOT NULL,
+  biometric_type ENUM('fingerprint','face','iris','other') NOT NULL,
+  biometric_hash VARCHAR(255) NOT NULL,
+  quality_score DECIMAL(5,2),
+  captured_by VARCHAR(100),
+  captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  notes TEXT,
+  CONSTRAINT fk_bio_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_biometric_type_hash (biometric_type, biometric_hash)
+);
+
+CREATE TABLE IF NOT EXISTS prisoner_documents (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  suspect_id INT NOT NULL,
+  arrest_id INT,
+  document_type VARCHAR(100) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  file_url VARCHAR(500),
+  file_hash VARCHAR(64),
+  uploaded_by VARCHAR(100),
+  uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  notes TEXT,
+  CONSTRAINT fk_doc_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_doc_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS prison_transfers (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  suspect_id INT NOT NULL,
+  arrest_id INT,
+  from_facility VARCHAR(255),
+  to_facility VARCHAR(255) NOT NULL,
+  transfer_reason TEXT NOT NULL,
+  transfer_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+  authorized_by VARCHAR(100),
+  status ENUM('pending','completed','cancelled') DEFAULT 'completed',
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ptr_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ptr_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS prisoner_medical_records (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  suspect_id INT NOT NULL,
+  arrest_id INT,
+  record_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+  condition_summary TEXT NOT NULL,
+  treatment_given TEXT,
+  doctor_name VARCHAR(150),
+  facility VARCHAR(255),
+  fitness_status ENUM('fit','needs_treatment','hospitalized','critical') DEFAULT 'fit',
+  recorded_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_med_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_med_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS prisoner_visitor_logs (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  suspect_id INT NOT NULL,
+  arrest_id INT,
+  visitor_name VARCHAR(150) NOT NULL,
+  visitor_id_number VARCHAR(100),
+  relationship VARCHAR(100),
+  visit_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+  purpose TEXT,
+  approved_by VARCHAR(100),
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_vis_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_vis_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS release_approvals (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  suspect_id INT NOT NULL,
+  arrest_id INT NOT NULL,
+  requested_by VARCHAR(100),
+  requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  request_reason TEXT NOT NULL,
+  status ENUM('pending','approved','pending_admin_review','admin_reviewed','prison_confirmed','court_approved','certificate_generated','released','rejected') DEFAULT 'pending_admin_review',
+  admin_reviewed_by VARCHAR(100),
+  admin_reviewed_at TIMESTAMP NULL,
+  admin_review_notes TEXT,
+  prison_confirmed_by VARCHAR(100),
+  prison_confirmed_at TIMESTAMP NULL,
+  prison_confirmation_notes TEXT,
+  court_approved_by VARCHAR(100),
+  court_approved_at TIMESTAMP NULL,
+  court_approval_notes TEXT,
+  certificate_number VARCHAR(80),
+  certificate_issued_by VARCHAR(100),
+  certificate_issued_at TIMESTAMP NULL,
+  certificate_notes TEXT,
+  reviewed_by VARCHAR(100),
+  reviewed_at TIMESTAMP NULL,
+  review_notes TEXT,
+  CONSTRAINT fk_rel_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_rel_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE CASCADE
 );
 

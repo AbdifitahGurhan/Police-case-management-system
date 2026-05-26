@@ -20,6 +20,13 @@ const errorHandler = (err, req, res, next) => {
     });
   }
 
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({
+      success: false,
+      message: 'Uploaded data is too large. Please use an image smaller than 5MB.',
+    });
+  }
+
   // MySQL foreign key violation
   if (err.code === 'ER_NO_REFERENCED_ROW_2') {
     return res.status(400).json({

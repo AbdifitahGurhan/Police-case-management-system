@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Table, Card, Typography, Space, Button, message, Popconfirm, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
@@ -17,7 +17,7 @@ export default function SpecialUserListPage() {
   const roleStr = params.role || 'admin';
   const displayRole = roleStr.toUpperCase();
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/special-users?role=${displayRole}`);
@@ -29,11 +29,11 @@ export default function SpecialUserListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [displayRole]);
 
   useEffect(() => {
     fetchUsers();
-  }, [displayRole]);
+  }, [fetchUsers]);
 
   const handleDelete = async (id) => {
     try {

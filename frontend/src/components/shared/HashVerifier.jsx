@@ -1,7 +1,7 @@
 // src/components/shared/HashVerifier.jsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Tag, Tooltip, Space, Spin, Typography } from 'antd';
 import { CheckCircleOutlined, ExclamationCircleOutlined, SecurityScanOutlined } from '@ant-design/icons';
 import api from '@/services/api';
@@ -12,7 +12,7 @@ const HashVerifier = ({ entityType, entityId, initialHash }) => {
   const [verifying, setVerifying] = useState(false);
   const [result, setResult] = useState(null);
 
-  const verify = async () => {
+  const verify = useCallback(async () => {
     setVerifying(true);
     try {
       const response = await api.post('/blockchain/verify', { entity_type: entityType, entity_id: entityId });
@@ -22,11 +22,11 @@ const HashVerifier = ({ entityType, entityId, initialHash }) => {
     } finally {
       setVerifying(false);
     }
-  };
+  }, [entityId, entityType]);
 
   useEffect(() => {
     verify();
-  }, [entityId, entityType]);
+  }, [verify]);
 
   return (
     <Space orientation="vertical" size={0}>

@@ -213,7 +213,7 @@ export default function OffendersPage() {
     setSaving(true);
     try {
       await api.post(`/suspects/${releasing.id}/release`, values);
-      message.success('Eedeysanaha waa la sii daayay.');
+      message.success('The offender has been released.');
       setReleaseOpen(false);
       setReleasing(null);
       releaseForm.resetFields();
@@ -221,7 +221,7 @@ export default function OffendersPage() {
       fetchSentenceAlerts();
     } catch (err) {
       console.error(err);
-      message.error(err.response?.data?.message || 'Sii dayntu way fashilantay.');
+      message.error(err.response?.data?.message || 'Release failed.');
     } finally {
       setSaving(false);
     }
@@ -477,19 +477,19 @@ export default function OffendersPage() {
     { title: 'Nationality', dataIndex: 'nationality' },
     { title: 'Phone', dataIndex: 'phone' },
     { title: 'Cases', dataIndex: 'case_count', align: 'center', render: (value) => <Tag color={value > 1 ? 'red' : 'blue'}>{value || 0}</Tag> },
-    { title: 'Xaaladda', dataIndex: 'is_arrested', render: (value) => Number(value) === 1 ? <Tag color="red">Xiran</Tag> : <Tag color="green">Furan</Tag> },
+    { title: 'Status', dataIndex: 'is_arrested', render: (value) => Number(value) === 1 ? <Tag color="red">Arrested</Tag> : <Tag color="green">Not Arrested</Tag> },
     {
       title: 'Ficil',
       render: (_, row) => (
         <Space wrap>
-          {canManageOffenders && <Button onClick={() => openEdit(row)}>Warbixin</Button>}
+          {canManageOffenders && <Button onClick={() => openEdit(row)}>Report</Button>}
           <Button icon={<HistoryOutlined />} onClick={() => openHistory(row)}>History</Button>
           {canReleaseOffenders && Number(row.is_arrested) === 1 && (
-            <Button type="primary" icon={<UnlockOutlined />} onClick={() => openRelease(row)}>
-              Sii Daa
-            </Button>
+              <Button type="primary" icon={<UnlockOutlined />} onClick={() => openRelease(row)}>
+                Release
+              </Button>
           )}
-          {!canManageOffenders && !(canReleaseOffenders && Number(row.is_arrested) === 1) && <Tag color="blue">Akhris keliya</Tag>}
+          {!canManageOffenders && !(canReleaseOffenders && Number(row.is_arrested) === 1) && <Tag color="blue">View Only</Tag>}
         </Space>
       ),
     },
@@ -511,32 +511,32 @@ export default function OffendersPage() {
 
         <div className="reports-hero">
           <div>
-            <Text className="dashboard-eyebrow">Maareynta Diiwaannada</Text>
-            <Title level={2}>Diiwaanka Eedeysanayaasha</Title>
-            <Text type="secondary">Maamul aqoonsiga, sawirrada, biometric-ga, raadinta, iyo falanqaynta eedeysanayaasha soo noqnoqda.</Text>
+            <Text className="dashboard-eyebrow">Record Management</Text>
+            <Title level={2}>Offender Registry</Title>
+            <Text type="secondary">Manage identity, photos, biometrics, search, and repeat offender analysis.</Text>
           </div>
           <Space wrap>
-            <Button icon={<PrinterOutlined />} onClick={printList}>Daabac</Button>
-            <Button icon={<DownloadOutlined />} onClick={exportCsv}>Soo Saar CSV</Button>
-            {canManageOffenders && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Diiwaan Geli Eedeysane</Button>}
+            <Button icon={<PrinterOutlined />} onClick={printList}>Print</Button>
+            <Button icon={<DownloadOutlined />} onClick={exportCsv}>Export CSV</Button>
+            {canManageOffenders && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Register Offender</Button>}
           </Space>
         </div>
 
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Dhammaan Eedeysanayaasha" value={stats.total} prefix={<TeamOutlined />} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Soo Noqnoqday" value={stats.repeat} prefix={<IdcardOutlined />} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="La Xiray" value={stats.arrested} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Sawir Leh" value={stats.withPhotos} prefix={<FileImageOutlined />} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Total Offenders" value={stats.total} prefix={<TeamOutlined />} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Repeat Offenders" value={stats.repeat} prefix={<IdcardOutlined />} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Arrested" value={stats.arrested} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="With Photos" value={stats.withPhotos} prefix={<FileImageOutlined />} /></Card></Col>
         </Row>
 
         <Card variant="none" className="report-panel" style={{ marginTop: 16 }}>
           <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
             <Col xs={24} lg={10}>
-              <Input prefix={<SearchOutlined />} placeholder="Raadi magac, naaneys, ID, telefoon, ama cinwaan" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} allowClear />
+              <Input prefix={<SearchOutlined />} placeholder="Search name, alias, ID, phone, or address" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} allowClear />
             </Col>
-            <Col xs={12} lg={4}><Select placeholder="Jinsi" value={filters.gender} onChange={(value) => setFilters((prev) => ({ ...prev, gender: value }))} allowClear style={{ width: '100%' }} options={[{ value: 'male', label: 'Lab' }, { value: 'female', label: 'Dhedig' }]} /></Col>
-            <Col xs={12} lg={4}><Select placeholder="Xaalad" value={filters.arrested} onChange={(value) => setFilters((prev) => ({ ...prev, arrested: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'La xiray' }, { value: '0', label: 'Furan' }]} /></Col>
-            <Col xs={24} lg={4}><Select placeholder="Hab-dhaqan" value={filters.repeat} onChange={(value) => setFilters((prev) => ({ ...prev, repeat: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Soo noqnoqda' }]} /></Col>
+            <Col xs={12} lg={4}><Select placeholder="Gender" value={filters.gender} onChange={(value) => setFilters((prev) => ({ ...prev, gender: value }))} allowClear style={{ width: '100%' }} options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }]} /></Col>
+            <Col xs={12} lg={4}><Select placeholder="Status" value={filters.arrested} onChange={(value) => setFilters((prev) => ({ ...prev, arrested: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Arrested' }, { value: '0', label: 'Not Arrested' }]} /></Col>
+            <Col xs={24} lg={4}><Select placeholder="Repeat" value={filters.repeat} onChange={(value) => setFilters((prev) => ({ ...prev, repeat: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Repeat' }]} /></Col>
           </Row>
           <Table columns={columns} dataSource={offenders} rowKey="id" loading={loading} scroll={{ x: 960 }} />
         </Card>
@@ -935,7 +935,7 @@ export default function OffendersPage() {
         </Modal>
 
         <Modal
-          title={`Sii Daa: ${releasing?.full_name || ''}`}
+          title={`Release: ${releasing?.full_name || ''}`}
           open={releaseOpen}
           onCancel={() => {
             setReleaseOpen(false);
@@ -959,13 +959,13 @@ export default function OffendersPage() {
           <Form form={releaseForm} layout="vertical" onFinish={handleRelease}>
             <Form.Item
               name="release_reason"
-              label="Sababta Sii Daynta"
-              rules={[{ required: true, message: 'Fadlan geli sababta sii daynta.' }, { min: 5, message: 'Sababtu waa inay ka badnaataa 5 xaraf.' }]}
+              label="Release Reason"
+              rules={[{ required: true, message: 'Please enter a release reason.' }, { min: 5, message: 'Reason must be at least 5 characters.' }]}
             >
-              <Input placeholder="Tusaale: Amar maxkamadeed, damiin, ama baaris dhammaatay" />
+              <Input placeholder="Example: Court order, bail, or completed investigation" />
             </Form.Item>
-            <Form.Item name="release_notes" label="Faahfaahin Dheeraad ah">
-              <TextArea rows={4} placeholder="Qor faahfaahin dheeraad ah haddii loo baahdo." />
+            <Form.Item name="release_notes" label="Additional Notes">
+              <TextArea rows={4} placeholder="Enter more details if needed." />
             </Form.Item>
           </Form>
         </Modal>

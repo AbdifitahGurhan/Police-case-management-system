@@ -57,8 +57,8 @@ export default function LoginPage() {
             priority
             className="login-art-logo"
           />
-          <Title level={1}>Soo Gal</Title>
-          <Typography.Text type="secondary">Nidaamka Maareynta Kiisaska Booliska Soomaaliyeed</Typography.Text>
+          <Title level={1}>Sign In</Title>
+          <Typography.Text type="secondary">Somali Police Case Management System</Typography.Text>
         </div>
 
         {error && (
@@ -79,21 +79,21 @@ export default function LoginPage() {
         >
           <Form.Item
             name="identifier"
-            rules={[{ required: true, message: 'Fadlan geli username ama email.' }]}
+            rules={[{ required: true, message: 'Please enter your username or email.' }]}
           >
-            <Input prefix={<UserOutlined />} placeholder="Username ama Email" variant="borderless" />
+            <Input prefix={<UserOutlined />} placeholder="Username or Email" variant="borderless" />
           </Form.Item>
 
           <Form.Item
             name="password"
-            rules={[{ required: true, message: 'Fadlan geli furaha sirta.' }]}
+            rules={[{ required: true, message: 'Please enter your password.' }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Furaha Sirta" variant="borderless" />
+            <Input.Password prefix={<LockOutlined />} placeholder="Password" variant="borderless" />
           </Form.Item>
 
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={loading} block className="login-art-button">
-              Soo Gal
+              Sign In
             </Button>
           </Form.Item>
         </Form>

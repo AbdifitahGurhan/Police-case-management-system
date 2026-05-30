@@ -16,10 +16,10 @@ import CaseStatusTag from '@/components/shared/CaseStatusTag';
 import StandardDashboard from '@/components/dashboard/StandardDashboard';
 
 const priorityLabels = {
-  low: 'Hoose',
-  medium: 'Dhexdhexaad',
-  high: 'Sare',
-  critical: 'Halis',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  critical: 'Critical',
 };
 
 export default function CourtDashboard() {
@@ -63,13 +63,13 @@ export default function CourtDashboard() {
       render: (text, record) => <Link href={`/cases/${record.id}`}><Typography.Text strong>{text}</Typography.Text></Link>,
     },
     {
-      title: 'Cinwaanka Kiiska',
+      title: 'Case Title',
       dataIndex: 'title',
       key: 'title',
       ellipsis: true,
     },
     {
-      title: 'Mudnaanta',
+      title: 'Priority',
       dataIndex: 'priority',
       key: 'priority',
       render: (priority) => {
@@ -78,13 +78,13 @@ export default function CourtDashboard() {
       },
     },
     {
-      title: 'Xaaladda Maxkamadda',
+      title: 'Court Status',
       dataIndex: 'status',
       key: 'status',
       render: (status) => <CaseStatusTag status={status} />,
     },
     {
-      title: 'La Diiwaan Geliyey',
+      title: 'Filed On',
       dataIndex: 'created_at',
       key: 'created_at',
       render: (date) => dayjs(date).format('DD MMM YYYY'),
@@ -95,20 +95,20 @@ export default function CourtDashboard() {
     <StandardDashboard
       allowedRoles={['court', 'admin']}
       eyebrow="Court Referral"
-      title="Kiisaska Maxkamad Loo Gudbiyay"
-      subtitle="Qaybtani waxay muujisaa kaliya kiisaska boolisku baaray kadibna maxkamad loogu gudbiyay tallaabo sharci ah."
+      title="Cases Referred to Court"
+      subtitle="This section shows cases investigated by police and referred to court for legal action."
       loading={loading}
       metrics={[
-        { title: 'Court Referrals', value: data?.referred_to_court || courtQueue.length, icon: <BankOutlined />, tone: 'blue', note: 'Kiisas loo gudbiyay' },
-        { title: 'Workflow Dhammaaday', value: data?.referred_to_court || courtQueue.length, icon: <FileDoneOutlined />, tone: 'green', note: 'Shaqada saldhigga way xirmatay' },
-        { title: 'Kiisas Xiran', value: data?.closed || 0, icon: <CheckCircleOutlined />, tone: 'purple', note: 'Diiwaanno dhammaaday' },
+        { title: 'Court Referrals', value: data?.referred_to_court || courtQueue.length, icon: <BankOutlined />, tone: 'blue', note: 'Cases forwarded' },
+        { title: 'Completed Workflows', value: data?.referred_to_court || courtQueue.length, icon: <FileDoneOutlined />, tone: 'green', note: 'Station work completed' },
+        { title: 'Closed Cases', value: data?.closed || 0, icon: <CheckCircleOutlined />, tone: 'purple', note: 'Completed records' },
       ]}
       actions={[
-        { label: 'Warbixinno', href: '/reports', icon: <FileDoneOutlined /> },
-        { label: 'Caddeymo', href: '/evidence', icon: <AuditOutlined /> },
+        { label: 'Reports', href: '/reports', icon: <FileDoneOutlined /> },
+        { label: 'Evidence', href: '/evidence', icon: <AuditOutlined /> },
       ]}
-      tableTitle="Kiisaska Maxkamadda"
-      tableSubtitle="Kiisas loo gudbiyay maxkamad kadib baaritaanka booliska. Xukun iyo sentence laguma diiwaan geliyo halkan."
+      tableTitle="Court Cases"
+      tableSubtitle="Cases referred to court after police investigation. Verdicts and sentencing are not recorded here."
       tableColumns={columns}
       tableData={courtQueue}
     />

@@ -36,5 +36,8 @@ router.get('/station-performance', allowRoles(...REPORT_ROLES), getStationPerfor
 router.get('/crime-category', allowRoles(...REPORT_ROLES), getCrimeCategoryReport);
 router.get('/custody-dashboard', allowRoles(...REPORT_ROLES), getCustodyDashboardReport);
 router.get('/custody-analytics', allowRoles(...REPORT_ROLES), getCustodyAnalyticsReport);
+router.get('/arrests', allowRoles(...REPORT_ROLES), require('../controllers/reportController').getArrestsReport);
+router.get('/evidence-inventory', allowRoles(...REPORT_ROLES), require('../controllers/reportController').getEvidenceInventoryReport);
+router.get('/officer-activity', allowRoles(...REPORT_ROLES), require('../controllers/reportController').getOfficerActivityReport);
 
 module.exports = router;

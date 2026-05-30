@@ -16,10 +16,10 @@ import CaseStatusTag from '@/components/shared/CaseStatusTag';
 import StandardDashboard from '@/components/dashboard/StandardDashboard';
 
 const priorityLabels = {
-  low: 'Hoose',
-  medium: 'Dhexdhexaad',
-  high: 'Sare',
-  critical: 'Halis',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  critical: 'Critical',
 };
 
 export default function JailDashboard() {
@@ -58,13 +58,13 @@ export default function JailDashboard() {
       render: (text, record) => <Link href={`/cases/${record.id}`}><Typography.Text strong>{text}</Typography.Text></Link>,
     },
     {
-      title: 'Cinwaanka Kiiska',
+      title: 'Case Title',
       dataIndex: 'title',
       key: 'title',
       ellipsis: true,
     },
     {
-      title: 'Mudnaanta',
+      title: 'Priority',
       dataIndex: 'priority',
       key: 'priority',
       render: (priority) => {
@@ -73,13 +73,13 @@ export default function JailDashboard() {
       },
     },
     {
-      title: 'Xaaladda',
+      title: 'Status',
       dataIndex: 'status',
       key: 'status',
       render: (status) => <CaseStatusTag status={status} />,
     },
     {
-      title: 'La Diiwaan Geliyey',
+      title: 'Filed On',
       dataIndex: 'created_at',
       key: 'created_at',
       render: (date) => dayjs(date).format('DD MMM YYYY'),
@@ -89,22 +89,22 @@ export default function JailDashboard() {
   return (
     <StandardDashboard
       allowedRoles={['jail', 'admin']}
-      eyebrow="Shaqada Xabsiga"
-      title="Shaashadda Xabsiga"
-      subtitle="Eeg diiwaannada dadka xiran, kiisaska la xiriira, caddeymaha, iyo warbixinnada xabsiga."
+      eyebrow="Jail Operations"
+      title="Jail Dashboard"
+      subtitle="View incarcerated person records, related cases, evidence, and jail reports."
       loading={loading}
       metrics={[
-        { title: 'Eedeysanayaal Xiran', value: offenders.length, icon: <LockOutlined />, tone: 'red', note: 'La calaamadeeyay xabsi' },
-        { title: 'Kiisaska Xabsiga', value: custodyCases.length, icon: <SafetyCertificateOutlined />, tone: 'blue', note: 'Kiisas la xiriira' },
-        { title: 'Dhammaan Kiisaska', value: caseData?.total || 0, icon: <DatabaseOutlined />, tone: 'purple', note: 'Kiisas la akhrin karo' },
-        { title: 'Diiwaanka Eedeysanayaasha', value: offenders.length, icon: <IdcardOutlined />, tone: 'green', note: 'Xogta xabsiga' },
+        { title: 'Incarcerated Offenders', value: offenders.length, icon: <LockOutlined />, tone: 'red', note: 'Marked for detention' },
+        { title: 'Custody Cases', value: custodyCases.length, icon: <SafetyCertificateOutlined />, tone: 'blue', note: 'Related cases' },
+        { title: 'Total Cases', value: caseData?.total || 0, icon: <DatabaseOutlined />, tone: 'purple', note: 'Cases available for review' },
+        { title: 'Offender Records', value: offenders.length, icon: <IdcardOutlined />, tone: 'green', note: 'Custody data' },
       ]}
       actions={[
-        { label: 'Eedeysanayaal', href: '/offenders', icon: <IdcardOutlined /> },
-        { label: 'Warbixinno', href: '/reports', icon: <DatabaseOutlined /> },
+        { label: 'Offenders', href: '/offenders', icon: <IdcardOutlined /> },
+        { label: 'Reports', href: '/reports', icon: <DatabaseOutlined /> },
       ]}
-      tableTitle="Kiisaska Xabsiga"
-      tableSubtitle="Diiwaanno la xiriira xabsi iyo hubinta eedeysanayaasha"
+      tableTitle="Custody Cases"
+      tableSubtitle="Records related to custody and offender verification"
       tableColumns={columns}
       tableData={custodyCases.length ? custodyCases : caseData?.recentCases || []}
     />

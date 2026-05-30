@@ -55,22 +55,22 @@ const Sidebar = ({ collapsed }) => {
   const dashboardPath = dashboardPathMap[role] || '/cases';
 
   const roleNames = {
-    admin: 'Maamule',
-    officer: 'Sarkaal',
-    ward_commander: 'Taliye Saldhig',
+    admin: 'Administrator',
+    officer: 'Officer',
+    ward_commander: 'Station Commander',
     cid: 'CID',
-    court: 'Maxkamad',
-    jail: 'Xabsi',
-    state_admin: 'Maamul Gobol',
-    region_admin: 'Gobol',
-    city_admin: 'Magaalo',
-    district_admin: 'Degmo',
-    neighborhood_admin: 'Saldhig',
-    state_commander: 'Taliye State',
-    region_commander: 'Taliye Region',
-    district_commander: 'Taliye Saldhig',
-    police_station_commander: 'Taliye Saldhig',
-    waax_commander: 'Taliye Waax',
+    court: 'Court',
+    jail: 'Jail',
+    state_admin: 'State Admin',
+    region_admin: 'Region Admin',
+    city_admin: 'City Admin',
+    district_admin: 'District Admin',
+    neighborhood_admin: 'Neighborhood Admin',
+    state_commander: 'State Commander',
+    region_commander: 'Region Commander',
+    district_commander: 'District Commander',
+    police_station_commander: 'Police Station Commander',
+    waax_commander: 'Waax Commander',
     ob_staff: 'OB Staff',
     staff: 'Staff',
   };
@@ -90,22 +90,22 @@ const Sidebar = ({ collapsed }) => {
       {
         key: dashboardPath,
         icon: <DashboardOutlined />,
-        label: 'Shaashadda Guud',
+        label: 'Dashboard',
       },
       {
         key: '/search',
         icon: <SearchOutlined />,
-        label: 'Raadi & Isbarbar dhig',
+        label: 'Search',
       },
       {
         key: '/cases',
         icon: <FileSearchOutlined />,
-        label: 'Kiisaska',
+        label: 'Cases',
       },
       ...(canViewOffenders ? [{
         key: '/offenders',
         icon: <IdcardOutlined />,
-        label: 'Eedeysanayaasha',
+        label: 'Offenders',
       }] : []),
     ];
 
@@ -113,7 +113,7 @@ const Sidebar = ({ collapsed }) => {
       primaryItems.push({
         key: '/cases/new',
         icon: <PlusCircleOutlined />,
-        label: 'Diiwaan Geli Kiis',
+        label: 'Register Case',
       });
     }
 
@@ -124,16 +124,27 @@ const Sidebar = ({ collapsed }) => {
       adminMenus.push({
         key: 'special_users',
         icon: <UserOutlined />,
-        label: 'Isticmaalayaal Gaar ah',
+        label: 'Special Users',
         children: [
-          { key: '/special-users/admin', label: 'Maamulayaasha' },
+          { key: '/special-users/admin', label: 'Administrators' },
           { key: '/special-users/cid', label: 'CID' },
-          { key: '/special-users/court', label: 'Maxkamadda' },
-          { key: '/special-users/jail', label: 'Xabsiga' },
+          { key: '/special-users/court', label: 'Court' },
+          { key: '/special-users/jail', label: 'Jail' },
         ],
       });
-      adminMenus.push({ key: '/ranks', icon: <StarOutlined />, label: 'Darajooyinka' });
-      adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'Maamul Goboleedyo' });
+      adminMenus.push({ key: '/ranks', icon: <StarOutlined />, label: 'Ranks' });
+      adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'State Administrations' });
+    }
+
+    if (canViewReports) {
+      adminMenus.push({
+        key: 'reports_menu',
+        icon: <BarChartOutlined />,
+        label: 'Reports',
+        children: [
+          { key: '/reports', label: 'All Reports' },
+        ],
+      });
     }
 
     if (role === 'region_admin') {
@@ -155,51 +166,36 @@ const Sidebar = ({ collapsed }) => {
           { key: '/reports?section=waax-performance', label: 'Waax Reports' },
         ],
       });
-      adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Saraakiisha Booliska' });
-      adminMenus.push({ key: '/users', icon: <UserOutlined />, label: 'User Role Management' });
+      adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Police Officers' });
     }
 
     if (['admin', 'state_admin'].includes(role)) {
-      adminMenus.push({ key: '/regions', icon: <ApartmentOutlined />, label: 'Gobollada' });
+      adminMenus.push({ key: '/regions', icon: <ApartmentOutlined />, label: 'Regions' });
     }
 
     if (role === 'admin') {
-      adminMenus.push({ key: '/cities', icon: <EnvironmentOutlined />, label: 'Magaalooyinka' });
+      adminMenus.push({ key: '/cities', icon: <EnvironmentOutlined />, label: 'Cities' });
     }
 
     if (role === 'admin') {
-      adminMenus.push({ key: '/districts', icon: <EnvironmentOutlined />, label: 'Degmooyinka' });
+      adminMenus.push({ key: '/districts', icon: <EnvironmentOutlined />, label: 'Districts' });
     }
 
     if (['admin', 'state_admin', 'city_admin'].includes(role)) {
-      adminMenus.push({ key: '/stations', icon: <EnvironmentOutlined />, label: 'Saldhigyada Degmada' });
+      adminMenus.push({ key: '/stations', icon: <EnvironmentOutlined />, label: 'District Stations' });
     }
 
     if (['admin', 'state_admin', 'city_admin', 'district_admin'].includes(role)) {
-      adminMenus.push({ key: '/neighborhoods', icon: <EnvironmentOutlined />, label: 'Saldhigyada Waaxda' });
+      adminMenus.push({ key: '/neighborhoods', icon: <EnvironmentOutlined />, label: 'Neighborhood Stations' });
     }
 
     if (['admin', 'state_admin', 'city_admin', 'district_admin'].includes(role)) {
-      adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Saraakiisha Booliska' });
+      adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Police Officers' });
     }
-
-    const insightItems = [
-      ...(canViewEvidence ? [{
-        key: '/evidence',
-        icon: <DatabaseOutlined />,
-        label: 'Caddeymaha',
-      }] : []),
-      ...(canViewReports ? [{
-        key: '/reports',
-        icon: <BarChartOutlined />,
-        label: 'Warbixinnada',
-      }] : []),
-    ];
 
     return [
-      { key: 'primary', title: 'Goobta Shaqada', items: primaryItems },
-      ...(adminMenus.length ? [{ key: 'admin', title: 'Maamulka', items: adminMenus }] : []),
-      ...(insightItems.length ? [{ key: 'insights', title: 'Diiwaannada', items: insightItems }] : []),
+      { key: 'main', title: 'Main', items: primaryItems },
+      ...(adminMenus.length ? [{ key: 'administration', title: 'Administration', items: adminMenus }] : []),
     ];
   }, [dashboardPath, role]);
 
@@ -274,21 +270,21 @@ const Sidebar = ({ collapsed }) => {
           {!collapsed && (
             <div className="police-sidebar-brand-copy">
               <span>Somali Police Force</span>
-              <small>Nidaamka Maareynta Kiisaska</small>
+              <small>Case Management System</small>
             </div>
           )}
         </div>
 
         {!collapsed && (
           <div className="police-sidebar-role">
-            <span>Waxaad ku jirtaa</span>
+            <span>You are signed in as</span>
             <Tag color="blue">{roleLabel}</Tag>
           </div>
         )}
 
         <div className="police-sidebar-search">
           {collapsed ? (
-            <Tooltip title="Raadi menu-ga" placement="right">
+            <Tooltip title="Search menu" placement="right">
               <div className="police-sidebar-search-icon">
                 <SearchOutlined />
               </div>
@@ -296,7 +292,7 @@ const Sidebar = ({ collapsed }) => {
           ) : (
             <Input
               prefix={<SearchOutlined />}
-              placeholder="Raadi menu-ga..."
+              placeholder="Search menu..."
               variant="borderless"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -322,10 +318,10 @@ const Sidebar = ({ collapsed }) => {
         </div>
 
         <div className="police-sidebar-footer">
-          <Tooltip title={collapsed ? 'Ka bax' : ''} placement="right">
+          <Tooltip title={collapsed ? 'Logout' : ''} placement="right">
             <button type="button" className="police-sidebar-logout" onClick={logout}>
               <LogoutOutlined />
-              {!collapsed && <span>Ka Bax</span>}
+              {!collapsed && <span>Logout</span>}
             </button>
           </Tooltip>
         </div>

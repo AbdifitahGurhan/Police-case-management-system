@@ -24,7 +24,7 @@ export default function EvidenceBrowserPage() {
       const res = await api.get('/evidence');
       setData(res.data.data);
     } catch (err) {
-      message.error("Diiwaanka caddeymaha lama soo gelin.");
+      message.error('Failed to load evidence records.');
     } finally {
       setLoading(false);
     }
@@ -41,22 +41,22 @@ export default function EvidenceBrowserPage() {
   );
 
   const columns = [
-    { title: 'Caddeyn #', dataIndex: 'evidence_number', key: 'evidence_number', render: (t) => <Typography.Text strong>{t}</Typography.Text> },
-    { title: 'Cinwaan', dataIndex: 'title', key: 'title' },
-    { title: 'Nooca', dataIndex: 'type', key: 'type', render: (t) => <Tag>{t.toUpperCase()}</Tag> },
-    { title: 'Ururiyey', dataIndex: 'collected_by_name', key: 'collected_by_name' },
-    { title: 'Taariikhda', dataIndex: 'collection_date', key: 'collection_date', render: d => dayjs(d).format('DD/MM/YYYY') },
+    { title: 'Evidence #', dataIndex: 'evidence_number', key: 'evidence_number', render: (t) => <Typography.Text strong>{t}</Typography.Text> },
+    { title: 'Title', dataIndex: 'title', key: 'title' },
+    { title: 'Type', dataIndex: 'type', key: 'type', render: (t) => <Tag>{t.toUpperCase()}</Tag> },
+    { title: 'Collected By', dataIndex: 'collected_by_name', key: 'collected_by_name' },
+    { title: 'Collection Date', dataIndex: 'collection_date', key: 'collection_date', render: d => dayjs(d).format('DD/MM/YYYY') },
     {
-      title: 'Ficil',
+      title: 'Action',
       key: 'action',
       render: (_, record) => (
         <Space>
            <Link href={`/cases/${record.case_id}`}>
-            <Button size="small" icon={<FileSearchOutlined />}>Faylka Kiiska</Button>
+            <Button size="small" icon={<FileSearchOutlined />}>Case File</Button>
            </Link>
            {record.file_url && (
               <Button size="small" type="link" href={`${UPLOAD_BASE_URL}${record.file_url}`} target="_blank">
-                Fur Faylka
+                Open File
               </Button>
            )}
         </Space>
@@ -67,19 +67,19 @@ export default function EvidenceBrowserPage() {
   return (
     <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'neighborhood_admin']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <Breadcrumb items={[{ title: 'Bogga Hore' }, { title: 'Diiwaanka Caddeymaha' }]} />
+        <Breadcrumb items={[{ title: 'Home' }, { title: 'Evidence Records' }]} />
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <Title level={2}>Diiwaanka Caddeymaha</Title>
-            <Typography.Text type="secondary">Kaydka caddeymaha muuqaalka, dukumentiyada, iyo walxaha la xiriira kiisaska.</Typography.Text>
+            <Title level={2}>Evidence Records</Title>
+            <Typography.Text type="secondary">Repository for case media, documents, and evidence items.</Typography.Text>
           </div>
           <DatabaseOutlined style={{ fontSize: '32px', color: '#1677ff' }} />
         </div>
 
         <Card variant="none">
           <Input 
-            placeholder="Raadi lambarka caddeynta, cinwaan, ama case ID..." 
+            placeholder="Search evidence number, title, or case ID..." 
             prefix={<SearchOutlined />} 
             style={{ width: 400, marginBottom: 20 }}
             onChange={(e) => setSearch(e.target.value)}

@@ -15,6 +15,7 @@ import {
   Statistic,
   Table,
   Tag,
+  Tabs,
   Typography,
 } from 'antd';
 import {
@@ -44,10 +45,20 @@ export default function ReportsPage() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [stationStats, setStationStats] = useState([]);
   const [stations, setStations] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [officers, setOfficers] = useState([]);
   const [custodyAnalytics, setCustodyAnalytics] = useState(null);
   const [offenders, setOffenders] = useState([]);
   const [selectedOffenderId, setSelectedOffenderId] = useState(undefined);
   const [selectedStationId, setSelectedStationId] = useState('all');
+  const [selectedReportRegionId, setSelectedReportRegionId] = useState(undefined);
+  const [selectedReportStationId, setSelectedReportStationId] = useState(undefined);
+  const [selectedReportOfficerId, setSelectedReportOfficerId] = useState(undefined);
+  const [selectedDetailTab, setSelectedDetailTab] = useState('arrests');
+  const [arrestsData, setArrestsData] = useState([]);
+  const [evidenceData, setEvidenceData] = useState([]);
+  const [officerActivityData, setOfficerActivityData] = useState([]);
+  const [officerActivitySummary, setOfficerActivitySummary] = useState({});
   const [selectedPrintableReport, setSelectedPrintableReport] = useState('station-performance');
   const [reportPreview, setReportPreview] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
@@ -95,6 +106,43 @@ export default function ReportsPage() {
     return true;
   };
 
+  const getReportFilters = useCallback(() => {
+    const params = {};
+    if (dateRange?.[0] && dateRange?.[1]) {
+      params.from_date = dateRange[0].format('YYYY-MM-DD');
+      params.to_date = dateRange[1].format('YYYY-MM-DD');
+    }
+    if (selectedReportRegionId) params.region_id = selectedReportRegionId;
+    if (selectedReportStationId && selectedReportStationId !== 'all') params.station_id = selectedReportStationId;
+    if (selectedReportOfficerId) params.officer_id = selectedReportOfficerId;
+    return params;
+  }, [dateRange, selectedReportRegionId, selectedReportStationId, selectedReportOfficerId]);
+
+  const fetchDetailedReports = useCallback(async () => {
+    setReportLoading(true);
+    try {
+      const params = getReportFilters();
+      const [arrestsRes, evidenceRes, officerActivityRes] = await Promise.all([
+        api.get('/reports/arrests', { params }),
+        api.get('/reports/evidence-inventory', { params }),
+        api.get('/reports/officer-activity', { params }),
+      ]);
+      setArrestsData(arrestsRes.data.data || []);
+      setEvidenceData(evidenceRes.data.data || []);
+      setOfficerActivityData(officerActivityRes.data.data?.actions || []);
+      setOfficerActivitySummary(officerActivityRes.data.data?.summary || {});
+    } catch (err) {
+      console.error(err);
+      message.error('Failed to load detailed reports.');
+    } finally {
+      setReportLoading(false);
+    }
+  }, [getReportFilters, message]);
+
+  useEffect(() => {
+    fetchDetailedReports();
+  }, [fetchDetailedReports]);
+
   const fetchData = useCallback(async () => {
     if (validateDateRange(dateRange)) {
       return;
@@ -108,13 +156,15 @@ export default function ReportsPage() {
         params.to_date = dateRange[1].format('YYYY-MM-DD');
       }
 
-      const [summaryRes, auditRes, stationRes, stationListRes, offenderRes, custodyRes] = await Promise.all([
+      const [summaryRes, auditRes, stationRes, stationListRes, offenderRes, custodyRes, officerRes, regionRes] = await Promise.all([
         api.get('/reports/summary', { params }),
         api.get('/reports/audit-logs', { params: { ...params, limit: 8 } }),
         api.get('/reports/by-station'),
         api.get('/stations'),
         api.get('/suspects'),
         api.get('/reports/custody-analytics', { params: { year: dayjs().year() } }),
+        api.get('/police-officers'),
+        api.get('/regions'),
       ]);
 
       setStats(summaryRes.data.data);
@@ -123,6 +173,8 @@ export default function ReportsPage() {
       setStations(stationListRes.data.data || []);
       setOffenders(offenderRes.data.data || []);
       setCustodyAnalytics(custodyRes.data.data);
+      setOfficers(officerRes.data.data || []);
+      setRegions(regionRes.data.data || []);
       if (!selectedStationId) setSelectedStationId('all');
       if (!selectedOffenderId && offenderRes.data.data?.[0]?.id) {
         setSelectedOffenderId(offenderRes.data.data[0].id);
@@ -154,17 +206,17 @@ export default function ReportsPage() {
   }, [stats]);
 
   const printableReportOptions = [
-    { value: 'offender-profile', label: 'Warbixinta eedeysanaha' },
-    { value: 'monthly-crime', label: 'Warbixinta dambiyada bilaha' },
-    { value: 'repeat-offenders', label: 'Warbixinta soo noqnoqda' },
-    { value: 'arrested-monthly', label: 'Xarigga bil kasta' },
-    { value: 'wanted-persons', label: 'Dadka la raadinayo' },
-    { value: 'released-prisoners', label: 'Maxaabiista la sii daayay' },
-    { value: 'sentence-completed', label: 'Xukunku dhammaaday' },
-    { value: 'still-serving', label: 'Weli xukun ku jira' },
-    { value: 'station-full', label: 'Warbixinta saldhigga oo dhameystiran' },
-    { value: 'station-performance', label: 'Waxqabadka saldhigga' },
-    { value: 'crime-category', label: 'Noocyada dambiyada' },
+    { value: 'offender-profile', label: 'Offender Profile Report' },
+    { value: 'monthly-crime', label: 'Monthly Crime Report' },
+    { value: 'repeat-offenders', label: 'Repeat Offenders Report' },
+    { value: 'arrested-monthly', label: 'Monthly Arrests' },
+    { value: 'wanted-persons', label: 'Wanted Persons' },
+    { value: 'released-prisoners', label: 'Released Prisoners' },
+    { value: 'sentence-completed', label: 'Completed Sentences' },
+    { value: 'still-serving', label: 'Currently Serving' },
+    { value: 'station-full', label: 'Station Full Report' },
+    { value: 'station-performance', label: 'Station Performance' },
+    { value: 'crime-category', label: 'Crime Categories' },
   ];
 
   const downloadFile = (filename, content, type = 'text/plain;charset=utf-8') => {
@@ -627,6 +679,100 @@ export default function ReportsPage() {
     },
   ];
 
+  const arrestsColumns = [
+    {
+      title: 'Date',
+      dataIndex: 'arrest_date',
+      render: (value) => value ? dayjs(value).format('YYYY-MM-DD') : 'N/A',
+    },
+    {
+      title: 'Station',
+      dataIndex: 'station_name',
+    },
+    {
+      title: 'Suspect',
+      dataIndex: 'suspect_name',
+    },
+    {
+      title: 'Case OB',
+      dataIndex: 'ob_number',
+    },
+    {
+      title: 'Charges',
+      dataIndex: 'charges',
+      ellipsis: true,
+    },
+    {
+      title: 'Status',
+      dataIndex: 'sentence_status',
+      render: (value) => <Tag color="blue">{value || 'N/A'}</Tag>,
+    },
+    {
+      title: 'Arresting Officer',
+      dataIndex: 'arresting_officer',
+    },
+  ];
+
+  const evidenceColumns = [
+    {
+      title: 'Tag',
+      dataIndex: 'evidence_tag',
+    },
+    {
+      title: 'Description',
+      dataIndex: 'item_description',
+      ellipsis: true,
+    },
+    {
+      title: 'Quantity',
+      dataIndex: 'quantity',
+      align: 'center',
+    },
+    {
+      title: 'Condition',
+      dataIndex: 'condition',
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+    },
+    {
+      title: 'Station',
+      dataIndex: 'station_name',
+    },
+    {
+      title: 'Recorded',
+      dataIndex: 'created_at',
+      render: (value) => value ? dayjs(value).format('YYYY-MM-DD') : 'N/A',
+    },
+  ];
+
+  const activityColumns = [
+    {
+      title: 'Time',
+      dataIndex: 'created_at',
+      render: (value) => value ? dayjs(value).format('YYYY-MM-DD HH:mm') : 'N/A',
+    },
+    {
+      title: 'Case OB',
+      dataIndex: 'ob_number',
+    },
+    {
+      title: 'Action',
+      dataIndex: 'action_type',
+    },
+    {
+      title: 'Officer',
+      dataIndex: 'officer_name',
+      render: (_, row) => row.officer_name || row.performed_by || 'N/A',
+    },
+    {
+      title: 'Description',
+      dataIndex: 'description',
+      ellipsis: true,
+    },
+  ];
+
   const prisonerColumns = [
     {
       title: 'Name',
@@ -665,9 +811,9 @@ export default function ReportsPage() {
       <div className="reports-page">
         <div className="reports-hero">
           <div>
-            <Text className="dashboard-eyebrow">Xarunta Falanqaynta</Text>
-            <Title level={2}>Warbixinno & Dabagal</Title>
-            <Text type="secondary">Warbixinno ku saabsan kiisaska, caddeymaha, saldhigyada, iyo dhaqdhaqaaqa isticmaalayaasha.</Text>
+            <Text className="dashboard-eyebrow">Analytics Center</Text>
+            <Title level={2}>Reports & Monitoring</Title>
+            <Text type="secondary">Reports on cases, evidence, stations, and user activity.</Text>
           </div>
           <Space wrap>
             <Space orientation="vertical" size={4}>
@@ -680,16 +826,16 @@ export default function ReportsPage() {
               />
               {dateRangeError && <Text type="danger">{dateRangeError}</Text>}
             </Space>
-            <Button icon={<DownloadOutlined />} onClick={handleExportReport} loading={loading}>Soo Saar</Button>
+            <Button icon={<DownloadOutlined />} onClick={handleExportReport} loading={loading}>Export</Button>
             <Button type="primary" icon={<SafetyCertificateOutlined />} onClick={handleIntegrityReport} loading={loading}>
-              Warbixin Hufnaan
+              Integrity Report
             </Button>
           </Space>
         </div>
 
         <Row gutter={[16, 16]}>
           <Col xs={24}>
-            <Card variant="none" className="report-panel" title="Warbixinno La Daabici Karo" extra={<FileTextOutlined />}>
+            <Card variant="none" className="report-panel" title="Printable Reports" extra={<FileTextOutlined />}>
               <Space wrap align="center">
                 <Select
                   value={selectedPrintableReport}
@@ -699,7 +845,7 @@ export default function ReportsPage() {
                 />
                 {selectedPrintableReport === 'offender-profile' && (
                   <Select
-                    placeholder="Dooro eedeysane"
+                    placeholder="Select offender"
                     value={selectedOffenderId}
                     onChange={setSelectedOffenderId}
                     style={{ minWidth: 260 }}
@@ -751,6 +897,100 @@ export default function ReportsPage() {
               </Card>
             </Col>
           )}
+
+          <Col xs={24}>
+            <Card variant="none" className="report-panel" title="Detailed Operational Reports">
+              <Space wrap align="center" style={{ width: '100%', marginBottom: 16 }}>
+                <Select
+                  placeholder="Filter by region"
+                  value={selectedReportRegionId}
+                  onChange={setSelectedReportRegionId}
+                  style={{ minWidth: 220 }}
+                  allowClear
+                  options={regions.map((item) => ({ value: item.id, label: item.region_name || item.name || item.region }))}
+                />
+                <Select
+                  placeholder="Filter by station"
+                  value={selectedReportStationId}
+                  onChange={setSelectedReportStationId}
+                  style={{ minWidth: 220 }}
+                  allowClear
+                  options={[
+                    { value: 'all', label: 'All Stations' },
+                    ...stations.map((item) => ({ value: item.id, label: `${item.name || item.district_name || 'Station'}${item.code ? ` (${item.code})` : ''}` })),
+                  ]}
+                />
+                <Select
+                  placeholder="Filter by officer"
+                  value={selectedReportOfficerId}
+                  onChange={setSelectedReportOfficerId}
+                  style={{ minWidth: 220 }}
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  options={officers.map((item) => ({ value: item.id, label: `${item.full_name || item.name || item.username}` }))}
+                />
+                <Button type="primary" onClick={fetchDetailedReports} loading={reportLoading}>Refresh</Button>
+              </Space>
+              <Tabs
+                activeKey={selectedDetailTab}
+                onChange={setSelectedDetailTab}
+                items={[
+                  {
+                    key: 'arrests',
+                    label: 'Arrests',
+                    children: renderDataTable({
+                      columns: arrestsColumns,
+                      dataSource: arrestsData,
+                      rowKey: 'id',
+                      loading: reportLoading,
+                    }),
+                  },
+                  {
+                    key: 'evidence',
+                    label: 'Evidence Inventory',
+                    children: renderDataTable({
+                      columns: evidenceColumns,
+                      dataSource: evidenceData,
+                      rowKey: 'id',
+                      loading: reportLoading,
+                    }),
+                  },
+                  {
+                    key: 'officer-activity',
+                    label: 'Officer Activity',
+                    children: (
+                      <>
+                        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+                          <Col xs={24} sm={8}>
+                            <Card variant="none" className="report-kpi-card">
+                              <Statistic title="Total Actions" value={officerActivitySummary.total_actions || 0} loading={reportLoading} />
+                            </Card>
+                          </Col>
+                          <Col xs={24} sm={8}>
+                            <Card variant="none" className="report-kpi-card">
+                              <Statistic title="Unique Cases" value={officerActivitySummary.unique_cases || 0} loading={reportLoading} />
+                            </Card>
+                          </Col>
+                          <Col xs={24} sm={8}>
+                            <Card variant="none" className="report-kpi-card">
+                              <Statistic title="Arrests Made" value={officerActivitySummary.arrests_made || 0} loading={reportLoading} />
+                            </Card>
+                          </Col>
+                        </Row>
+                        {renderDataTable({
+                          columns: activityColumns,
+                          dataSource: officerActivityData,
+                          rowKey: 'id',
+                          loading: reportLoading,
+                        })}
+                      </>
+                    ),
+                  },
+                ]}
+              />
+            </Card>
+          </Col>
 
           <Col xs={24} sm={12} xl={6}>
             <Card variant="none" className="report-kpi-card">

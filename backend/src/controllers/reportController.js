@@ -754,6 +754,123 @@ const getCustodyAnalyticsReport = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+/** GET /api/reports/arrests */
+const getArrestsReport = async (req, res, next) => {
+  try {
+    const { from_date, to_date, region_id, station_id, officer_id, page = 1, limit = 100 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const params = [];
+    let where = '1=1';
+
+    if (from_date) { where += ' AND DATE(a.arrest_date) >= ?'; params.push(from_date); }
+    if (to_date) { where += ' AND DATE(a.arrest_date) <= ?'; params.push(to_date); }
+    if (region_id) { where += ' AND c.region_id = ?'; params.push(region_id); }
+    if (station_id) { where += ' AND c.district_id = ?'; params.push(station_id); }
+    if (officer_id) { where += ' AND (a.arresting_officer_id = ? OR a.officer_id = ?)'; params.push(officer_id, officer_id); }
+
+    where = applyArrestCaseScope(req.user, where, params, 'c');
+
+    const [rows] = await db.query(
+      `SELECT a.id, a.arrest_date, a.arrest_location, a.charges, a.sentence_status, a.bail_status,
+              s.id AS suspect_id, s.full_name AS suspect_name,
+              c.id AS case_id, c.ob_number, d.district_name AS station_name,
+              po.full_name AS arresting_officer
+       FROM arrests a
+       JOIN suspects s ON s.id = a.suspect_id
+       JOIN cases c ON c.id = a.case_id
+       LEFT JOIN districts d ON d.id = c.district_id
+       LEFT JOIN police_officers po ON po.id = a.arresting_officer_id
+       WHERE ${where}
+       ORDER BY a.arrest_date DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    const [[{ total }]] = await db.query(
+      `SELECT COUNT(*) AS total FROM arrests a JOIN cases c ON c.id = a.case_id WHERE ${where}`,
+      params
+    );
+
+    res.json({ success: true, data: rows, pagination: { page: parseInt(page), limit: parseInt(limit), total } });
+  } catch (err) { next(err); }
+};
+
+/** GET /api/reports/evidence-inventory */
+const getEvidenceInventoryReport = async (req, res, next) => {
+  try {
+    const { from_date, to_date, region_id, station_id, case_id, status, page = 1, limit = 100 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const params = [];
+
+    let where = '1=1';
+    if (from_date) { where += ' AND DATE(e.created_at) >= ?'; params.push(from_date); }
+    if (to_date) { where += ' AND DATE(e.created_at) <= ?'; params.push(to_date); }
+    if (case_id) { where += ' AND e.case_id = ?'; params.push(case_id); }
+    if (status) { where += ' AND e.status = ?'; params.push(status); }
+    if (region_id) { where += ' AND c.region_id = ?'; params.push(region_id); }
+    if (station_id) { where += ' AND c.district_id = ?'; params.push(station_id); }
+
+    // apply user's scope based on case
+    if (!where.includes('c.')) {
+      // ensure joins later still work; applyCaseScope will push params
+    }
+    where = applyCaseScope(req.user, where, params, 'c');
+
+    const [rows] = await db.query(
+      `SELECT e.id, e.evidence_tag, e.item_description, e.quantity, e.condition, e.status, e.storage_location, e.created_at,
+              c.ob_number, d.district_name AS station_name
+       FROM evidence e
+       LEFT JOIN cases c ON c.id = e.case_id
+       LEFT JOIN districts d ON d.id = c.district_id
+       WHERE ${where}
+       ORDER BY e.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    const [[{ total }]] = await db.query(`SELECT COUNT(*) AS total FROM evidence e LEFT JOIN cases c ON c.id = e.case_id WHERE ${where}`, params);
+    res.json({ success: true, data: rows, pagination: { page: parseInt(page), limit: parseInt(limit), total } });
+  } catch (err) { next(err); }
+};
+
+/** GET /api/reports/officer-activity */
+const getOfficerActivityReport = async (req, res, next) => {
+  try {
+    const { from_date, to_date, officer_id, region_id, station_id, page = 1, limit = 100 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const params = [];
+    let where = '1=1';
+
+    if (from_date) { where += ' AND DATE(ca.created_at) >= ?'; params.push(from_date); }
+    if (to_date) { where += ' AND DATE(ca.created_at) <= ?'; params.push(to_date); }
+    if (officer_id) { where += ' AND ca.performed_by = ?'; params.push(officer_id); }
+    if (region_id) { where += ' AND c.region_id = ?'; params.push(region_id); }
+    if (station_id) { where += ' AND c.district_id = ?'; params.push(station_id); }
+
+    where = applyCaseScope(req.user, where, params, 'c');
+
+    const [rows] = await db.query(
+      `SELECT ca.id, ca.case_id, ca.action_type, ca.description, ca.performed_by, ca.created_at,
+              c.ob_number, d.district_name AS station_name, po.full_name AS officer_name
+       FROM case_actions ca
+       JOIN cases c ON c.id = ca.case_id
+       LEFT JOIN districts d ON d.id = c.district_id
+       LEFT JOIN police_officers po ON po.id = ca.performed_by
+       WHERE ${where}
+       ORDER BY ca.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    // Summary counts
+    const [[{ total_actions }]] = await db.query(`SELECT COUNT(*) AS total_actions FROM case_actions ca JOIN cases c ON c.id = ca.case_id WHERE ${where}`, params);
+    const [[{ unique_cases }]] = await db.query(`SELECT COUNT(DISTINCT ca.case_id) AS unique_cases FROM case_actions ca JOIN cases c ON c.id = ca.case_id WHERE ${where}`, params);
+    const [[{ arrests_made }]] = await db.query(`SELECT COUNT(*) AS arrests_made FROM arrests a JOIN cases c ON c.id = a.case_id WHERE ${where} AND a.arresting_officer_id = ?`, officer_id ? [...params, officer_id] : params);
+
+    res.json({ success: true, data: { actions: rows, summary: { total_actions, unique_cases, arrests_made } }, pagination: { page: parseInt(page), limit: parseInt(limit), total: total_actions } });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   getAuditLogs,
   getSummaryReport,
@@ -768,4 +885,7 @@ module.exports = {
   getCrimeCategoryReport,
   getCustodyDashboardReport,
   getCustodyAnalyticsReport,
+  getArrestsReport,
+  getEvidenceInventoryReport,
+  getOfficerActivityReport,
 };

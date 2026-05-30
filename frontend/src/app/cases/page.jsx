@@ -112,13 +112,13 @@ export default function CaseListPage() {
   return (
     <ProtectedRoute>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <Breadcrumb items={[{ title: 'Bogga Hore' }, { title: 'Kiisaska' }]} />
+        <Breadcrumb items={[{ title: 'Home' }, { title: 'Cases' }]} />
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Title level={2}>Diiwaanka Kiisaska</Title>
+          <Title level={2}>Case Register</Title>
           {canRegisterCase && (
             <Link href="/cases/new">
-              <Button type="primary" icon={<PlusOutlined />}>Diiwaan Geli Kiis Cusub</Button>
+              <Button type="primary" icon={<PlusOutlined />}>Register New Case</Button>
             </Link>
           )}
         </div>
@@ -126,31 +126,31 @@ export default function CaseListPage() {
         <Card variant="none">
           <Space style={{ marginBottom: 16 }} wrap>
             <Input
-              placeholder="Raadi OB, cinwaan, ama goob..."
+              placeholder="Search OB, address, or location..."
               prefix={<SearchOutlined />}
               style={{ width: 250 }}
               onPressEnter={(e) => setFilters({ ...filters, search: e.target.value })}
             />
             <Select
-              placeholder="Xaaladda"
+              placeholder="Status"
               style={{ width: 150 }}
               allowClear
               onChange={(v) => setFilters({ ...filters, status: v })}
             >
-              <Option value="open">Furan</Option>
-              <Option value="under_investigation">Baaris</Option>
-              <Option value="referred_cid">CID</Option>
-              <Option value="closed">Xiran</Option>
+              <Option value="open">Open</Option>
+              <Option value="under_investigation">Under Investigation</Option>
+              <Option value="referred_cid">Referred to CID</Option>
+              <Option value="closed">Closed</Option>
             </Select>
             <Select
-              placeholder="Mudnaanta"
+              placeholder="Priority"
               style={{ width: 150 }}
               allowClear
               onChange={(v) => setFilters({ ...filters, priority: v })}
             >
-              <Option value="high">Sare</Option>
-              <Option value="medium">Dhexdhexaad</Option>
-              <Option value="low">Hoose</Option>
+              <Option value="high">High</Option>
+              <Option value="medium">Medium</Option>
+              <Option value="low">Low</Option>
             </Select>
           </Space>
 

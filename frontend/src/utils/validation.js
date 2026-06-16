@@ -24,8 +24,8 @@ export const codeRule = (label = 'Code') => ({
 });
 
 export const usernameRule = {
-  pattern: /^[A-Za-z0-9_.-]{3,50}$/,
-  message: 'Username must be 3-50 characters and use only letters, numbers, dots, hyphens, or underscores.',
+  pattern: /^[A-Za-z0-9_.@-]{3,50}$/, 
+  message: 'Username must be 3-50 characters and use only letters, numbers, dots, hyphens, underscores, or @.',
 };
 
 export const passwordRule = {

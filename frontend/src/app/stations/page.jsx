@@ -2,8 +2,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { App, Table, Card, Typography, Space, Button, Tag, Modal, Form, Input, Row, Col, Select } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { App, Table, Card, Typography, Space, Button, Tag, Modal, Form, Input, Row, Col, Select, Popconfirm } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
@@ -78,6 +78,16 @@ export default function StationManagementPage() {
     }
   };
 
+  const handleDelete = async (station) => {
+    try {
+      await api.delete(`/stations/${station.id}`);
+      message.success('Station deleted.');
+      fetchStations();
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Delete failed.');
+    }
+  };
+
   const columns = [
     { title: 'Name', dataIndex: 'name', key: 'name', render: (t) => <Typography.Text strong>{t}</Typography.Text> },
     { title: 'Code', dataIndex: 'code', key: 'code', render: (c) => <Tag color="blue">{c}</Tag> },
@@ -89,7 +99,21 @@ export default function StationManagementPage() {
     {
       title: 'Action',
       key: 'action',
-      render: (_, record) => <Button icon={<EditOutlined />} onClick={() => handleOpenModal(record)} disabled={!canEditStations} />,
+      render: (_, record) => (
+        <Space>
+          <Button icon={<EditOutlined />} onClick={() => handleOpenModal(record)} disabled={!canEditStations} />
+          <Popconfirm
+            title="Delete station?"
+            description="Only stations without cases, Waax stations, or assigned officers can be deleted."
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(record)}
+            disabled={!canEditStations}
+          >
+            <Button danger icon={<DeleteOutlined />} disabled={!canEditStations} />
+          </Popconfirm>
+        </Space>
+      ),
     },
   ];
 

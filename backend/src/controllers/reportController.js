@@ -766,20 +766,20 @@ const getArrestsReport = async (req, res, next) => {
     if (to_date) { where += ' AND DATE(a.arrest_date) <= ?'; params.push(to_date); }
     if (region_id) { where += ' AND c.region_id = ?'; params.push(region_id); }
     if (station_id) { where += ' AND c.district_id = ?'; params.push(station_id); }
-    if (officer_id) { where += ' AND (a.arresting_officer_id = ? OR a.officer_id = ?)'; params.push(officer_id, officer_id); }
+    if (officer_id) { where += ' AND c.assigned_officer_id = ?'; params.push(officer_id); }
 
     where = applyArrestCaseScope(req.user, where, params, 'c');
 
     const [rows] = await db.query(
       `SELECT a.id, a.arrest_date, a.arrest_location, a.charges, a.sentence_status, a.bail_status,
-              s.id AS suspect_id, s.full_name AS suspect_name,
+              a.arrested_by, s.id AS suspect_id, s.full_name AS suspect_name,
               c.id AS case_id, c.ob_number, d.district_name AS station_name,
-              po.full_name AS arresting_officer
+              po.full_name AS assigned_officer
        FROM arrests a
        JOIN suspects s ON s.id = a.suspect_id
        JOIN cases c ON c.id = a.case_id
        LEFT JOIN districts d ON d.id = c.district_id
-       LEFT JOIN police_officers po ON po.id = a.arresting_officer_id
+       LEFT JOIN police_officers po ON po.id = c.assigned_officer_id
        WHERE ${where}
        ORDER BY a.arrest_date DESC
        LIMIT ? OFFSET ?`,
@@ -817,8 +817,17 @@ const getEvidenceInventoryReport = async (req, res, next) => {
     where = applyCaseScope(req.user, where, params, 'c');
 
     const [rows] = await db.query(
-      `SELECT e.id, e.evidence_tag, e.item_description, e.quantity, e.condition, e.status, e.storage_location, e.created_at,
-              c.ob_number, d.district_name AS station_name
+      `SELECT e.id,
+              e.evidence_number AS evidence_number,
+              e.title AS item_description,
+              e.type AS evidence_type,
+              e.location_found AS storage_location,
+              e.collected_by,
+              e.collection_date,
+              e.status,
+              e.created_at,
+              c.ob_number,
+              d.district_name AS station_name
        FROM evidence e
        LEFT JOIN cases c ON c.id = e.case_id
        LEFT JOIN districts d ON d.id = c.district_id
@@ -843,31 +852,199 @@ const getOfficerActivityReport = async (req, res, next) => {
 
     if (from_date) { where += ' AND DATE(ca.created_at) >= ?'; params.push(from_date); }
     if (to_date) { where += ' AND DATE(ca.created_at) <= ?'; params.push(to_date); }
-    if (officer_id) { where += ' AND ca.performed_by = ?'; params.push(officer_id); }
     if (region_id) { where += ' AND c.region_id = ?'; params.push(region_id); }
     if (station_id) { where += ' AND c.district_id = ?'; params.push(station_id); }
 
     where = applyCaseScope(req.user, where, params, 'c');
 
+    const joinedOfficerFilter = officer_id ? ' AND (u.id = ? OR po.id = ?)' : '';
+    if (officer_id) params.push(officer_id, officer_id);
+
     const [rows] = await db.query(
       `SELECT ca.id, ca.case_id, ca.action_type, ca.description, ca.performed_by, ca.created_at,
-              c.ob_number, d.district_name AS station_name, po.full_name AS officer_name
+              c.ob_number, d.district_name AS station_name,
+              COALESCE(u.full_name, po.full_name, ca.performed_by) AS officer_name
        FROM case_actions ca
        JOIN cases c ON c.id = ca.case_id
        LEFT JOIN districts d ON d.id = c.district_id
-       LEFT JOIN police_officers po ON po.id = ca.performed_by
-       WHERE ${where}
+       LEFT JOIN users u ON u.username = ca.performed_by OR CAST(u.id AS CHAR) = ca.performed_by
+       LEFT JOIN police_officers po ON CAST(po.id AS CHAR) = ca.performed_by OR po.force_number = ca.performed_by
+       WHERE ${where}${joinedOfficerFilter}
        ORDER BY ca.created_at DESC
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );
 
     // Summary counts
-    const [[{ total_actions }]] = await db.query(`SELECT COUNT(*) AS total_actions FROM case_actions ca JOIN cases c ON c.id = ca.case_id WHERE ${where}`, params);
-    const [[{ unique_cases }]] = await db.query(`SELECT COUNT(DISTINCT ca.case_id) AS unique_cases FROM case_actions ca JOIN cases c ON c.id = ca.case_id WHERE ${where}`, params);
-    const [[{ arrests_made }]] = await db.query(`SELECT COUNT(*) AS arrests_made FROM arrests a JOIN cases c ON c.id = a.case_id WHERE ${where} AND a.arresting_officer_id = ?`, officer_id ? [...params, officer_id] : params);
+    const baseQuery = `FROM case_actions ca
+                       JOIN cases c ON c.id = ca.case_id
+                       LEFT JOIN districts d ON d.id = c.district_id
+                       LEFT JOIN users u ON u.username = ca.performed_by OR CAST(u.id AS CHAR) = ca.performed_by
+                       LEFT JOIN police_officers po ON CAST(po.id AS CHAR) = ca.performed_by OR po.force_number = ca.performed_by
+                       WHERE ${where}${joinedOfficerFilter}`;
+    const [[{ total_actions }]] = await db.query(`SELECT COUNT(*) AS total_actions ${baseQuery}`, params);
+    const [[{ unique_cases }]] = await db.query(`SELECT COUNT(DISTINCT ca.case_id) AS unique_cases ${baseQuery}`, params);
+
+    const arrestSummaryParams = [];
+    let arrestSummaryWhere = '1=1';
+    if (from_date) { arrestSummaryWhere += ' AND DATE(a.arrest_date) >= ?'; arrestSummaryParams.push(from_date); }
+    if (to_date) { arrestSummaryWhere += ' AND DATE(a.arrest_date) <= ?'; arrestSummaryParams.push(to_date); }
+    if (region_id) { arrestSummaryWhere += ' AND c.region_id = ?'; arrestSummaryParams.push(region_id); }
+    if (station_id) { arrestSummaryWhere += ' AND c.district_id = ?'; arrestSummaryParams.push(station_id); }
+    if (officer_id) { arrestSummaryWhere += ' AND c.assigned_officer_id = ?'; arrestSummaryParams.push(officer_id); }
+    arrestSummaryWhere = applyArrestCaseScope(req.user, arrestSummaryWhere, arrestSummaryParams, 'c');
+
+    const [[{ arrests_made }]] = await db.query(
+      `SELECT COUNT(*) AS arrests_made FROM arrests a JOIN cases c ON c.id = a.case_id WHERE ${arrestSummaryWhere}`,
+      arrestSummaryParams
+    );
 
     res.json({ success: true, data: { actions: rows, summary: { total_actions, unique_cases, arrests_made } }, pagination: { page: parseInt(page), limit: parseInt(limit), total: total_actions } });
+  } catch (err) { next(err); }
+};
+
+/** GET /api/reports/dashboard-charts */
+const getDashboardCharts = async (req, res, next) => {
+  try {
+    const params = [];
+    let where = '1=1';
+    where = applyCaseScope(req.user, where, params, 'c');
+
+    const [byStation] = await db.query(
+      `SELECT COALESCE(d.district_name, 'Unassigned') AS label, COUNT(*) AS value
+       FROM cases c
+       LEFT JOIN districts d ON d.id = c.district_id
+       WHERE ${where}
+       GROUP BY COALESCE(d.district_name, 'Unassigned')
+       ORDER BY value DESC
+       LIMIT 10`,
+      params
+    );
+
+    const [byCrimeType] = await db.query(
+      `SELECT COALESCE(c.incident_type, c.case_type, 'Unknown') AS label, COUNT(*) AS value
+       FROM cases c
+       WHERE ${where}
+       GROUP BY COALESCE(c.incident_type, c.case_type, 'Unknown')
+       ORDER BY value DESC
+       LIMIT 10`,
+      params
+    );
+
+    const [byMonth] = await db.query(
+      `SELECT DATE_FORMAT(c.created_at, '%Y-%m') AS label, COUNT(*) AS value
+       FROM cases c
+       WHERE ${where}
+       GROUP BY DATE_FORMAT(c.created_at, '%Y-%m')
+       ORDER BY label ASC
+       LIMIT 12`,
+      params
+    );
+
+    const [openClosed] = await db.query(
+      `SELECT
+          CASE WHEN c.status IN ('closed', 'archived') THEN 'Closed' ELSE 'Open' END AS label,
+          COUNT(*) AS value
+       FROM cases c
+       WHERE ${where}
+       GROUP BY CASE WHEN c.status IN ('closed', 'archived') THEN 'Closed' ELSE 'Open' END`,
+      params
+    );
+
+    const [criticalCases] = await db.query(
+      `SELECT COALESCE(d.district_name, 'Unassigned') AS label, COUNT(*) AS value
+       FROM cases c
+       LEFT JOIN districts d ON d.id = c.district_id
+       WHERE ${where} AND c.priority = 'critical'
+       GROUP BY COALESCE(d.district_name, 'Unassigned')
+       ORDER BY value DESC
+       LIMIT 10`,
+      params
+    );
+
+    const [courtOutcomes] = await db.query(
+      `SELECT c.status AS label, COUNT(*) AS value
+       FROM cases c
+       WHERE ${where} AND c.status IN ('approved_for_court', 'court_decided', 'closed')
+       GROUP BY c.status
+       ORDER BY value DESC`,
+      params
+    );
+
+    res.json({ success: true, data: { byStation, byCrimeType, byMonth, openClosed, criticalCases, courtOutcomes } });
+  } catch (err) { next(err); }
+};
+
+/** GET /api/reports/security-audit */
+const getSecurityAuditDashboard = async (req, res, next) => {
+  try {
+    const { limit = 50 } = req.query;
+    const safeLimit = Math.min(Number(limit) || 50, 100);
+
+    const [logins] = await db.query(
+      `SELECT id, user_id, username, success, failure_reason, ip_address, user_agent, created_at
+       FROM login_logs
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      [safeLimit]
+    );
+
+    const [caseChanges] = await db.query(
+      `SELECT id, user_id, user_email, action, entity_type, entity_id, old_data, new_data, ip_address, created_at
+       FROM audit_logs
+       WHERE entity_type = 'cases' OR action IN ('CREATE_CASE', 'UPDATE_CASE', 'ASSIGN_CASE', 'CONVERT_OB_TO_CASE')
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      [safeLimit]
+    );
+
+    const [evidenceChanges] = await db.query(
+      `SELECT id, user_id, user_email, action, entity_type, entity_id, old_data, new_data, ip_address, created_at
+       FROM audit_logs
+       WHERE entity_type = 'evidence' OR action LIKE '%EVIDENCE%'
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      [safeLimit]
+    );
+
+    const [[summary]] = await db.query(
+      `SELECT
+          (SELECT COUNT(*) FROM login_logs WHERE success = 1) AS successful_logins,
+          (SELECT COUNT(*) FROM login_logs WHERE success = 0) AS failed_logins,
+          (SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'cases' OR action IN ('CREATE_CASE', 'UPDATE_CASE', 'ASSIGN_CASE', 'CONVERT_OB_TO_CASE')) AS case_changes,
+          (SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'evidence' OR action LIKE '%EVIDENCE%') AS evidence_changes`
+    );
+
+    res.json({ success: true, data: { summary, logins, caseChanges, evidenceChanges } });
+  } catch (err) { next(err); }
+};
+
+/** GET /api/reports/export/cases.csv */
+const exportCasesCsv = async (req, res, next) => {
+  try {
+    const params = [];
+    let where = '1=1';
+    where = applyCaseScope(req.user, where, params, 'c');
+
+    const [rows] = await db.query(
+      `SELECT c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
+              c.incident_type, c.status, c.priority, c.incident_location,
+              d.district_name AS station_name, po.full_name AS assigned_officer, c.created_at
+       FROM cases c
+       LEFT JOIN districts d ON d.id = c.district_id
+       LEFT JOIN police_officers po ON po.id = c.assigned_officer_id
+       WHERE ${where}
+       ORDER BY c.created_at DESC`,
+      params
+    );
+
+    const headers = ['case_number', 'ob_number', 'title', 'incident_type', 'status', 'priority', 'incident_location', 'station_name', 'assigned_officer', 'created_at'];
+    const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers.join(','), ...rows.map((row) => headers.map((key) => escapeCsv(row[key])).join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="cases-export.csv"');
+    res.send(csv);
   } catch (err) { next(err); }
 };
 
@@ -888,4 +1065,7 @@ module.exports = {
   getArrestsReport,
   getEvidenceInventoryReport,
   getOfficerActivityReport,
+  getDashboardCharts,
+  getSecurityAuditDashboard,
+  exportCasesCsv,
 };

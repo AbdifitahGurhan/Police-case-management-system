@@ -3,9 +3,8 @@
 
 import React, { useCallback, useState, useEffect } from 'react';
 import { Table, Card, Typography, Space, Input, Select, Tag, Button, Breadcrumb } from 'antd';
-import { SearchOutlined, FilterOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons';
+import { SearchOutlined, EyeOutlined, AuditOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import CaseStatusTag from '@/components/shared/CaseStatusTag';
 import dayjs from 'dayjs';
@@ -15,7 +14,6 @@ const { Title } = Typography;
 const { Option } = Select;
 
 export default function CaseListPage() {
-  const { user } = useAuth();
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 15, total: 0 });
@@ -107,8 +105,6 @@ export default function CaseListPage() {
       ),
     },
   ];
-  const canRegisterCase = ['admin', 'officer'].includes(user?.role);
-
   return (
     <ProtectedRoute>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
@@ -116,11 +112,9 @@ export default function CaseListPage() {
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Title level={2}>Case Register</Title>
-          {canRegisterCase && (
-            <Link href="/cases/new">
-              <Button type="primary" icon={<PlusOutlined />}>Register New Case</Button>
-            </Link>
-          )}
+          <Link href="/ob-register">
+            <Button type="primary" icon={<AuditOutlined />}>Go to OB Registration</Button>
+          </Link>
         </div>
 
         <Card variant="none">

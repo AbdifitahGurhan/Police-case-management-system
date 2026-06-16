@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { App, Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
 import { ArrowLeftOutlined, FileAddOutlined } from '@ant-design/icons';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 
@@ -14,9 +14,11 @@ const commanderRoles = ['state_commander', 'region_commander', 'district_command
 
 export default function ObDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const { message } = App.useApp();
   const [ob, setOb] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [converting, setConverting] = useState(false);
 
   const loadOb = useCallback(async () => {
     setLoading(true);
@@ -35,6 +37,25 @@ export default function ObDetailPage() {
   }, [id, loadOb]);
 
   const converted = ob?.linked_case_id || ['CONVERTED_TO_CASE', 'CASE_OPENED'].includes(ob?.status);
+
+  const convertToCase = async () => {
+    setConverting(true);
+    try {
+      const response = await api.post(`/ob-entries/${id}/convert-to-case`);
+      message.success(response.data.alreadyExists ? `Existing case opened: ${response.data.caseNumber}` : `Case opened from OB: ${response.data.caseNumber}`);
+      router.push(`/cases/${response.data.caseId}`);
+    } catch (error) {
+      const existingCaseId = error.response?.data?.caseId;
+      if (existingCaseId) {
+        message.warning(error.response?.data?.message || 'This OB already has a case. Opening it now.');
+        router.push(`/cases/${existingCaseId}`);
+        return;
+      }
+      message.error(error.response?.data?.message || 'Failed to convert OB to case.');
+    } finally {
+      setConverting(false);
+    }
+  };
 
   return (
     <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', ...commanderRoles]}>
@@ -58,9 +79,9 @@ export default function ObDetailPage() {
                 <Button disabled>This OB has already been converted to a case.</Button>
               )
             ) : (
-              <Link href={`/cases/new?ob_entry_id=${id}`}>
-                <Button type="primary" icon={<FileAddOutlined />}>Convert to Case</Button>
-              </Link>
+              <Button type="primary" icon={<FileAddOutlined />} loading={converting} onClick={convertToCase}>
+                Convert to Case
+              </Button>
             )}
           </Space>
         </div>

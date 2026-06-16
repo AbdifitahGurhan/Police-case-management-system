@@ -7,7 +7,6 @@ import { Input, Layout, Menu, Tag, Tooltip } from 'antd';
 import {
   DashboardOutlined,
   FileSearchOutlined,
-  PlusCircleOutlined,
   UserOutlined,
   DatabaseOutlined,
   LogoutOutlined,
@@ -37,6 +36,9 @@ const Sidebar = ({ collapsed }) => {
     officer: '/dashboard/officer',
     ward_commander: '/dashboard/ward_commander',
     cid: '/dashboard/cid',
+    cid_director: '/dashboard/cid',
+    cid_supervisor: '/dashboard/cid',
+    cid_officer: '/dashboard/cid',
     state_admin: '/dashboard/unit',
     region_admin: '/dashboard/unit',
     city_admin: '/dashboard/unit',
@@ -47,9 +49,14 @@ const Sidebar = ({ collapsed }) => {
     district_commander: '/dashboard/unit',
     police_station_commander: '/dashboard/unit',
     waax_commander: '/dashboard/unit',
-    ob_staff: '/cases',
+    ob_staff: '/ob-register',
     staff: '/cases',
     court: '/dashboard/court',
+    court_admin: '/dashboard/court',
+    judge: '/dashboard/court',
+    prosecutor: '/dashboard/court',
+    prosecutor_liaison: '/dashboard/cid',
+    court_clerk: '/dashboard/court',
     jail: '/dashboard/jail',
   };
   const dashboardPath = dashboardPathMap[role] || '/cases';
@@ -59,7 +66,15 @@ const Sidebar = ({ collapsed }) => {
     officer: 'Officer',
     ward_commander: 'Station Commander',
     cid: 'CID',
+    cid_director: 'CID Director',
+    cid_supervisor: 'CID Supervisor',
+    cid_officer: 'CID Officer',
     court: 'Court',
+    court_admin: 'Court Administrator',
+    judge: 'Judge',
+    prosecutor: 'Prosecutor',
+    prosecutor_liaison: 'Prosecutor Liaison',
+    court_clerk: 'Court Clerk',
     jail: 'Jail',
     state_admin: 'State Admin',
     region_admin: 'Region Admin',
@@ -80,11 +95,13 @@ const Sidebar = ({ collapsed }) => {
     if (!role) return [];
 
     const stationOperationRoles = ['district_admin', 'neighborhood_admin'];
-    const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'waax_commander'];
-    const canRegisterCase = ['admin', 'officer', ...stationOperationRoles].includes(role);
-    const canViewOffenders = ['admin', 'officer', 'cid', 'court', 'jail', 'staff', ...commanderRoles, ...stationOperationRoles].includes(role);
-    const canViewEvidence = ['admin', 'officer', 'cid', 'court', 'jail', 'staff', ...stationOperationRoles].includes(role);
-    const canViewReports = ['admin', 'region_admin', 'officer', 'cid', 'court', 'jail', ...commanderRoles, ...stationOperationRoles].includes(role);
+    const commanderRoles = ['ward_commander', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'waax_commander'];
+    const stationWorkflowRoles = ['ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', 'district_commander', 'police_station_commander', 'waax_commander'];
+    const courtRoles = ['court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk'];
+    const cidRoles = ['cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
+    const isCourtRole = courtRoles.includes(role);
+    const canViewOffenders = ['admin', 'officer', ...cidRoles, 'jail', 'staff', ...commanderRoles, ...stationOperationRoles].includes(role);
+    const canViewReports = ['admin', 'region_admin', 'officer', ...cidRoles, 'jail', ...commanderRoles, ...stationOperationRoles].includes(role);
 
     const primaryItems = [
       {
@@ -92,30 +109,27 @@ const Sidebar = ({ collapsed }) => {
         icon: <DashboardOutlined />,
         label: 'Dashboard',
       },
-      {
+      ...(!isCourtRole ? [{
         key: '/search',
         icon: <SearchOutlined />,
         label: 'Search',
-      },
-      {
+      }] : []),
+      ...(!isCourtRole ? [{
         key: '/cases',
         icon: <FileSearchOutlined />,
         label: 'Cases',
-      },
+      }] : []),
+      ...(stationWorkflowRoles.includes(role) ? [{
+        key: '/ob-register',
+        icon: <DatabaseOutlined />,
+        label: 'OB Register',
+      }] : []),
       ...(canViewOffenders ? [{
         key: '/offenders',
         icon: <IdcardOutlined />,
         label: 'Offenders',
       }] : []),
     ];
-
-    if (canRegisterCase) {
-      primaryItems.push({
-        key: '/cases/new',
-        icon: <PlusCircleOutlined />,
-        label: 'Register Case',
-      });
-    }
 
     const adminMenus = [];
 
@@ -128,7 +142,14 @@ const Sidebar = ({ collapsed }) => {
         children: [
           { key: '/special-users/admin', label: 'Administrators' },
           { key: '/special-users/cid', label: 'CID' },
+          { key: '/special-users/cid_director', label: 'CID Directors' },
+          { key: '/special-users/cid_supervisor', label: 'CID Supervisors' },
+          { key: '/special-users/cid_officer', label: 'CID Officers' },
           { key: '/special-users/court', label: 'Court' },
+          { key: '/special-users/prosecutor', label: 'Prosecutors' },
+          { key: '/special-users/prosecutor_liaison', label: 'Prosecutor Liaisons' },
+          { key: '/special-users/judge', label: 'Judges' },
+          { key: '/special-users/court_clerk', label: 'Court Clerks' },
           { key: '/special-users/jail', label: 'Jail' },
         ],
       });

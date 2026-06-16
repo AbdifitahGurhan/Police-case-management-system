@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useCallback, useState, useEffect } from 'react';
-import { Table, Card, Typography, Space, Input, Tag, Button, Breadcrumb, Tooltip, App } from 'antd';
+import { Table, Card, Typography, Space, Input, Tag, Button, Breadcrumb, Tooltip, App, Modal } from 'antd';
 import { SearchOutlined, DatabaseOutlined, EyeOutlined, FileSearchOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
@@ -17,6 +17,7 @@ export default function EvidenceBrowserPage() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [previewRecord, setPreviewRecord] = useState(null);
 
   const fetchEvidence = useCallback(async () => {
     setLoading(true);
@@ -55,8 +56,8 @@ export default function EvidenceBrowserPage() {
             <Button size="small" icon={<FileSearchOutlined />}>Case File</Button>
            </Link>
            {record.file_url && (
-              <Button size="small" type="link" href={`${UPLOAD_BASE_URL}${record.file_url}`} target="_blank">
-                Open File
+              <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => setPreviewRecord(record)}>
+                Preview
               </Button>
            )}
         </Space>
@@ -87,6 +88,33 @@ export default function EvidenceBrowserPage() {
           />
           <Table columns={columns} dataSource={filteredData} rowKey="id" loading={loading} />
         </Card>
+
+        <Modal
+          title={previewRecord?.title || 'Evidence Preview'}
+          open={!!previewRecord}
+          onCancel={() => setPreviewRecord(null)}
+          footer={previewRecord?.file_url ? (
+            <Button href={`${UPLOAD_BASE_URL}${previewRecord.file_url}`} target="_blank">Open in New Tab</Button>
+          ) : null}
+          width={900}
+        >
+          {previewRecord?.file_url && (
+            <div className="evidence-preview-frame">
+              {previewRecord.mime_type?.startsWith('image/') ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`${UPLOAD_BASE_URL}${previewRecord.file_url}`} alt={previewRecord.title} />
+              ) : previewRecord.mime_type === 'application/pdf' || previewRecord.file_url?.toLowerCase().endsWith('.pdf') ? (
+                <iframe title={previewRecord.title} src={`${UPLOAD_BASE_URL}${previewRecord.file_url}`} />
+              ) : previewRecord.mime_type?.startsWith('text/') || previewRecord.file_url?.toLowerCase().endsWith('.txt') ? (
+                <iframe title={previewRecord.title} src={`${UPLOAD_BASE_URL}${previewRecord.file_url}`} />
+              ) : (
+                <div className="evidence-preview-empty">
+                  <Text type="secondary">Preview is not available for this file type. Open it in a new tab to inspect it.</Text>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
       </Space>
     </ProtectedRoute>
   );

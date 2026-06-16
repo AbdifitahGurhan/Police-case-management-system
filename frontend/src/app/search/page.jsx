@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { App, Button, Card, Col, DatePicker, Form, Input, Row, Space, Table, Tag, Typography, Upload } from 'antd';
+import { App, Button, Card, Col, DatePicker, Form, Input, Row, Select, Space, Table, Tag, Typography, Upload } from 'antd';
 import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
@@ -9,12 +9,16 @@ import dayjs from 'dayjs';
 import { disabledFutureDate, noFutureDateRule, phoneRules, textLengthRule } from '@/utils/validation';
 
 const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
 
 export default function SearchMatchingPage() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  const [globalForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [globalLoading, setGlobalLoading] = useState(false);
   const [results, setResults] = useState([]);
+  const [globalResults, setGlobalResults] = useState([]);
   const [faceImage, setFaceImage] = useState('');
 
   const beforeFaceUpload = (file) => {
@@ -71,6 +75,57 @@ export default function SearchMatchingPage() {
     },
   ];
 
+  const handleGlobalSearch = async (values) => {
+    setGlobalLoading(true);
+    try {
+      const params = {
+        q: values.q,
+        status: values.status,
+        priority: values.priority,
+        station: values.station,
+      };
+      if (values.date_range?.[0] && values.date_range?.[1]) {
+        params.from_date = values.date_range[0].format('YYYY-MM-DD');
+        params.to_date = values.date_range[1].format('YYYY-MM-DD');
+      }
+      const res = await api.get('/search', { params });
+      setGlobalResults(res.data.data || []);
+      message.success(`${res.data.data?.length || 0} result(s) found.`);
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Global search failed.');
+    } finally {
+      setGlobalLoading(false);
+    }
+  };
+
+  const globalColumns = [
+    {
+      title: 'Type',
+      dataIndex: 'result_type',
+      render: (value) => <Tag color={value === 'case' ? 'blue' : 'purple'}>{String(value).toUpperCase()}</Tag>,
+    },
+    {
+      title: 'Record',
+      dataIndex: 'title',
+      render: (value, row) => (
+        <Space orientation="vertical" size={0}>
+          <Text strong>{value || row.case_number || row.ob_number}</Text>
+          <Text type="secondary">{row.case_number || row.ob_number || `ID ${row.id}`}</Text>
+        </Space>
+      ),
+    },
+    { title: 'Status', dataIndex: 'status', render: (value) => value ? <Tag>{String(value).replaceAll('_', ' ').toUpperCase()}</Tag> : 'N/A' },
+    { title: 'Priority', dataIndex: 'priority', render: (value) => value ? <Tag color={value === 'critical' ? 'red' : value === 'high' ? 'volcano' : 'blue'}>{String(value).toUpperCase()}</Tag> : 'N/A' },
+    { title: 'Station', dataIndex: 'station_name', render: (value) => value || 'N/A' },
+    { title: 'Location', dataIndex: 'incident_location', render: (value) => value || 'N/A' },
+    { title: 'Date', dataIndex: 'created_at', render: (value) => value ? dayjs(value).format('DD MMM YYYY') : 'N/A' },
+    {
+      title: 'Open',
+      dataIndex: 'href',
+      render: (href) => <Button type="link" href={href}>Open</Button>,
+    },
+  ];
+
   return (
     <ProtectedRoute allowedRoles={['admin', 'region_admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'neighborhood_admin']}>
       <div className="reports-page">
@@ -81,6 +136,40 @@ export default function SearchMatchingPage() {
             <Text type="secondary">Search offenders by identity, case history, station, or face image.</Text>
           </div>
         </div>
+
+        <Card variant="none" className="report-panel">
+          <Form form={globalForm} layout="vertical" onFinish={handleGlobalSearch}>
+            <Row gutter={16}>
+              <Col xs={24} md={8}><Form.Item name="q" label="Keyword"><Input placeholder="Case #, OB #, suspect, phone, victim..." /></Form.Item></Col>
+              <Col xs={24} md={4}><Form.Item name="status" label="Status"><Select allowClear options={[
+                { value: 'draft', label: 'Draft' },
+                { value: 'CASE_REGISTERED', label: 'Registered' },
+                { value: 'under_investigation', label: 'Under Investigation' },
+                { value: 'referred_cid', label: 'Referred CID' },
+                { value: 'referred_to_court', label: 'Referred Court' },
+                { value: 'closed', label: 'Closed' },
+              ]} /></Form.Item></Col>
+              <Col xs={24} md={4}><Form.Item name="priority" label="Priority"><Select allowClear options={[
+                { value: 'critical', label: 'Critical' },
+                { value: 'high', label: 'High' },
+                { value: 'medium', label: 'Medium' },
+                { value: 'low', label: 'Low' },
+              ]} /></Form.Item></Col>
+              <Col xs={24} md={4}><Form.Item name="station" label="Station"><Input placeholder="Hodan" /></Form.Item></Col>
+              <Col xs={24} md={4}><Form.Item name="date_range" label="Date Range"><RangePicker style={{ width: '100%' }} disabledDate={disabledFutureDate} /></Form.Item></Col>
+              <Col xs={24}>
+                <Space>
+                  <Button type="primary" htmlType="submit" icon={<SearchOutlined />} loading={globalLoading}>Global Search</Button>
+                  <Button onClick={() => { globalForm.resetFields(); setGlobalResults([]); }}>Clear</Button>
+                </Space>
+              </Col>
+            </Row>
+          </Form>
+        </Card>
+
+        <Card variant="none" className="report-panel" title="Global Results">
+          <Table columns={globalColumns} dataSource={globalResults} rowKey={(record) => `${record.result_type}-${record.id}`} loading={globalLoading} scroll={{ x: 1100 }} />
+        </Card>
 
         <Card variant="none" className="report-panel">
           <Form form={form} layout="vertical" onFinish={handleSearch}>

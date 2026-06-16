@@ -5,21 +5,27 @@ const db = require('../config/database');
 
 /**
  * Generates the next OB number in format: OB-YYYY-NNNNN
- * Checks the database for the latest OB number and increments.
+ * Checks OB entries and cases for the latest OB number and increments.
  * @returns {Promise<string>} e.g. "OB-2024-00001"
  */
 async function generateOBNumber() {
   const year = new Date().getFullYear();
+  const prefix = `OB-${year}-%`;
   const [rows] = await db.query(
-    `SELECT ob_number FROM cases WHERE ob_number LIKE ? ORDER BY id DESC LIMIT 1`,
-    [`OB-${year}-%`]
+    `SELECT MAX(sequence_number) AS max_sequence
+     FROM (
+       SELECT CAST(SUBSTRING_INDEX(ob_number, '-', -1) AS UNSIGNED) AS sequence_number
+       FROM ob_entries
+       WHERE ob_number LIKE ?
+       UNION ALL
+       SELECT CAST(SUBSTRING_INDEX(ob_number, '-', -1) AS UNSIGNED) AS sequence_number
+       FROM cases
+       WHERE ob_number LIKE ?
+     ) numbers`,
+    [prefix, prefix]
   );
 
-  let sequence = 1;
-  if (rows.length > 0) {
-    const lastNum = rows[0].ob_number.split('-')[2];
-    sequence = parseInt(lastNum, 10) + 1;
-  }
+  const sequence = Number(rows[0]?.max_sequence || 0) + 1;
 
   return `OB-${year}-${String(sequence).padStart(5, '0')}`;
 }

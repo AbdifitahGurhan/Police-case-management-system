@@ -41,7 +41,7 @@ const createSpecialUser = async (req, res, next) => {
     }
 
     // Role enum check
-    const validRoles = ['ADMIN', 'CID', 'COURT', 'JAIL'];
+    const validRoles = ['ADMIN', 'CID', 'CID_DIRECTOR', 'CID_SUPERVISOR', 'CID_OFFICER', 'PROSECUTOR', 'PROSECUTOR_LIAISON', 'COURT', 'COURT_ADMIN', 'JUDGE', 'COURT_CLERK', 'JAIL'];
     if (!validRoles.includes(role.toUpperCase())) {
       return res.status(400).json({ success: false, message: 'Invalid role.' });
     }

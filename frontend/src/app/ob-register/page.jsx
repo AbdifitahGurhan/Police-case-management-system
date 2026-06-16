@@ -115,7 +115,7 @@ export default function ObRegisterPage() {
           width={720}
         >
           <Card size="small" variant="none" style={{ marginBottom: 16 }}>
-            <Space direction="vertical" size={2}>
+            <Space orientation="vertical" size={2}>
               <Text><LoginOutlined /> Location is captured automatically from your user profile.</Text>
               <Text type="secondary">{location.stateName || 'Administration'} → {location.regionName || 'Region'} → {location.districtName || 'District / Police Station'} → {location.waaxName || 'Waax'}</Text>
             </Space>

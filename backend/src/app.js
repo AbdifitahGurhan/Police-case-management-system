@@ -37,6 +37,10 @@ const stationRoutes = require('./routes/stationRoutes');
 const custodyRoutes = require('./routes/custodyRoutes');
 const obEntryRoutes = require('./routes/obEntryRoutes');
 const administrationStructureRoutes = require('./routes/administrationStructureRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const searchRoutes = require('./routes/searchRoutes');
+const courtRoutes = require('./routes/courtRoutes');
+const cidRoutes = require('./routes/cidRoutes');
 
 const app = express();
 
@@ -75,6 +79,10 @@ app.use('/api/stations', stationRoutes);
 app.use('/api/custody', custodyRoutes);
 app.use('/api/ob-entries', obEntryRoutes);
 app.use('/api/administration-structure', administrationStructureRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/court', courtRoutes);
+app.use('/api/cid', cidRoutes);
 
 // Root route
 app.get('/', (req, res) => {

@@ -29,6 +29,9 @@ export default function StandardDashboard({
   rowKey = 'id',
   actions = [],
   sidePanel,
+  viewAllHref,
+  viewAllOnClick,
+  viewAllLabel = 'View all records',
 }) {
   return (
     <ProtectedRoute allowedRoles={allowedRoles}>
@@ -98,7 +101,14 @@ export default function StandardDashboard({
               />
               {tableData.length > 0 && (
                 <div className="standard-table-footer">
-                  <Button type="text" icon={<RightOutlined />}>View all records</Button>
+                  <Button
+                    type="text"
+                    icon={<RightOutlined />}
+                    href={viewAllHref}
+                    onClick={viewAllOnClick}
+                  >
+                    {viewAllLabel}
+                  </Button>
                 </div>
               )}
             </Card>

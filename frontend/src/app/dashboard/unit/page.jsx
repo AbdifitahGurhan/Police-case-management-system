@@ -65,19 +65,15 @@ function RegionDashboard({ user }) {
   const closedCases = value(summary.closed_cases);
   const pendingCases = value(summary.pending_cases);
 
+  // Reordered and trimmed metrics to match requested Regional Dashboard items
   const metrics = [
-    { title: 'Total Cases Registered', value: totalCases, icon: <FolderOpenOutlined />, tone: 'blue' },
+    { title: 'Total Registered Cases', value: totalCases, icon: <FolderOpenOutlined />, tone: 'blue' },
     { title: 'Total Open Cases', value: openCases, icon: <FileSearchOutlined />, tone: 'amber' },
     { title: 'Total Closed Cases', value: closedCases, icon: <CheckCircleOutlined />, tone: 'green' },
     { title: 'District Police Stations', value: value(summary.district_police_stations), icon: <BankOutlined />, tone: 'purple' },
     { title: 'Waax Police Stations', value: value(summary.waax_police_stations), icon: <HomeOutlined />, tone: 'blue' },
-    { title: 'Officers Registered', value: value(summary.officers_registered), icon: <TeamOutlined />, tone: 'green' },
-    { title: 'Suspects Registered', value: value(summary.suspects_registered), icon: <UserOutlined />, tone: 'red' },
-    { title: 'Victims Registered', value: value(summary.victims_registered), icon: <SafetyCertificateOutlined />, tone: 'amber' },
-    { title: 'Wanted Persons', value: value(summary.wanted_persons), icon: <AlertOutlined />, tone: 'red' },
-    { title: 'Arrest Records', value: value(summary.arrest_records), icon: <SafetyCertificateOutlined />, tone: 'purple' },
-    { title: 'Released Cases', value: value(summary.released_cases), icon: <CheckCircleOutlined />, tone: 'green' },
-    { title: 'Active Users', value: value(summary.active_users), icon: <TeamOutlined />, tone: 'blue' },
+    { title: 'Arrested Cases', value: value(summary.arrest_records) || value(data?.arrestReleaseStats?.arrests), icon: <SafetyCertificateOutlined />, tone: 'purple' },
+    { title: 'Released Cases', value: value(summary.released_cases) || value(data?.arrestReleaseStats?.releases), icon: <CheckCircleOutlined />, tone: 'green' },
   ];
 
   const stationColumns = [

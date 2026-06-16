@@ -97,10 +97,6 @@ const login = async (req, res, next) => {
       );
       return res.status(403).json({ success: false, message: 'Account is deactivated.' });
     }
-    if (user.role === 'prosecutor') {
-      return res.status(403).json({ success: false, message: 'This role has been removed from the system.' });
-    }
-
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       await db.query(

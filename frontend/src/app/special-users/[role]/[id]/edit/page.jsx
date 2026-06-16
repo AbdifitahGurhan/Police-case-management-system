@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { Card, Typography, Form, Input, Button, message, Spin, Select } from 'antd';
+import { Card, Typography, Form, Input, Button, App, Spin, Select } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/services/api';
@@ -11,6 +11,7 @@ import { optionalPasswordRules, requiredRule, textLengthRule } from '@/utils/val
 const { Title, Text } = Typography;
 
 export default function EditSpecialUserPage() {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [form] = Form.useForm();

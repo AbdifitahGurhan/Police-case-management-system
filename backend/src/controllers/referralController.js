@@ -3,6 +3,8 @@
 
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
+const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
+const { ensureCidCaseForPoliceCase } = require('../services/cidService');
 
 const actor = (req) => req.user?.username || req.user?.id || 'system';
 
@@ -60,8 +62,13 @@ const createReferral = async (req, res, next) => {
       [case_id, actor(req), referred_to_role, referred_to_user || null, reason || null, notes || null]
     );
 
-    const newStatus = referred_to_role === 'court' ? 'referred_to_court' : 'referred_cid';
+    const newStatus = referred_to_role === 'court' ? 'approved_for_court' : 'referred_to_cid';
     await db.query('UPDATE cases SET status = ? WHERE id = ?', [newStatus, case_id]);
+    if (referred_to_role === 'court') {
+      await ensureCourtCaseForPoliceCase(case_id, actor(req));
+    } else {
+      await ensureCidCaseForPoliceCase(case_id, actor(req));
+    }
 
     await db.query(
       `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)

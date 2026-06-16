@@ -27,7 +27,12 @@ export default function DashboardIndexPage() {
       district_admin: '/dashboard/unit',
       neighborhood_admin: '/dashboard/unit',
       cid: '/dashboard/cid',
+      cid_director: '/dashboard/cid',
+      cid_supervisor: '/dashboard/cid',
+      cid_officer: '/dashboard/cid',
       court: '/dashboard/court',
+      prosecutor: '/dashboard/court',
+      prosecutor_liaison: '/dashboard/cid',
       jail: '/dashboard/jail',
     };
 

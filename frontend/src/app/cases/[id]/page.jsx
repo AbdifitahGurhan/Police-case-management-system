@@ -1,7 +1,7 @@
 // src/app/cases/[id]/page.jsx
 'use client';
 
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { 
   Row, Col, Card, Typography, Space, Tag, Button, Tabs, Descriptions, 
   Timeline, Table, Modal, Form, Input, Select, Upload, Divider, App,
@@ -10,7 +10,7 @@ import {
 import { 
   ArrowLeftOutlined, EditOutlined, ShareAltOutlined, PlusOutlined,
   UserAddOutlined, SolutionOutlined, FileAddOutlined, HistoryOutlined,
-  EnvironmentOutlined
+  EnvironmentOutlined, DownloadOutlined, TeamOutlined
 } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
@@ -50,30 +50,47 @@ export default function CaseDetailsPage() {
   const [isWitnessModalOpen, setIsWitnessModalOpen] = useState(false);
   const [isArrestModalOpen, setIsArrestModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [selectedSuspect, setSelectedSuspect] = useState(null);
   const [suspectFaceImage, setSuspectFaceImage] = useState('');
   const [geography, setGeography] = useState({ regions: [], districts: [], wards: [] });
   const [transferHistory, setTransferHistory] = useState([]);
+  const [assignableOfficers, setAssignableOfficers] = useState([]);
   
-  const [form] = Form.useForm();
+  const [statusForm] = Form.useForm();
+  const [referralForm] = Form.useForm();
+  const [suspectForm] = Form.useForm();
+  const [evidenceForm] = Form.useForm();
+  const [witnessForm] = Form.useForm();
+  const [arrestForm] = Form.useForm();
+  const [assignmentForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const videoRef = useRef(null);
 
   const fetchCaseDetails = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/cases/${id}`);
       setData(res.data.data);
-      // Fetch transfers
-      const tRes = await api.get(`/transfers/history/${id}`);
-      setTransferHistory(tRes.data.data);
     } catch (err) {
       console.error(err);
-      message.error("Failed to load case details.");
+      message.error(err.response?.data?.message || "Failed to load case details.");
       router.push('/cases');
     } finally {
       setLoading(false);
     }
   }, [id, message, router]);
+
+  const fetchTransferHistory = useCallback(async () => {
+    try {
+      const tRes = await api.get(`/transfers/history/${id}`);
+      setTransferHistory(tRes.data.data || []);
+    } catch (err) {
+      setTransferHistory([]);
+    }
+  }, [id]);
 
   const fetchGeography = async () => {
     try {
@@ -84,12 +101,23 @@ export default function CaseDetailsPage() {
     }
   };
 
+  const fetchAssignableOfficers = async () => {
+    try {
+      const res = await api.get('/cases/assignable/officers');
+      setAssignableOfficers(res.data.data || []);
+    } catch (err) {
+      setAssignableOfficers([]);
+    }
+  };
+
   useEffect(() => {
     if (id) {
       fetchCaseDetails();
+      fetchTransferHistory();
       fetchGeography();
+      fetchAssignableOfficers();
     }
-  }, [id, fetchCaseDetails]);
+  }, [id, fetchCaseDetails, fetchTransferHistory]);
 
   const handleUpdateStatus = async (values) => {
     setSubmitting(true);
@@ -99,7 +127,7 @@ export default function CaseDetailsPage() {
       setIsStatusModalOpen(false);
       fetchCaseDetails();
     } catch (err) {
-      message.error("Update failed.");
+      message.error(err.response?.data?.message || "Update failed.");
     } finally {
       setSubmitting(false);
     }
@@ -132,7 +160,7 @@ export default function CaseDetailsPage() {
       const res = await api.post('/arrests', payload);
       message.success(res.data?.message || "Arrest record created successfully.");
       setIsArrestModalOpen(false);
-      form.resetFields();
+      arrestForm.resetFields();
       fetchCaseDetails();
     } catch (err) {
       message.error(err.response?.data?.message || "Failed to record arrest.");
@@ -153,7 +181,7 @@ export default function CaseDetailsPage() {
       message.success("Suspect added successfully.");
       setIsSuspectModalOpen(false);
       setSuspectFaceImage('');
-      form.resetFields();
+      suspectForm.resetFields();
       fetchCaseDetails();
     } catch (err) {
       message.error(err.response?.data?.message || "Failed to add suspect.");
@@ -162,16 +190,51 @@ export default function CaseDetailsPage() {
     }
   };
 
-  const handleSuspectFaceUpload = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
-      message.error('Please upload a JPG, PNG, or WEBP face image.');
+  const stopCamera = () => {
+    if (videoRef.current?.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks();
+      tracks.forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  useEffect(() => {
+    if (!isSuspectModalOpen) stopCamera();
+  }, [isSuspectModalOpen]);
+
+  const startCamera = async () => {
+    setCameraError('');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera not available in this browser.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => setSuspectFaceImage(String(reader.result || ''));
-    reader.readAsDataURL(file);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraActive(true);
+    } catch (err) {
+      console.error('Camera error', err);
+      setCameraError('Camera access denied or unavailable.');
+    }
+  };
+
+  const captureFace = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageDataUrl = canvas.toDataURL('image/png');
+    setSuspectFaceImage(imageDataUrl);
+    stopCamera();
   };
 
   const handleWitness = async (values) => {
@@ -244,6 +307,21 @@ export default function CaseDetailsPage() {
     }
   };
 
+  const handleAssignment = async (values) => {
+    setSubmitting(true);
+    try {
+      await api.patch(`/cases/${id}/assign`, { officer_id: values.officer_id });
+      message.success('Case assigned successfully.');
+      setIsAssignmentModalOpen(false);
+      assignmentForm.resetFields();
+      fetchCaseDetails();
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Assignment failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const submitForReview = async () => {
     try {
       await api.post('/confirmations/submit', { case_id: id });
@@ -251,6 +329,72 @@ export default function CaseDetailsPage() {
       fetchCaseDetails();
     } catch (err) {
       message.error("Submission failed.");
+    }
+  };
+
+  const exportCasePackage = async (documentType = 'case-package') => {
+    try {
+      const response = await api.get(`/cases/${id}/export`);
+      const payload = response.data.data;
+      const html = `
+        <html>
+          <head>
+            <title>${payload.case.case_number || payload.case.ob_number}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 32px; color: #111827; }
+              h1 { margin-bottom: 4px; }
+              h2 { border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-top: 28px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+              th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; vertical-align: top; }
+              th { background: #f3f4f6; }
+              .meta { color: #4b5563; margin-bottom: 20px; }
+              .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+              .box { border: 1px solid #d1d5db; padding: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>${documentType.replaceAll('-', ' ').toUpperCase()}</h1>
+            <div class="meta">Generated by ${payload.generatedBy} on ${dayjs(payload.generatedAt).format('DD MMM YYYY HH:mm')}</div>
+            <div class="grid">
+              <div class="box"><strong>Case #:</strong> ${payload.case.case_number || 'N/A'}</div>
+              <div class="box"><strong>OB #:</strong> ${payload.case.ob_number || 'N/A'}</div>
+              <div class="box"><strong>Status:</strong> ${payload.case.status || 'N/A'}</div>
+              <div class="box"><strong>Priority:</strong> ${payload.case.priority || 'N/A'}</div>
+              <div class="box"><strong>Station:</strong> ${payload.case.station_name || 'N/A'}</div>
+              <div class="box"><strong>Officer:</strong> ${payload.case.officer_name || 'N/A'}</div>
+            </div>
+            <h2>Summary</h2>
+            <p><strong>${payload.case.title || ''}</strong></p>
+            <p>${payload.case.description || 'No description recorded.'}</p>
+            <h2>Suspects</h2>
+            <table><thead><tr><th>Name</th><th>Phone</th><th>Role</th><th>Status</th></tr></thead><tbody>
+              ${payload.suspects.map((s) => `<tr><td>${s.full_name || ''}</td><td>${s.phone || ''}</td><td>${s.role_in_case || ''}</td><td>${s.arrest_status || ''}</td></tr>`).join('') || '<tr><td colspan="4">No suspects recorded.</td></tr>'}
+            </tbody></table>
+            <h2>Evidence</h2>
+            <table><thead><tr><th>Title</th><th>Type</th><th>Date</th><th>Location</th></tr></thead><tbody>
+              ${payload.evidence.map((e) => `<tr><td>${e.title || ''}</td><td>${e.type || ''}</td><td>${e.collection_date || ''}</td><td>${e.location_found || ''}</td></tr>`).join('') || '<tr><td colspan="4">No evidence recorded.</td></tr>'}
+            </tbody></table>
+            <h2>Timeline</h2>
+            <table><thead><tr><th>Date</th><th>Action</th><th>By</th><th>Description</th></tr></thead><tbody>
+              ${payload.timeline.map((a) => `<tr><td>${dayjs(a.created_at).format('DD MMM YYYY HH:mm')}</td><td>${a.action_type || ''}</td><td>${a.performed_by || ''}</td><td>${a.description || ''}</td></tr>`).join('') || '<tr><td colspan="4">No timeline recorded.</td></tr>'}
+            </tbody></table>
+            ${documentType === 'arrest-warrant' ? '<h2>Arrest Warrant</h2><p>This document supports an arrest warrant request for suspects linked to this case.</p>' : ''}
+            ${documentType === 'court-referral' ? '<h2>Court Referral</h2><p>This document packages the case facts, evidence, suspects, and timeline for court referral.</p>' : ''}
+            ${documentType === 'release-certificate' ? '<h2>Release Certificate</h2><p>This document records authorized release or closure details for this case.</p>' : ''}
+            ${documentType === 'evidence-receipt' ? '<h2>Evidence Receipt</h2><p>This document confirms evidence items collected and filed for this case.</p>' : ''}
+          </body>
+        </html>`;
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        message.warning('Please allow popups to print the case package.');
+        return;
+      }
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Could not export case package.');
     }
   };
 
@@ -262,6 +406,7 @@ export default function CaseDetailsPage() {
   const canSubmitForReview = ['admin', 'officer', ...stationOperationRoles].includes(role);
   const canReviewCase = ['admin', 'ward_commander'].includes(role);
   const canTransferCase = ['admin', 'ward_commander'].includes(role);
+  const canAssignCase = ['admin', 'ward_commander', 'district_admin', 'neighborhood_admin'].includes(role);
   const canUpdateStatus = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
   const canReferCase = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
   const canManageInvestigation = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
@@ -358,7 +503,7 @@ export default function CaseDetailsPage() {
             type="primary"
             icon={<UserAddOutlined />}
             onClick={() => {
-              form.resetFields();
+              suspectForm.resetFields();
               setSuspectFaceImage('');
               setIsSuspectModalOpen(true);
             }}
@@ -450,7 +595,29 @@ export default function CaseDetailsPage() {
             )}
 
             {canTransferCase && !caseEndedAtCourtReferral && <Button icon={<EnvironmentOutlined />} onClick={() => setIsTransferModalOpen(true)}>Transfer</Button>}
-            {canUpdateStatus && !caseEndedAtCourtReferral && <Button icon={<EditOutlined />} onClick={() => setIsStatusModalOpen(true)}>Update Status</Button>}
+            {canAssignCase && !caseEndedAtCourtReferral && (
+              <Button
+                icon={<TeamOutlined />}
+                onClick={() => {
+                  assignmentForm.setFieldsValue({ officer_id: data.assigned_officer_id });
+                  setIsAssignmentModalOpen(true);
+                }}
+              >
+                Assign Officer
+              </Button>
+            )}
+            {canUpdateStatus && !caseEndedAtCourtReferral && (
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  statusForm.setFieldsValue({ status: data.allowed_next_statuses?.[0] });
+                  setIsStatusModalOpen(true);
+                }}
+              >
+                Update Status
+              </Button>
+            )}
+            <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('case-package')}>Export Package</Button>
             {canReferCase && !caseEndedAtCourtReferral && <Button type="primary" icon={<ShareAltOutlined />} onClick={() => setIsReferralModalOpen(true)}>Refer Case</Button>}
           </Space>
         </div>
@@ -547,6 +714,28 @@ export default function CaseDetailsPage() {
                 <Descriptions.Item label="Reporting Officer">{data.officer_name}</Descriptions.Item>
                 <Descriptions.Item label="Assigned CID">{data.cid_name || <Text type="secondary">Unassigned</Text>}</Descriptions.Item>
               </Descriptions>
+              {canAssignCase && !caseEndedAtCourtReferral && (
+                <Button
+                  style={{ marginTop: 12 }}
+                  icon={<TeamOutlined />}
+                  onClick={() => {
+                    assignmentForm.setFieldsValue({ officer_id: data.assigned_officer_id });
+                    setIsAssignmentModalOpen(true);
+                  }}
+                  block
+                >
+                  Assign / Reassign Officer
+                </Button>
+              )}
+            </Card>
+            <Card title="Documents" variant="none" style={{ marginBottom: 24 }}>
+              <Space orientation="vertical" style={{ width: '100%' }}>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('case-summary')} block>Case Summary</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('arrest-warrant')} block>Arrest Warrant</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('court-referral')} block>Court Referral</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('release-certificate')} block>Release Certificate</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('evidence-receipt')} block>Evidence Receipt</Button>
+              </Space>
             </Card>
             
             <Card title="Victims & Witnesses" variant="none">
@@ -575,25 +764,36 @@ export default function CaseDetailsPage() {
       </Space>
 
       {/* Modals */}
-      <Modal title="Update Case Status" open={isStatusModalOpen} onCancel={() => setIsStatusModalOpen(false)} onOk={() => form.submit()}>
-        <Form form={form} onFinish={handleUpdateStatus} layout="vertical">
+      <Modal title="Assign Case Officer" open={isAssignmentModalOpen} onCancel={() => setIsAssignmentModalOpen(false)} onOk={() => assignmentForm.submit()}>
+        <Form form={assignmentForm} onFinish={handleAssignment} layout="vertical">
+          <Form.Item name="officer_id" label="Officer" rules={[requiredRule('Officer')]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="Select active officer"
+              options={assignableOfficers.map((officer) => ({
+                value: officer.id,
+                label: `${officer.full_name} (${officer.force_number || 'No force #'}${officer.rank_name ? `, ${officer.rank_name}` : ''})`,
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal title="Update Case Status" open={isStatusModalOpen} onCancel={() => setIsStatusModalOpen(false)} onOk={() => statusForm.submit()}>
+        <Form form={statusForm} onFinish={handleUpdateStatus} layout="vertical">
           <Form.Item name="status" label="New Status" rules={[requiredRule('Status')]}>
             <Select>
-              <Option value="draft">Draft</Option>
-              <Option value="pending_commander_review">Pending Review</Option>
-              <Option value="under_investigation">Under Investigation</Option>
-              <Option value="referred_cid">Referred to CID</Option>
-              <Option value="referred_to_court">Referred to Court</Option>
-              <Option value="rejected">Rejected</Option>
-              <Option value="closed">Closed</Option>
-              <Option value="archived">Archived</Option>
+              {(data.allowed_next_statuses || []).map((status) => (
+                <Option key={status} value={status}>{status.replaceAll('_', ' ').toUpperCase()}</Option>
+              ))}
             </Select>
           </Form.Item>
         </Form>
       </Modal>
 
-      <Modal title="Refer Case" open={isReferralModalOpen} onCancel={() => setIsReferralModalOpen(false)} onOk={() => form.submit()}>
-        <Form form={form} onFinish={handleReferral} layout="vertical">
+      <Modal title="Refer Case" open={isReferralModalOpen} onCancel={() => setIsReferralModalOpen(false)} onOk={() => referralForm.submit()}>
+        <Form form={referralForm} onFinish={handleReferral} layout="vertical">
           <Form.Item name="referred_to_role" label="Refer To" rules={[requiredRule('Referral destination')]}>
             <Select>
               <Option value="cid">CID</Option>
@@ -604,8 +804,8 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title="Add Suspect to Case" open={isSuspectModalOpen} onCancel={() => setIsSuspectModalOpen(false)} onOk={() => form.submit()} width={820}>
-        <Form form={form} onFinish={handleSuspect} layout="vertical">
+      <Modal title="Add Suspect to Case" open={isSuspectModalOpen} onCancel={() => { setIsSuspectModalOpen(false); stopCamera(); }} onOk={() => suspectForm.submit()} width={820}>
+        <Form form={suspectForm} onFinish={handleSuspect} layout="vertical">
           <Row gutter={16}>
             <Col xs={24} md={16}><Form.Item name="full_name" label="Full Name" rules={nameRules('Suspect name')}><Input /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="alias" label="Alias" rules={[textLengthRule('Alias', 2, 150)]}><Input /></Form.Item></Col>
@@ -642,20 +842,34 @@ export default function CaseDetailsPage() {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label="Offender Photo / Face Capture">
-                <div className="face-preview-panel" style={{ minHeight: 180 }}>
+                <div className="face-preview-panel" style={{ minHeight: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
                   {suspectFaceImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={suspectFaceImage} alt="Suspect face capture preview" />
+                    <img src={suspectFaceImage} alt="Suspect face capture preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
+                  ) : isCameraActive ? (
+                    <video ref={videoRef} autoPlay playsInline muted className="face-camera-video" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
                   ) : (
-                    <Text type="secondary">No face image captured yet</Text>
+                    <Text type="secondary">No face image captured yet. Use the camera to capture the suspect.</Text>
                   )}
                 </div>
-                <Button style={{ marginTop: 8 }}>
-                  <label className="face-upload-label">
-                    Capture / Upload Face
-                    <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleSuspectFaceUpload} />
-                  </label>
-                </Button>
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {!isCameraActive && !suspectFaceImage && (
+                    <Button type="primary" onClick={startCamera}>Start Camera</Button>
+                  )}
+                  {isCameraActive && (
+                    <>
+                      <Button type="primary" onClick={captureFace}>Capture Photo</Button>
+                      <Button onClick={stopCamera}>Stop Camera</Button>
+                    </>
+                  )}
+                  {suspectFaceImage && (
+                    <>
+                      <Button type="primary" onClick={() => { setSuspectFaceImage(''); startCamera(); }}>Retake Photo</Button>
+                      <Button danger onClick={() => setSuspectFaceImage('')}>Remove Photo</Button>
+                    </>
+                  )}
+                </div>
+                {cameraError && <Text type="danger" style={{ display: 'block', marginTop: 8 }}>{cameraError}</Text>}
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -667,23 +881,23 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title="Add Evidence" open={isEvidenceModalOpen} onCancel={() => setIsEvidenceModalOpen(false)} onOk={() => form.submit()}>
-        <Form form={form} onFinish={handleEvidence} layout="vertical">
+      <Modal title="Add Evidence" open={isEvidenceModalOpen} onCancel={() => setIsEvidenceModalOpen(false)} onOk={() => evidenceForm.submit()}>
+        <Form form={evidenceForm} onFinish={handleEvidence} layout="vertical">
           <Form.Item name="title" label="Title" rules={[requiredRule('Evidence title'), textLengthRule('Evidence title', 3, 255)]}><Input /></Form.Item>
           <Form.Item name="type" label="Type" initialValue="document"><Select><Option value="document">Document</Option><Option value="physical">Physical</Option></Select></Form.Item>
           <Form.Item name="file" label="Attachment" valuePropName="fileList" getValueFromEvent={(event) => event?.fileList || []}><Upload beforeUpload={() => false} maxCount={1}><Button icon={<PlusOutlined />}>Select File</Button></Upload></Form.Item>
         </Form>
       </Modal>
 
-      <Modal title="Record Witness Statement" open={isWitnessModalOpen} onCancel={() => setIsWitnessModalOpen(false)} onOk={() => form.submit()} width={700}>
-        <Form form={form} onFinish={handleWitness} layout="vertical">
+      <Modal title="Record Witness Statement" open={isWitnessModalOpen} onCancel={() => setIsWitnessModalOpen(false)} onOk={() => witnessForm.submit()} width={700}>
+        <Form form={witnessForm} onFinish={handleWitness} layout="vertical">
           <Form.Item name="full_name" label="Full Name" rules={nameRules('Witness name')}><Input /></Form.Item>
           <Form.Item name="statement" label="Statement" rules={[requiredRule('Statement'), textLengthRule('Statement', 10, 5000)]}><TextArea rows={6} /></Form.Item>
         </Form>
       </Modal>
 
-      <Modal title={`Record Arrest: ${selectedSuspect?.full_name}`} open={isArrestModalOpen} onCancel={() => setIsArrestModalOpen(false)} onOk={() => form.submit()} width={760}>
-        <Form form={form} onFinish={handleArrest} layout="vertical">
+      <Modal title={`Record Arrest: ${selectedSuspect?.full_name}`} open={isArrestModalOpen} onCancel={() => setIsArrestModalOpen(false)} onOk={() => arrestForm.submit()} width={760}>
+        <Form form={arrestForm} onFinish={handleArrest} layout="vertical">
           <Row gutter={16}>
             <Col xs={24} md={12}><Form.Item name="arrest_location" label="Location" rules={[requiredRule('Arrest location'), textLengthRule('Arrest location', 3, 255)]}><Input /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="arrest_date" label="Arrest Date" rules={[noFutureDateTimeRule('Arrest date')]}><DatePicker showTime style={{ width: '100%' }} disabledDate={disabledFutureDate} /></Form.Item></Col>

@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Tag, Typography } from 'antd';
+import { Card, Col, Row, Tag, Typography } from 'antd';
 import {
   AlertOutlined,
   CheckCircleOutlined,
@@ -18,17 +18,20 @@ import StandardDashboard from '@/components/dashboard/StandardDashboard';
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [stationStats, setStationStats] = useState([]);
+  const [charts, setCharts] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [summaryRes, stationRes] = await Promise.all([
+        const [summaryRes, stationRes, chartRes] = await Promise.all([
           api.get('/reports/summary'),
           api.get('/reports/by-station'),
+          api.get('/reports/dashboard-charts'),
         ]);
         setStats(summaryRes.data.data);
         setStationStats(stationRes.data.data);
+        setCharts(chartRes.data.data);
       } catch (err) {
         console.error('Failed to fetch admin stats', err);
       } finally {
@@ -84,7 +87,31 @@ export default function AdminDashboard() {
     }
   ];
 
+  const renderMiniChart = (title, rows = []) => {
+    const max = Math.max(...rows.map((row) => Number(row.value || 0)), 1);
+    return (
+      <Card variant="none" className="standard-panel dashboard-chart-card" title={title}>
+        <div className="dashboard-chart-list">
+          {rows.length === 0 ? (
+            <Typography.Text type="secondary">No data available</Typography.Text>
+          ) : rows.map((row) => (
+            <div className="dashboard-chart-row" key={`${title}-${row.label}`}>
+              <div className="dashboard-chart-label">
+                <span>{row.label || 'Unknown'}</span>
+                <strong>{row.value || 0}</strong>
+              </div>
+              <div className="dashboard-chart-track">
+                <div style={{ width: `${Math.max((Number(row.value || 0) / max) * 100, 4)}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+  };
+
   return (
+    <>
     <StandardDashboard
       allowedRoles={['admin']}
       eyebrow="Command Center"
@@ -99,7 +126,7 @@ export default function AdminDashboard() {
       ]}
       sidePanel={{
         title: 'System Snapshot',
-        content: (
+        content: ( 
           <div className="standard-side-list">
             <div><UserOutlined /><span>Active Users</span><strong>{activeUsers}</strong></div>
             <div><EnvironmentOutlined /><span>Stations</span><strong>{stationsCount}</strong></div>
@@ -112,6 +139,16 @@ export default function AdminDashboard() {
       tableColumns={columns}
       tableData={stationStats}
       rowKey="station_name"
+      viewAllHref="/stations"
     />
+    <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+      <Col xs={24} lg={12}>{renderMiniChart('Cases by Station', charts?.byStation)}</Col>
+      <Col xs={24} lg={12}>{renderMiniChart('Cases by Crime Type', charts?.byCrimeType)}</Col>
+      <Col xs={24} lg={12}>{renderMiniChart('Cases by Month', charts?.byMonth)}</Col>
+      <Col xs={24} lg={12}>{renderMiniChart('Open vs Closed', charts?.openClosed)}</Col>
+      <Col xs={24} lg={12}>{renderMiniChart('Critical Cases', charts?.criticalCases)}</Col>
+      <Col xs={24} lg={12}>{renderMiniChart('Court Outcomes', charts?.courtOutcomes)}</Col>
+    </Row>
+    </>
   );
 }

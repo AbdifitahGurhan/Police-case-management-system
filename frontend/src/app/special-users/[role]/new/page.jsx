@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { Card, Typography, Form, Input, Button, message } from 'antd';
+import { Card, Typography, Form, Input, Button, App } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/services/api';
@@ -11,6 +11,7 @@ import { passwordRules, textLengthRule, usernameRules } from '@/utils/validation
 const { Title, Text } = Typography;
 
 export default function NewSpecialUserPage() {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const router = useRouter();
@@ -47,11 +48,11 @@ export default function NewSpecialUserPage() {
 
         <Form layout="vertical" form={form} onFinish={handleFinish}>
           <Form.Item 
-            label="Username" 
+            label="Username or Email" 
             name="username" 
             rules={usernameRules}
           >
-            <Input placeholder="Unique username" />
+            <Input placeholder="Unique username or email" />
           </Form.Item>
 
           <Form.Item 

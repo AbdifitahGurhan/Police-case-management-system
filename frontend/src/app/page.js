@@ -24,7 +24,12 @@ export default function Home() {
           neighborhood_admin: '/dashboard/unit',
           officer: '/dashboard/officer',
           cid: '/dashboard/cid',
+          cid_director: '/dashboard/cid',
+          cid_supervisor: '/dashboard/cid',
+          cid_officer: '/dashboard/cid',
           court: '/dashboard/court',
+          prosecutor: '/dashboard/court',
+          prosecutor_liaison: '/dashboard/cid',
           jail: '/dashboard/jail'
         };
         router.push(roleRedirects[user.role] || '/cases');

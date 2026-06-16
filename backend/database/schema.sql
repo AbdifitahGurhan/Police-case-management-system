@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS special_users (
   id INT PRIMARY KEY AUTO_INCREMENT,
   username VARCHAR(150) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('ADMIN', 'CID', 'PROSECUTOR', 'COURT', 'JAIL') NOT NULL,
+  role ENUM('ADMIN', 'CID', 'CID_DIRECTOR', 'CID_SUPERVISOR', 'CID_OFFICER', 'PROSECUTOR', 'PROSECUTOR_LIAISON', 'COURT', 'COURT_ADMIN', 'JUDGE', 'COURT_CLERK', 'JAIL') NOT NULL,
   assigned_unit VARCHAR(255),
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -549,6 +549,70 @@ CREATE TABLE IF NOT EXISTS referrals (
   referred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   responded_at TIMESTAMP NULL,
   CONSTRAINT fk_ref_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cid_cases (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  police_case_id INT NOT NULL UNIQUE,
+  case_number VARCHAR(50) NOT NULL,
+  ob_number VARCHAR(50),
+  case_title VARCHAR(255),
+  crime_category VARCHAR(150),
+  priority ENUM('low','medium','high','critical') DEFAULT 'medium',
+  assigned_officer VARCHAR(150),
+  assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  supervisor VARCHAR(150),
+  assignment_status ENUM('assigned','accepted','reassigned','rejected') DEFAULT 'assigned',
+  investigation_status ENUM('open','under_investigation','evidence_collection','witness_interviews','suspect_tracking','arrest_made','investigation_completed','supervisor_review','approved','rejected','sent_to_prosecutor','sent_to_court') DEFAULT 'open',
+  investigation_started_at TIMESTAMP NULL,
+  findings TEXT,
+  recommendations TEXT,
+  supervisor_notes TEXT,
+  prosecutor_forwarded_at TIMESTAMP NULL,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cid_case_police FOREIGN KEY (police_case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cid_progress_notes (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  cid_case_id INT NOT NULL,
+  note TEXT NOT NULL,
+  status VARCHAR(100),
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cid_progress_case FOREIGN KEY (cid_case_id) REFERENCES cid_cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cid_crime_scenes (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  cid_case_id INT NOT NULL,
+  location VARCHAR(255) NOT NULL,
+  date_visited DATE,
+  officer VARCHAR(150),
+  observations TEXT,
+  scene_photos TEXT,
+  collected_evidence TEXT,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cid_scene_case FOREIGN KEY (cid_case_id) REFERENCES cid_cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cid_reports (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  cid_case_id INT NOT NULL,
+  report_title VARCHAR(255) NOT NULL,
+  case_summary TEXT,
+  activities TEXT,
+  evidence_summary TEXT,
+  witness_summary TEXT,
+  suspect_analysis TEXT,
+  findings TEXT NOT NULL,
+  recommendations TEXT,
+  submitted_by VARCHAR(100),
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cid_report_case FOREIGN KEY (cid_case_id) REFERENCES cid_cases(id) ON DELETE CASCADE
 );
 
 -- ============================================================

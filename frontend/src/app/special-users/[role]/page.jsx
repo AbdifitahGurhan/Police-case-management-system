@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { Table, Card, Typography, Space, Button, message, Popconfirm, Tag } from 'antd';
+import { Table, Card, Typography, Space, Button, App, Popconfirm, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/services/api';
@@ -10,6 +10,7 @@ import api from '@/services/api';
 const { Title, Text } = Typography;
 
 export default function SpecialUserListPage() {
+  const { message } = App.useApp();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();

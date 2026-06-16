@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { Table, Card, Typography, Space, Button, Modal, Form, Input, message, Popconfirm, Tag } from 'antd';
+import { Table, Card, Typography, Space, Button, Modal, Form, Input, App, Popconfirm, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, StarOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 import { codeRules, requiredRule, textLengthRule } from '@/utils/validation';

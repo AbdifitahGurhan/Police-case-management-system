@@ -458,36 +458,39 @@ export default function OffendersPage() {
     {
       title: 'Offender',
       dataIndex: 'full_name',
+      width: 260,
       render: (name, row) => (
-        <Space>
+        <Space align="start" style={{ minWidth: 220 }}>
           {row.photo_url ? (
-            <Avatar src={<Image src={`${UPLOAD_BASE_URL}${row.photo_url}`} alt={name} preview={false} />} />
+            <Avatar size={48} src={<Image src={`${UPLOAD_BASE_URL}${row.photo_url}`} alt={name} preview={false} />} />
           ) : (
-            <Avatar icon={<UserOutlined />} />
+            <Avatar size={48} icon={<UserOutlined />} />
           )}
-          <Space orientation="vertical" size={0}>
-            <Text strong>{name}</Text>
-            <Text type="secondary">{row.alias || 'No alias'}</Text>
-          </Space>
+          <div style={{ minWidth: 150, maxWidth: 260 }}>
+            <Text strong style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</Text>
+            <Text type="secondary" style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.alias || 'No alias'}</Text>
+          </div>
         </Space>
       ),
     },
-    { title: 'Gender', dataIndex: 'gender', render: (value) => <Tag>{value || 'N/A'}</Tag> },
+    { title: 'Gender', dataIndex: 'gender', width: 110, render: (value) => <Tag>{value || 'N/A'}</Tag> },
     { title: 'Age', dataIndex: 'age', width: 80 },
-    { title: 'Nationality', dataIndex: 'nationality' },
-    { title: 'Phone', dataIndex: 'phone' },
-    { title: 'Cases', dataIndex: 'case_count', align: 'center', render: (value) => <Tag color={value > 1 ? 'red' : 'blue'}>{value || 0}</Tag> },
-    { title: 'Status', dataIndex: 'is_arrested', render: (value) => Number(value) === 1 ? <Tag color="red">Arrested</Tag> : <Tag color="green">Not Arrested</Tag> },
+    { title: 'Nationality', dataIndex: 'nationality', width: 140, ellipsis: { showTitle: false } },
+    { title: 'Phone', dataIndex: 'phone', width: 150, ellipsis: { showTitle: false } },
+    { title: 'Cases', dataIndex: 'case_count', width: 110, align: 'center', render: (value) => <Tag color={value > 1 ? 'red' : 'blue'}>{value || 0}</Tag> },
+    { title: 'Status', dataIndex: 'is_arrested', width: 130, render: (value) => Number(value) === 1 ? <Tag color="red">Arrested</Tag> : <Tag color="green">Not Arrested</Tag> },
     {
-      title: 'Ficil',
+      title: 'Actions',
+      key: 'actions',
+      width: 240,
       render: (_, row) => (
-        <Space wrap>
-          {canManageOffenders && <Button onClick={() => openEdit(row)}>Report</Button>}
-          <Button icon={<HistoryOutlined />} onClick={() => openHistory(row)}>History</Button>
+        <Space wrap size="small">
+          {canManageOffenders && <Button size="small" onClick={() => openEdit(row)}>Report</Button>}
+          <Button size="small" icon={<HistoryOutlined />} onClick={() => openHistory(row)}>History</Button>
           {canReleaseOffenders && Number(row.is_arrested) === 1 && (
-              <Button type="primary" icon={<UnlockOutlined />} onClick={() => openRelease(row)}>
-                Release
-              </Button>
+            <Button size="small" type="primary" icon={<UnlockOutlined />} onClick={() => openRelease(row)}>
+              Release
+            </Button>
           )}
           {!canManageOffenders && !(canReleaseOffenders && Number(row.is_arrested) === 1) && <Tag color="blue">View Only</Tag>}
         </Space>
@@ -538,7 +541,7 @@ export default function OffendersPage() {
             <Col xs={12} lg={4}><Select placeholder="Status" value={filters.arrested} onChange={(value) => setFilters((prev) => ({ ...prev, arrested: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Arrested' }, { value: '0', label: 'Not Arrested' }]} /></Col>
             <Col xs={24} lg={4}><Select placeholder="Repeat" value={filters.repeat} onChange={(value) => setFilters((prev) => ({ ...prev, repeat: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Repeat' }]} /></Col>
           </Row>
-          <Table columns={columns} dataSource={offenders} rowKey="id" loading={loading} scroll={{ x: 960 }} />
+          <Table columns={columns} dataSource={offenders} rowKey="id" loading={loading} scroll={{ x: 1200 }} />
         </Card>
 
         <Modal title={editing ? 'Edit Offender Profile' : 'Register Offender'} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} confirmLoading={saving} width={820} destroyOnHidden forceRender>
@@ -576,10 +579,10 @@ export default function OffendersPage() {
             {selectedProfile && (
               <Space orientation="vertical" style={{ width: '100%' }} size="middle">
                 {selectedProfile.release_alerts?.length > 0 && (
-                  <Alert type="warning" showIcon message={selectedProfile.release_alerts[0].message} />
+                  <Alert type="warning" showIcon title={selectedProfile.release_alerts[0].message} />
                 )}
                 {selectedProfile.repeat_offender && (
-                  <Alert type="info" showIcon message="This person has previous arrest or case history connected to the same profile." />
+                  <Alert type="info" showIcon title="This person has previous arrest or case history connected to the same profile." />
                 )}
                 <Descriptions bordered size="small" column={2}>
                   <Descriptions.Item label="Full Name">{selectedProfile.profile.full_name}</Descriptions.Item>

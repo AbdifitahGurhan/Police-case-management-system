@@ -34,15 +34,18 @@ import {
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import dayjs from 'dayjs';
+import { useAuth } from '@/contexts/AuthContext';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function ReportsPage() {
   const { message } = App.useApp();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [securityAudit, setSecurityAudit] = useState(null);
   const [stationStats, setStationStats] = useState([]);
   const [stations, setStations] = useState([]);
   const [regions, setRegions] = useState([]);
@@ -191,6 +194,21 @@ export default function ReportsPage() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+
+    const fetchSecurityAudit = async () => {
+      try {
+        const response = await api.get('/reports/security-audit');
+        setSecurityAudit(response.data.data);
+      } catch (err) {
+        console.error('Failed to load security audit dashboard', err);
+      }
+    };
+
+    fetchSecurityAudit();
+  }, [user?.role]);
+
   const caseStats = stats?.caseStats || {};
   const totalCases = Number(caseStats.total_cases || 0);
   const activeCases = Number(caseStats.confirmed_active || 0) + Number(caseStats.pending_review || 0) + Number(caseStats.draft || 0);
@@ -298,6 +316,22 @@ export default function ReportsPage() {
     const csv = lines.map((line) => line.map(csvEscape).join(',')).join('\n');
     downloadFile(`spf-report-${dayjs().format('YYYYMMDD-HHmm')}.csv`, csv, 'text/csv;charset=utf-8');
     message.success('Report exported.');
+  };
+
+  const handleExportCasesCsv = async () => {
+    try {
+      const response = await api.get('/reports/export/cases.csv', { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'cases-export.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      message.error('Failed to export cases CSV.');
+    }
   };
 
   const handleIntegrityReport = () => {
@@ -715,8 +749,9 @@ export default function ReportsPage() {
 
   const evidenceColumns = [
     {
-      title: 'Tag',
-      dataIndex: 'evidence_tag',
+      title: 'Evidence #',
+      dataIndex: 'evidence_number',
+      render: (value) => value || 'N/A',
     },
     {
       title: 'Description',
@@ -724,25 +759,26 @@ export default function ReportsPage() {
       ellipsis: true,
     },
     {
-      title: 'Quantity',
-      dataIndex: 'quantity',
-      align: 'center',
+      title: 'Type',
+      dataIndex: 'evidence_type',
+      render: (value) => <Tag>{value || 'N/A'}</Tag>,
     },
     {
-      title: 'Condition',
-      dataIndex: 'condition',
+      title: 'Found At',
+      dataIndex: 'storage_location',
+      ellipsis: true,
+    },
+    {
+      title: 'Collected By',
+      dataIndex: 'collected_by',
     },
     {
       title: 'Status',
       dataIndex: 'status',
     },
     {
-      title: 'Station',
-      dataIndex: 'station_name',
-    },
-    {
       title: 'Recorded',
-      dataIndex: 'created_at',
+      dataIndex: 'collection_date',
       render: (value) => value ? dayjs(value).format('YYYY-MM-DD') : 'N/A',
     },
   ];
@@ -827,6 +863,9 @@ export default function ReportsPage() {
               {dateRangeError && <Text type="danger">{dateRangeError}</Text>}
             </Space>
             <Button icon={<DownloadOutlined />} onClick={handleExportReport} loading={loading}>Export</Button>
+            {user?.role === 'admin' && (
+              <Button icon={<DownloadOutlined />} onClick={handleExportCasesCsv}>Cases CSV</Button>
+            )}
             <Button type="primary" icon={<SafetyCertificateOutlined />} onClick={handleIntegrityReport} loading={loading}>
               Integrity Report
             </Button>
@@ -1145,6 +1184,46 @@ export default function ReportsPage() {
             </Card>
           </Col>
         </Row>
+
+        {user?.role === 'admin' && securityAudit && (
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+            <Col xs={24} lg={8}>
+              <Card variant="none" className="report-panel" title="Security Summary">
+                <Space orientation="vertical" style={{ width: '100%' }}>
+                  <Statistic title="Successful Logins" value={securityAudit.summary?.successful_logins || 0} />
+                  <Statistic title="Failed Logins" value={securityAudit.summary?.failed_logins || 0} />
+                  <Statistic title="Case Changes" value={securityAudit.summary?.case_changes || 0} />
+                  <Statistic title="Evidence Changes" value={securityAudit.summary?.evidence_changes || 0} />
+                </Space>
+              </Card>
+            </Col>
+            <Col xs={24} lg={16}>
+              <Card variant="none" className="report-panel" title="Login Attempts">
+                {renderDataTable({
+                  columns: [
+                    { title: 'Time', dataIndex: 'created_at', render: (value) => value ? dayjs(value).format('DD MMM YYYY HH:mm') : 'N/A' },
+                    { title: 'Username', dataIndex: 'username' },
+                    { title: 'Status', dataIndex: 'success', render: (value) => <Tag color={value ? 'green' : 'red'}>{value ? 'SUCCESS' : 'FAILED'}</Tag> },
+                    { title: 'Reason', dataIndex: 'failure_reason', render: (value) => value || 'N/A' },
+                    { title: 'IP Address', dataIndex: 'ip_address' },
+                  ],
+                  dataSource: securityAudit.logins || [],
+                  rowKey: (row) => `login-${row.id}`,
+                })}
+              </Card>
+            </Col>
+            <Col xs={24} lg={12}>
+              <Card variant="none" className="report-panel" title="Case Change Audit">
+                {renderDataTable({ columns: auditColumns, dataSource: securityAudit.caseChanges || [], rowKey: (row) => `case-audit-${row.id}` })}
+              </Card>
+            </Col>
+            <Col xs={24} lg={12}>
+              <Card variant="none" className="report-panel" title="Evidence Change Audit">
+                {renderDataTable({ columns: auditColumns, dataSource: securityAudit.evidenceChanges || [], rowKey: (row) => `evidence-audit-${row.id}` })}
+              </Card>
+            </Col>
+          </Row>
+        )}
       </div>
     </ProtectedRoute>
   );

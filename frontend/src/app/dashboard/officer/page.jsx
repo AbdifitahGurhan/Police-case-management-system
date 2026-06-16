@@ -7,7 +7,7 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   FileTextOutlined,
-  PlusOutlined,
+  AuditOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
@@ -18,13 +18,18 @@ import StandardDashboard from '@/components/dashboard/StandardDashboard';
 
 export default function OfficerDashboard() {
   const [data, setData] = useState(null);
+  const [assignedCases, setAssignedCases] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await api.get('/cases/stats');
-        setData(response.data.data);
+        const [statsResponse, assignedResponse] = await Promise.all([
+          api.get('/cases/stats'),
+          api.get('/cases/my-assigned'),
+        ]);
+        setData(statsResponse.data.data);
+        setAssignedCases(assignedResponse.data.data || []);
       } catch (err) {
         console.error('Failed to fetch officer stats', err);
       } finally {
@@ -72,7 +77,7 @@ export default function OfficerDashboard() {
       allowedRoles={['officer', 'admin']}
       eyebrow="Officer Workspace"
       title="Officer Dashboard"
-      subtitle="Register cases, track pending reviews, and monitor active station work."
+      subtitle="Register OB records, track pending reviews, and monitor active station work."
       loading={loading}
       metrics={[
         { title: 'Total Cases', value: data?.total || 0, icon: <FileTextOutlined />, tone: 'blue', note: 'Registered records' },
@@ -81,12 +86,13 @@ export default function OfficerDashboard() {
         { title: 'Closed Cases', value: data?.closed || 0, icon: <CheckCircleOutlined />, tone: 'green', note: 'Completed workflow' },
       ]}
       actions={[
-        { label: 'Register Case', type: 'primary', icon: <PlusOutlined />, href: '/cases/new' },
+        { label: 'Register OB', type: 'primary', icon: <AuditOutlined />, href: '/ob-register' },
       ]}
-      tableTitle="Recent Cases at Station"
-      tableSubtitle="Latest case records available to this account"
+      tableTitle="My Assigned Cases"
+      tableSubtitle="Cases directly assigned to this officer account"
       tableColumns={columns}
-      tableData={data?.recentCases || []}
+      tableData={assignedCases}
+      viewAllHref="/cases"
     />
   );
 }

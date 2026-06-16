@@ -63,7 +63,7 @@ const getObEntryById = async (req, res, next) => {
        LEFT JOIN regions r ON ob.region_id = r.id
        LEFT JOIN districts d ON ob.district_id = d.id
        LEFT JOIN neighborhoods n ON ob.neighborhood_id = n.id
-       LEFT JOIN cases c ON c.ob_entry_id = ob.id
+       LEFT JOIN cases c ON c.ob_entry_id = ob.id OR c.ob_number = ob.ob_number
        WHERE ob.id = ? AND ${scope.clause}`,
       params
     );
@@ -86,33 +86,42 @@ const createObEntry = async (req, res, next) => {
     }
 
     const now = new Date();
-    const obNumber = await generateOBNumber();
-    const [result] = await db.query(
-      `INSERT INTO ob_entries
-        (ob_number, incident_type, incident_location, description, reported_by, reporter_phone,
-         registered_by_user_id, registered_by_name, registered_by_role, registered_by_rank,
-         state_administration_id, region_id, district_id, neighborhood_id,
-         registration_date, registration_time, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OB_REGISTERED')`,
-      [
-        obNumber,
-        incident_type,
-        incident_location,
-        description || null,
-        reported_by,
-        reporter_phone || null,
-        req.user.id,
-        req.user.fullName || req.user.username,
-        req.user.roleCode || req.user.role,
-        req.user.rank || null,
-        location.state_administration_id || null,
-        location.region_id || null,
-        location.district_id || null,
-        location.neighborhood_id || null,
-        now.toISOString().slice(0, 10),
-        now.toTimeString().slice(0, 8),
-      ]
-    );
+    let obNumber = null;
+    let result = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      obNumber = await generateOBNumber();
+      try {
+        [result] = await db.query(
+          `INSERT INTO ob_entries
+            (ob_number, incident_type, incident_location, description, reported_by, reporter_phone,
+             registered_by_user_id, registered_by_name, registered_by_role, registered_by_rank,
+             state_administration_id, region_id, district_id, neighborhood_id,
+             registration_date, registration_time, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OB_REGISTERED')`,
+          [
+            obNumber,
+            incident_type,
+            incident_location,
+            description || null,
+            reported_by,
+            reporter_phone || null,
+            req.user.id,
+            req.user.fullName || req.user.username,
+            req.user.roleCode || req.user.role,
+            req.user.rank || null,
+            location.state_administration_id || null,
+            location.region_id || null,
+            location.district_id || null,
+            location.neighborhood_id || null,
+            now.toISOString().slice(0, 10),
+            now.toTimeString().slice(0, 8),
+          ]
+        );
+        break;
+      } catch (err) {
+        if (err.code !== 'ER_DUP_ENTRY' || attempt === 2) throw err;
+      }
+    }
 
     await writeAuditLog({
       userId: req.user.username,
@@ -130,17 +139,62 @@ const createObEntry = async (req, res, next) => {
 };
 
 const convertObToCase = async (req, res, next) => {
+  let attemptedObNumber = null;
   try {
-    const [[ob]] = await db.query('SELECT * FROM ob_entries WHERE id = ?', [req.params.id]);
+    const [[ob]] = await db.query(
+      `SELECT ob.*, d.city_id
+       FROM ob_entries ob
+       LEFT JOIN districts d ON d.id = ob.district_id
+       WHERE ob.id = ?`,
+      [req.params.id]
+    );
     if (!ob) return res.status(404).json({ success: false, message: 'OB entry not found.' });
-    if (['CONVERTED_TO_CASE', 'CASE_OPENED'].includes(ob.status)) {
-      return res.status(409).json({ success: false, message: 'This OB entry is already converted to a case.' });
-    }
-
+    attemptedObNumber = ob.ob_number;
     const scope = buildScopeWhere(req.user, 'ob');
     if (scope.params.length) {
       const [[allowed]] = await db.query(`SELECT id FROM ob_entries ob WHERE ob.id = ? AND ${scope.clause}`, [ob.id, ...scope.params]);
       if (!allowed) return res.status(403).json({ success: false, message: 'You cannot convert an OB entry outside your location.' });
+    }
+
+    const [[existingCase]] = await db.query(
+      `SELECT id, case_number
+       FROM cases
+       WHERE ob_entry_id = ? OR ob_number = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [ob.id, ob.ob_number]
+    );
+    if (existingCase) {
+      if (!['CONVERTED_TO_CASE', 'CASE_OPENED'].includes(ob.status)) {
+        await db.query('UPDATE ob_entries SET status = ? WHERE id = ?', ['CONVERTED_TO_CASE', ob.id]);
+      }
+      await db.query(
+        `UPDATE cases
+         SET ob_entry_id = COALESCE(ob_entry_id, ?),
+             state_administration_id = COALESCE(?, state_administration_id),
+             region_id = COALESCE(?, region_id),
+             city_id = COALESCE(?, city_id),
+             district_id = COALESCE(?, district_id),
+             neighborhood_id = COALESCE(?, neighborhood_id)
+         WHERE id = ?`,
+        [
+          ob.id,
+          ob.state_administration_id || null,
+          ob.region_id || null,
+          ob.city_id || null,
+          ob.district_id || null,
+          ob.neighborhood_id || null,
+          existingCase.id,
+        ]
+      );
+      return res.status(200).json({
+        success: true,
+        message: 'This OB already has a linked case.',
+        caseId: existingCase.id,
+        caseNumber: existingCase.case_number,
+        obNumber: ob.ob_number,
+        alreadyExists: true,
+      });
     }
 
     const { assigned_staff_id, priority, status } = req.body;
@@ -148,9 +202,9 @@ const convertObToCase = async (req, res, next) => {
     const [result] = await db.query(
       `INSERT INTO cases
         (case_number, case_title, title, ob_number, ob_entry_id, original_ob_staff_id, original_ob_staff_name,
-         incident_type, description, incident_location, status, priority, state_administration_id, region_id, district_id,
-         neighborhood_id, assigned_officer_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         incident_type, description, incident_location, status, priority, state_administration_id, region_id, city_id,
+         district_id, neighborhood_id, assigned_officer_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         caseNumber,
         ob.incident_type,
@@ -166,6 +220,7 @@ const convertObToCase = async (req, res, next) => {
         priority || 'medium',
         ob.state_administration_id,
         ob.region_id,
+        ob.city_id || null,
         ob.district_id,
         ob.neighborhood_id,
         assigned_staff_id || null,
@@ -192,7 +247,16 @@ const convertObToCase = async (req, res, next) => {
     res.status(201).json({ success: true, message: 'OB entry converted to case.', caseId: result.insertId, caseNumber, obNumber: ob.ob_number });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ success: false, message: 'A case already exists for this OB number.' });
+      const [[existingCase]] = await db.query(
+        'SELECT id, case_number FROM cases WHERE ob_number = ? LIMIT 1',
+        [attemptedObNumber || '']
+      );
+      return res.status(409).json({
+        success: false,
+        message: 'A case already exists for this OB number.',
+        caseId: existingCase?.id || null,
+        caseNumber: existingCase?.case_number || null,
+      });
     }
     next(err);
   }

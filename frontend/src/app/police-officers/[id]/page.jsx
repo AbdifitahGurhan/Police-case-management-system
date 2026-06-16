@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, use, useCallback } from 'react';
-import { Card, Descriptions, Table, Typography, Tag, Space, Button, Modal, Form, Select, Input, message, Avatar, Row, Col, Divider } from 'antd';
+import { Card, Descriptions, Table, Typography, Tag, Space, Button, Modal, Form, Select, Input, App, Avatar, Row, Col, Divider } from 'antd';
 import { SwapOutlined, ArrowLeftOutlined, AuditOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -13,6 +13,7 @@ const { Title, Text } = Typography;
 const { Option } = Select;
 
 export default function OfficerDetailsPage({ params }) {
+  const { message } = App.useApp();
   const router = useRouter();
   const { id } = use(params);
   const [officer, setOfficer] = useState(null);
@@ -141,7 +142,7 @@ export default function OfficerDetailsPage({ params }) {
     <ProtectedRoute allowedRoles={['admin', 'state_admin', 'region_admin', 'city_admin', 'district_admin', 'neighborhood_admin']}>
       <Card loading={loading} variant="none">
         
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="large" style={{ width: '100%' }}>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <Space align="center" size="large">

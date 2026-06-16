@@ -165,7 +165,34 @@ const updateStation = async (req, res, next) => {
 
 const deleteStation = async (req, res, next) => {
   try {
-    res.status(400).json({ success: false, message: 'District stations cannot be deleted from this endpoint.' });
+    const stationId = req.params.id;
+    const [[dependencies]] = await db.query(
+      `SELECT
+         (SELECT COUNT(*) FROM cases WHERE district_id = ?) AS cases_count,
+         (SELECT COUNT(*) FROM neighborhoods WHERE district_id = ?) AS waax_count,
+         (SELECT COUNT(*) FROM officer_assignments WHERE assignment_type = 'District' AND assignment_id = ? AND is_current = 1) AS officer_count`,
+      [stationId, stationId, stationId]
+    );
+
+    if (dependencies.cases_count || dependencies.waax_count || dependencies.officer_count) {
+      return res.status(409).json({
+        success: false,
+        message: 'Station cannot be deleted while it has cases, Waax stations, or assigned officers.',
+        dependencies,
+      });
+    }
+
+    const [result] = await db.query('DELETE FROM districts WHERE id = ?', [stationId]);
+    if (!result.affectedRows) return res.status(404).json({ success: false, message: 'Station not found.' });
+
+    await writeAuditLog({
+      userId: req.user.id,
+      userEmail: req.user.email,
+      action: 'DELETE_STATION',
+      entityType: 'stations',
+      entityId: parseInt(stationId, 10),
+    });
+    res.json({ success: true, message: 'Station deleted.' });
   } catch (err) { next(err); }
 };
 

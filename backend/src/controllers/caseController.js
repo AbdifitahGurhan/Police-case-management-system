@@ -6,6 +6,50 @@ const { writeAuditLog } = require('../utils/auditLogger');
 const { generateOBNumber } = require('../utils/obNumberGenerator');
 const { generateCaseNumber } = require('../utils/caseNumberGenerator');
 const { buildScopeWhere, getUserLocation } = require('../utils/locationScope');
+const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
+const { ensureCidCaseForPoliceCase } = require('../services/cidService');
+
+const CASE_STATUS_FLOW = {
+  draft: ['registered'],
+  registered: ['under_investigation'],
+  CASE_REGISTERED: ['under_investigation'],
+  pending_commander_review: ['registered'],
+  confirmed_by_ward_commander: ['under_investigation'],
+  under_investigation: ['referred_to_cid', 'ready_for_court', 'forwarded_to_court'],
+  referred_to_cid: ['under_investigation', 'ready_for_court', 'forwarded_to_court', 'approved_for_court'],
+  referred_cid: ['under_investigation', 'ready_for_court', 'forwarded_to_court', 'approved_for_court'],
+  ready_for_court: ['forwarded_to_court', 'approved_for_court'],
+  forwarded_to_court: ['approved_for_court', 'court_decided'],
+  approved_for_court: ['court_decided'],
+  referred_to_court: ['court_decided'],
+  court_decided: ['closed'],
+  closed: ['archived'],
+  archived: [],
+};
+
+const getAllowedNextStatuses = (status) => CASE_STATUS_FLOW[status || 'draft'] || CASE_STATUS_FLOW.draft;
+
+const canTransitionStatus = (fromStatus, toStatus) => {
+  if (!toStatus || fromStatus === toStatus) return true;
+  return getAllowedNextStatuses(fromStatus).includes(toStatus);
+};
+
+const mapLegacyStatus = (status) => {
+  const legacy = {
+    CASE_REGISTERED: 'registered',
+    confirmed_by_ward_commander: 'registered',
+    referred_cid: 'referred_to_cid',
+    assigned_to_cid: 'referred_to_cid',
+    Assigned_To_CID: 'referred_to_cid',
+    ASSIGNED_TO_CID: 'referred_to_cid',
+    Ready_For_Court: 'ready_for_court',
+    READY_FOR_COURT: 'ready_for_court',
+    Forwarded_To_Court: 'forwarded_to_court',
+    FORWARDED_TO_COURT: 'forwarded_to_court',
+    referred_to_court: 'approved_for_court',
+  };
+  return legacy[status] || status;
+};
 
 const validateIncidentDate = (incidentDate) => {
   if (!incidentDate) return null;
@@ -18,6 +62,121 @@ const validateIncidentDate = (incidentDate) => {
     return 'Incident date/time must be at least one hour in the past.';
   }
   return null;
+};
+
+const getScopedCaseById = async (user, caseId, columns = 'c.*') => {
+  const scope = buildScopeWhere(user, 'c');
+  const [[row]] = await db.query(
+    `SELECT ${columns}
+     FROM cases c
+     WHERE c.id = ? AND ${scope.clause}`,
+    [caseId, ...scope.params]
+  );
+  return row || null;
+};
+
+const buildAssignableOfficerScope = (user) => {
+  const params = [];
+  const role = String(user?.role || '').toLowerCase();
+  if (!user || role === 'admin') return { clause: '1=1', params };
+
+  const { scopeType, scopeId } = user;
+  if (!scopeType || !scopeId) return { clause: '1=0', params };
+
+  if (scopeType === 'neighborhood') {
+    params.push('Neighborhood', scopeId);
+    return {
+      clause: `EXISTS (
+        SELECT 1 FROM officer_assignments oa
+        WHERE oa.officer_id = po.id
+          AND oa.is_current = 1
+          AND oa.assignment_type = ?
+          AND oa.assignment_id = ?
+      )`,
+      params,
+    };
+  }
+
+  if (scopeType === 'district') {
+    params.push('District', scopeId, scopeId);
+    return {
+      clause: `EXISTS (
+        SELECT 1 FROM officer_assignments oa
+        LEFT JOIN neighborhoods n ON oa.assignment_type = 'Neighborhood' AND oa.assignment_id = n.id
+        WHERE oa.officer_id = po.id
+          AND oa.is_current = 1
+          AND ((oa.assignment_type = ? AND oa.assignment_id = ?) OR n.district_id = ?)
+      )`,
+      params,
+    };
+  }
+
+  if (scopeType === 'city') {
+    params.push('City', scopeId, scopeId, scopeId);
+    return {
+      clause: `EXISTS (
+        SELECT 1 FROM officer_assignments oa
+        LEFT JOIN districts d ON oa.assignment_type = 'District' AND oa.assignment_id = d.id
+        LEFT JOIN neighborhoods n ON oa.assignment_type = 'Neighborhood' AND oa.assignment_id = n.id
+        LEFT JOIN districts nd ON n.district_id = nd.id
+        WHERE oa.officer_id = po.id
+          AND oa.is_current = 1
+          AND ((oa.assignment_type = ? AND oa.assignment_id = ?) OR d.city_id = ? OR nd.city_id = ?)
+      )`,
+      params,
+    };
+  }
+
+  if (scopeType === 'region') {
+    params.push('Region', scopeId, scopeId, scopeId, scopeId);
+    return {
+      clause: `EXISTS (
+        SELECT 1 FROM officer_assignments oa
+        LEFT JOIN cities ci ON oa.assignment_type = 'City' AND oa.assignment_id = ci.id
+        LEFT JOIN districts d ON oa.assignment_type = 'District' AND oa.assignment_id = d.id
+        LEFT JOIN cities dci ON d.city_id = dci.id
+        LEFT JOIN neighborhoods n ON oa.assignment_type = 'Neighborhood' AND oa.assignment_id = n.id
+        LEFT JOIN districts nd ON n.district_id = nd.id
+        LEFT JOIN cities nci ON nd.city_id = nci.id
+        WHERE oa.officer_id = po.id
+          AND oa.is_current = 1
+          AND ((oa.assignment_type = ? AND oa.assignment_id = ?) OR ci.region_id = ? OR dci.region_id = ? OR nci.region_id = ?)
+      )`,
+      params,
+    };
+  }
+
+  return { clause: '1=0', params };
+};
+
+const buildLinkedObScopeExists = (user) => {
+  const params = [];
+  const role = String(user?.role || '').toLowerCase();
+  if (!user || role === 'admin') return { clause: '1=1', params };
+
+  const source = user.location || user;
+  if (source.waaxId || source.neighborhood_id || user.scopeType === 'neighborhood') {
+    params.push(source.waaxId || source.neighborhood_id || user.scopeId);
+    return { clause: 'scoped_ob.neighborhood_id = ?', params };
+  }
+  if (source.districtId || source.district_id || user.scopeType === 'district') {
+    params.push(source.districtId || source.district_id || user.scopeId);
+    return { clause: 'scoped_ob.district_id = ?', params };
+  }
+  if (source.cityId || source.city_id || user.scopeType === 'city') {
+    params.push(source.cityId || source.city_id || user.scopeId);
+    return { clause: 'od.city_id = ?', params };
+  }
+  if (source.regionId || source.region_id || user.scopeType === 'region') {
+    params.push(source.regionId || source.region_id || user.scopeId);
+    return { clause: 'scoped_ob.region_id = ?', params };
+  }
+  if (source.stateId || source.state_administration_id || user.scopeType === 'state_administration') {
+    params.push(source.stateId || source.state_administration_id || user.scopeId);
+    return { clause: 'scoped_ob.state_administration_id = ?', params };
+  }
+
+  return { clause: '1=0', params };
 };
 
 /** GET /api/cases — List cases */
@@ -61,6 +220,8 @@ const getCases = async (req, res, next) => {
 const getCaseById = async (req, res, next) => {
   try {
     const caseId = req.params.id;
+    const scope = buildScopeWhere(req.user, 'c');
+    const linkedObScope = buildLinkedObScopeExists(req.user);
 
     const [[caseRow]] = await db.query(
       `SELECT c.*,
@@ -85,7 +246,18 @@ const getCaseById = async (req, res, next) => {
        LEFT JOIN cities ci ON c.city_id = ci.id
        LEFT JOIN districts d ON c.district_id = d.id
        LEFT JOIN neighborhoods n ON c.neighborhood_id = n.id
-       WHERE c.id = ?`, [caseId]
+       WHERE c.id = ?
+         AND (
+           ${scope.clause}
+           OR EXISTS (
+             SELECT 1
+             FROM ob_entries scoped_ob
+             LEFT JOIN districts od ON od.id = scoped_ob.district_id
+             WHERE scoped_ob.ob_number = c.ob_number
+               AND ${linkedObScope.clause}
+           )
+         )`,
+      [caseId, ...scope.params, ...linkedObScope.params]
     );
     if (!caseRow) return res.status(404).json({ success: false, message: 'Case not found.' });
 
@@ -115,7 +287,19 @@ const getCaseById = async (req, res, next) => {
       [caseId]
     );
 
-    res.json({ success: true, data: { ...caseRow, suspects, victims, evidence, actions, referrals, witnesses } });
+    res.json({
+      success: true,
+      data: {
+        ...caseRow,
+        suspects,
+        victims,
+        evidence,
+        actions,
+        referrals,
+        witnesses,
+        allowed_next_statuses: getAllowedNextStatuses(caseRow.status),
+      },
+    });
   } catch (err) { next(err); }
 };
 
@@ -137,6 +321,15 @@ const createCase = async (req, res, next) => {
       [[ob]] = await db.query('SELECT * FROM ob_entries WHERE id = ?', [ob_entry_id]);
       if (!ob) return res.status(404).json({ success: false, message: 'OB entry not found.' });
 
+      const obScope = buildScopeWhere(req.user, 'ob');
+      const [[allowedOb]] = await db.query(
+        `SELECT ob.id FROM ob_entries ob WHERE ob.id = ? AND ${obScope.clause}`,
+        [ob_entry_id, ...obScope.params]
+      );
+      if (!allowedOb) {
+        return res.status(403).json({ success: false, message: 'You cannot create a case from an OB entry outside your station scope.' });
+      }
+
       const [[existingCase]] = await db.query('SELECT id, case_number FROM cases WHERE ob_entry_id = ? LIMIT 1', [ob_entry_id]);
       if (existingCase || ['CONVERTED_TO_CASE', 'CASE_OPENED'].includes(ob.status)) {
         return res.status(409).json({
@@ -154,6 +347,7 @@ const createCase = async (req, res, next) => {
     
     state_administration_id = ob?.state_administration_id || location.state_administration_id || state_administration_id || null;
     region_id = ob?.region_id || location.region_id || region_id || null;
+    city_id = location.city_id || city_id || null;
     district_id = ob?.district_id || location.district_id || district_id || null;
     neighborhood_id = ob?.neighborhood_id || location.neighborhood_id || neighborhood_id || null;
     incident_type = incident_type || ob?.incident_type || title;
@@ -194,32 +388,187 @@ const createCase = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+/** GET /api/cases/my-assigned - Cases assigned to the logged-in officer */
+const getMyAssignedCases = async (req, res, next) => {
+  try {
+    const scope = buildScopeWhere(req.user, 'c');
+    const params = [...scope.params];
+    const [rows] = await db.query(
+      `SELECT c.id, c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
+              c.status, c.priority, c.incident_date, c.incident_location, c.created_at,
+              p.full_name AS officer_name
+       FROM cases c
+       LEFT JOIN police_officers p ON c.assigned_officer_id = p.id
+       WHERE ${scope.clause}
+         AND (
+           c.assigned_officer_id = ?
+           OR LOWER(p.email) = LOWER(?)
+           OR LOWER(p.full_name) = LOWER(?)
+         )
+       ORDER BY c.created_at DESC`,
+      [...params, req.user.id, req.user.email || '', req.user.fullName || '']
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
+/** GET /api/cases/assignable/officers - Officers available for assignment */
+const getAssignableOfficers = async (req, res, next) => {
+  try {
+    const officerScope = buildAssignableOfficerScope(req.user);
+    const [rows] = await db.query(
+      `SELECT po.id, po.full_name, po.force_number, po.phone, po.email, r.rank_name
+       FROM police_officers po
+       LEFT JOIN ranks r ON r.id = po.rank_id
+       WHERE po.employment_status = 'active'
+         AND ${officerScope.clause}
+       ORDER BY po.full_name ASC`,
+      officerScope.params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
 /** PUT /api/cases/:id — Update case */
 const updateCase = async (req, res, next) => {
   try {
     const { title, description, incident_date, incident_location, priority, status, assigned_officer_id } = req.body;
     const caseId = req.params.id;
 
-    const [[existing]] = await db.query('SELECT * FROM cases WHERE id = ?', [caseId]);
+    const existing = await getScopedCaseById(req.user, caseId);
     if (!existing) return res.status(404).json({ success: false, message: 'Case not found.' });
     const incidentDateError = validateIncidentDate(incident_date);
     if (incidentDateError) return res.status(400).json({ success: false, message: incidentDateError });
+    const nextStatus = status ? mapLegacyStatus(status) : status;
+    if (nextStatus && !canTransitionStatus(existing.status, nextStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status transition from ${existing.status} to ${nextStatus}.`,
+        allowedNextStatuses: getAllowedNextStatuses(existing.status),
+      });
+    }
 
     await db.query(
       `UPDATE cases SET title=?, description=?, incident_date=?, incident_location=?, priority=?, status=?, assigned_officer_id=? WHERE id=?`,
       [title || existing.title, description || existing.description, incident_date || existing.incident_date,
-       incident_location || existing.incident_location, priority || existing.priority, status || existing.status, 
+       incident_location || existing.incident_location, priority || existing.priority, nextStatus || existing.status, 
        assigned_officer_id || existing.assigned_officer_id, caseId]
     );
 
-    if (status && status !== existing.status) {
+    if (nextStatus && nextStatus !== existing.status) {
       await db.query(`INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after) VALUES (?, ?, ?, ?, ?, ?)`,
-        [caseId, req.user.username, 'STATUS_UPDATED', `Status changed from ${existing.status} to ${status}`, existing.status, status]);
+        [caseId, req.user.username, 'STATUS_UPDATED', `Status changed from ${existing.status} to ${nextStatus}`, existing.status, nextStatus]);
+      await ensureCidCaseForPoliceCase(caseId, req.user.username);
+      await ensureCourtCaseForPoliceCase(caseId, req.user.username);
     }
 
     await writeAuditLog({ userId: req.user.username, userEmail: req.user.email, action: 'UPDATE_CASE', entityType: 'cases', entityId: parseInt(caseId), newData: req.body });
     res.json({ success: true, message: 'Case updated.' });
   } catch (err) { next(err); }
+};
+
+/** PATCH /api/cases/:id/assign - Assign a case to an officer */
+const assignCaseOfficer = async (req, res, next) => {
+  try {
+    const caseId = req.params.id;
+    const { officer_id } = req.body;
+    if (!officer_id) return res.status(400).json({ success: false, message: 'officer_id is required.' });
+
+    const existing = await getScopedCaseById(req.user, caseId, 'c.id, c.assigned_officer_id, c.status');
+    if (!existing) return res.status(404).json({ success: false, message: 'Case not found.' });
+
+    const officerScope = buildAssignableOfficerScope(req.user);
+    const [[officer]] = await db.query(
+      `SELECT po.id, po.full_name, po.force_number
+       FROM police_officers po
+       WHERE po.id = ?
+         AND po.employment_status = 'active'
+         AND ${officerScope.clause}`,
+      [officer_id, ...officerScope.params]
+    );
+    if (!officer) return res.status(404).json({ success: false, message: 'Officer not found.' });
+
+    await db.query('UPDATE cases SET assigned_officer_id = ?, status = CASE WHEN status = ? THEN ? ELSE status END WHERE id = ?', [
+      officer.id,
+      'draft',
+      'registered',
+      caseId,
+    ]);
+    await db.query(
+      `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)
+       VALUES (?, ?, 'CASE_ASSIGNED', ?, ?, ?)`,
+      [caseId, req.user.username, `Assigned to ${officer.full_name} (${officer.force_number}).`, existing.status, existing.status === 'draft' ? 'registered' : existing.status]
+    );
+    await writeAuditLog({
+      userId: req.user.username,
+      userEmail: req.user.email,
+      action: 'ASSIGN_CASE',
+      entityType: 'cases',
+      entityId: Number(caseId),
+      oldData: { assigned_officer_id: existing.assigned_officer_id },
+      newData: { assigned_officer_id: officer.id },
+    });
+
+    res.json({ success: true, message: 'Case assigned successfully.', officer });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** GET /api/cases/:id/export - printable case package data */
+const exportCasePackage = async (req, res, next) => {
+  try {
+    const caseId = req.params.id;
+    const scope = buildScopeWhere(req.user, 'c');
+    const [[caseRow]] = await db.query(
+      `SELECT c.*,
+              COALESCE(c.title, c.case_title) AS title,
+              po.full_name AS officer_name,
+              d.district_name AS station_name,
+              n.neighborhood_name AS waax_name,
+              sa.state_name,
+              r.region_name
+       FROM cases c
+       LEFT JOIN police_officers po ON po.id = c.assigned_officer_id
+       LEFT JOIN state_administrations sa ON sa.id = c.state_administration_id
+       LEFT JOIN regions r ON r.id = c.region_id
+       LEFT JOIN districts d ON d.id = c.district_id
+       LEFT JOIN neighborhoods n ON n.id = c.neighborhood_id
+       WHERE c.id = ? AND ${scope.clause}`,
+      [caseId, ...scope.params]
+    );
+    if (!caseRow) return res.status(404).json({ success: false, message: 'Case not found.' });
+
+    const [suspects] = await db.query(
+      `SELECT s.full_name, s.phone, s.gender, s.arrest_status, cs.role_in_case
+       FROM suspects s JOIN case_suspects cs ON cs.suspect_id = s.id
+       WHERE cs.case_id = ?`,
+      [caseId]
+    );
+    const [evidence] = await db.query('SELECT title, type, collection_date, location_found, file_url FROM evidence WHERE case_id = ?', [caseId]);
+    const [actions] = await db.query('SELECT action_type, performed_by, description, status_before, status_after, created_at FROM case_actions WHERE case_id = ? ORDER BY created_at ASC', [caseId]);
+
+    res.json({
+      success: true,
+      data: {
+        generatedAt: new Date().toISOString(),
+        generatedBy: req.user.username,
+        case: caseRow,
+        suspects,
+        evidence,
+        timeline: actions,
+        templates: {
+          caseSummary: true,
+          arrestWarrant: suspects.length > 0,
+          courtReferral: ['approved_for_court', 'court_decided', 'closed', 'referred_to_court'].includes(caseRow.status),
+          releaseCertificate: ['closed', 'court_decided'].includes(caseRow.status),
+          evidenceReceipt: evidence.length > 0,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 /** POST /api/cases/:id/court-decision - Court outcomes are handled outside this police system */
@@ -263,5 +612,5 @@ const getCaseStats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getCases, getCaseById, createCase, updateCase, recordCourtDecision, getCaseStats };
+module.exports = { getCases, getMyAssignedCases, getAssignableOfficers, getCaseById, createCase, updateCase, assignCaseOfficer, exportCasePackage, recordCourtDecision, getCaseStats };
 

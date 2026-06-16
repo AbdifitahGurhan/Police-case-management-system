@@ -4,6 +4,7 @@ import { App as AntdApp } from 'antd';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { AuthProvider } from '@/contexts/AuthContext';
 import AppLayout from '@/components/layout/AppLayout';
+import NotificationBridge from '@/components/shared/NotificationBridge';
 import "./globals.css";
 
 const inter = Inter({ 
@@ -22,6 +23,7 @@ export default function RootLayout({ children }) {
       <body className={inter.variable}>
         <AntdRegistry>
           <AntdApp>
+            <NotificationBridge />
             <AuthProvider>
               <AppLayout>
                 {children}

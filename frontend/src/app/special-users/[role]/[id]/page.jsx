@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { Card, Typography, Button, message, Spin, Descriptions, Tag, Space } from 'antd';
+import { Card, Typography, Button, App, Spin, Descriptions, Tag, Space } from 'antd';
 import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons';
 import { useRouter, useParams } from 'next/navigation';
 import api from '@/services/api';
@@ -10,6 +10,7 @@ import api from '@/services/api';
 const { Title, Text } = Typography;
 
 export default function ViewSpecialUserPage() {
+  const { message } = App.useApp();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();

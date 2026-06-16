@@ -1,8 +1,8 @@
 // src/components/layout/TopNavbar.jsx
 'use client';
 
-import React, { useState } from 'react';
-import { Layout, Button, Avatar, Dropdown, Space, Typography, Tag, Modal, Upload, App as AntApp, Form, Input, Divider } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Layout, Button, Avatar, Dropdown, Space, Typography, Tag, Modal, Upload, App as AntApp, Form, Input, Divider, Badge, Empty, Spin } from 'antd';
 import {
   MenuUnfoldOutlined,
   MenuFoldOutlined,
@@ -27,6 +27,28 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
   const [fileList, setFileList] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationLoading, setNotificationLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchNotifications = async () => {
+      setNotificationLoading(true);
+      try {
+        const response = await api.get('/notifications', { params: { limit: 12 } });
+        setNotifications(response.data.data || []);
+      } catch (error) {
+        console.error('Notifications failed to load', error);
+      } finally {
+        setNotificationLoading(false);
+      }
+    };
+
+    fetchNotifications();
+    const timer = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(timer);
+  }, [user]);
 
   if (!user) return null;
 
@@ -45,7 +67,15 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     admin: 'magenta',
     officer: 'blue',
     cid: 'purple',
+    cid_director: 'purple',
+    cid_supervisor: 'purple',
+    cid_officer: 'purple',
     court: 'cyan',
+    court_admin: 'cyan',
+    judge: 'geekblue',
+    prosecutor: 'gold',
+    prosecutor_liaison: 'gold',
+    court_clerk: 'lime',
     jail: 'volcano'
   };
 
@@ -150,7 +180,42 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
       />
       
       <Space size="large">
-        <Button className="topbar-icon-button" type="text" icon={<BellOutlined />} />
+        <Dropdown
+          trigger={['click']}
+          placement="bottomRight"
+          popupRender={() => (
+            <div className="notification-popover">
+              <div className="notification-popover-header">
+                <Text strong>Notifications</Text>
+                <Tag color="blue">{notifications.length}</Tag>
+              </div>
+              {notifications.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No recent activity" />
+              ) : (
+                <div className="notification-list" aria-busy={notificationLoading}>
+                  {notificationLoading && (
+                    <div className="notification-loading">
+                      <Spin size="small" />
+                    </div>
+                  )}
+                  {notifications.map((item) => (
+                    <div className="notification-item" key={item.id || `${item.type}-${item.created_at}`}>
+                      <Space orientation="vertical" size={2}>
+                        <Text strong>{item.title}</Text>
+                        <Text type="secondary">{item.message}</Text>
+                        <Text type="secondary">{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</Text>
+                      </Space>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        >
+          <Badge count={notifications.length} size="small">
+            <Button className="topbar-icon-button" type="text" icon={<BellOutlined />} />
+          </Badge>
+        </Dropdown>
         
         <Dropdown menu={{ items: menuItems }} placement="bottomRight">
           <Space className="topbar-user">

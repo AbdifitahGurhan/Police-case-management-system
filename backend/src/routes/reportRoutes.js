@@ -16,6 +16,9 @@ const {
   getCrimeCategoryReport,
   getCustodyDashboardReport,
   getCustodyAnalyticsReport,
+  getDashboardCharts,
+  getSecurityAuditDashboard,
+  exportCasesCsv,
 } = require('../controllers/reportController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
@@ -25,6 +28,9 @@ router.use(authMiddleware);
 
 router.get('/audit-logs', allowRoles(...REPORT_ROLES), getAuditLogs);
 router.get('/summary', allowRoles(...REPORT_ROLES, ...UNIT_ROLES), getSummaryReport);
+router.get('/dashboard-charts', allowRoles(...REPORT_ROLES, ...UNIT_ROLES), getDashboardCharts);
+router.get('/security-audit', allowRoles('admin'), getSecurityAuditDashboard);
+router.get('/export/cases.csv', allowRoles('admin'), exportCasesCsv);
 router.get('/by-station', allowRoles(...REPORT_ROLES), getCasesByStation);
 router.get('/station-full', allowRoles(...REPORT_ROLES), getStationFullReport);
 router.get('/unit-dashboard', allowRoles(...UNIT_ROLES), require('../controllers/reportController').getUnitDashboardStats);

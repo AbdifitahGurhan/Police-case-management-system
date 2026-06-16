@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, message, Upload, Avatar, Tag, DatePicker, Row, Col } from 'antd';
+import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, App, Upload, Avatar, Tag, DatePicker, Row, Col } from 'antd';
 import { PlusOutlined, EditOutlined, UploadOutlined, SwapOutlined, EyeOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -20,6 +20,7 @@ const { Title } = Typography;
 const { Option } = Select;
 
 export default function PoliceOfficersPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const [data, setData] = useState([]);
   const [ranks, setRanks] = useState([]);

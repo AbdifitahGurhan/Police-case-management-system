@@ -28,7 +28,12 @@ export default function LoginPage() {
         officer: '/dashboard/officer',
         ward_commander: '/dashboard/ward_commander',
         cid: '/dashboard/cid',
+        cid_director: '/dashboard/cid',
+        cid_supervisor: '/dashboard/cid',
+        cid_officer: '/dashboard/cid',
         court: '/dashboard/court',
+        prosecutor: '/dashboard/court',
+        prosecutor_liaison: '/dashboard/cid',
         jail: '/dashboard/jail'
       };
       router.replace(roleRedirects[user.role] || '/cases');

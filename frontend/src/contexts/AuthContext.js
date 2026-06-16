@@ -68,8 +68,21 @@ export const AuthProvider = ({ children }) => {
         officer: '/dashboard/officer',
         ward_commander: '/dashboard/ward_commander',
         cid: '/dashboard/cid',
+        cid_director: '/dashboard/cid',
+        cid_supervisor: '/dashboard/cid',
+        cid_officer: '/dashboard/cid',
         court: '/dashboard/court',
-        jail: '/dashboard/jail'
+        court_admin: '/dashboard/court',
+        judge: '/dashboard/court',
+        prosecutor: '/dashboard/court',
+        prosecutor_liaison: '/dashboard/cid',
+        court_clerk: '/dashboard/court',
+        jail: '/dashboard/jail',
+        district_commander: '/dashboard/unit',
+        police_station_commander: '/dashboard/unit',
+        waax_commander: '/dashboard/unit',
+        ob_staff: '/ob-register',
+        staff: '/cases'
       };
       
       router.push(roleRedirects[userData.role] || '/cases');

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -15,10 +16,14 @@ const commanderRoles = ['state_commander', 'region_commander', 'district_command
 export default function ObDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const { message } = App.useApp();
   const [ob, setOb] = useState(null);
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
+
+  const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+  const canReadCases = user && caseReadRoles.includes(user.role);
 
   const loadOb = useCallback(async () => {
     setLoading(true);
@@ -43,12 +48,20 @@ export default function ObDetailPage() {
     try {
       const response = await api.post(`/ob-entries/${id}/convert-to-case`);
       message.success(response.data.alreadyExists ? `Existing case opened: ${response.data.caseNumber}` : `Case opened from OB: ${response.data.caseNumber}`);
-      router.push(`/cases/${response.data.caseId}`);
+      if (canReadCases) {
+        router.push(`/cases/${response.data.caseId}`);
+      } else {
+        router.push('/ob-register');
+      }
     } catch (error) {
       const existingCaseId = error.response?.data?.caseId;
       if (existingCaseId) {
-        message.warning(error.response?.data?.message || 'This OB already has a case. Opening it now.');
-        router.push(`/cases/${existingCaseId}`);
+        message.warning(error.response?.data?.message || 'This OB already has a case.');
+        if (canReadCases) {
+          router.push(`/cases/${existingCaseId}`);
+        } else {
+          router.push('/ob-register');
+        }
         return;
       }
       message.error(error.response?.data?.message || 'Failed to convert OB to case.');
@@ -71,7 +84,7 @@ export default function ObDetailPage() {
           <Space wrap>
             {ob?.status && <Tag color={converted ? 'green' : 'blue'}>{ob.status}</Tag>}
             {converted ? (
-              ob?.linked_case_id ? (
+              ob?.linked_case_id && canReadCases ? (
                 <Link href={`/cases/${ob.linked_case_id}`}>
                   <Button type="primary">Open Linked Case</Button>
                 </Link>

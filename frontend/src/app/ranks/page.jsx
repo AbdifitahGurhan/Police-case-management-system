@@ -129,7 +129,7 @@ function RanksPageContent() {
       <Card variant="none">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
             <div>
               <Title level={2} style={{ margin: 0 }}>Registered Ranks</Title>
               <Text type="secondary">Manage the chain of command and rank identities assignable to police officers</Text>
@@ -146,6 +146,7 @@ function RanksPageContent() {
             rowKey="id"
             loading={loading}
             pagination={{ pageSize: 10 }}
+            scroll={{ x: 'max-content' }}
           />
 
         </div>

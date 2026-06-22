@@ -199,6 +199,7 @@ export default function OfficerDetailsPage({ params }) {
                rowKey="id" 
                pagination={{ pageSize: 5 }} 
                size="small"
+               scroll={{ x: 'max-content' }}
             />
             
             <Divider />
@@ -210,6 +211,7 @@ export default function OfficerDetailsPage({ params }) {
                rowKey="id" 
                pagination={{ pageSize: 5 }} 
                size="small"
+               scroll={{ x: 'max-content' }}
             />
           </Card>
 

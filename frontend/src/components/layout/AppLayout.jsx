@@ -34,7 +34,7 @@ const AppLayout = ({ children }) => {
       <App>
         <Layout className="app-shell">
           <Sidebar collapsed={collapsed} />
-          <Layout className="app-main" style={{ marginLeft: collapsed ? 92 : 276 }}>
+          <Layout className={`app-main ${collapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>
             <TopNavbar collapsed={collapsed} setCollapsed={setCollapsed} />
             <Content className="app-content">
               {children}

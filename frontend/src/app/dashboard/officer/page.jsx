@@ -44,7 +44,7 @@ export default function OfficerDashboard() {
       title: 'OB Number',
       dataIndex: 'ob_number',
       key: 'ob_number',
-      render: (text, record) => <Link href={`/cases/${record.id}`}><Typography.Text strong>{text}</Typography.Text></Link>,
+      render: (text) => <Typography.Text strong>{text}</Typography.Text>,
     },
     {
       title: 'Case Title',
@@ -92,7 +92,6 @@ export default function OfficerDashboard() {
       tableSubtitle="Cases directly assigned to this officer account"
       tableColumns={columns}
       tableData={assignedCases}
-      viewAllHref="/cases"
     />
   );
 }

@@ -37,7 +37,7 @@ const { TextArea } = Input;
 export default function CaseDetailsPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { message, modal } = App.useApp();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +53,7 @@ export default function CaseDetailsPage() {
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [selectedSuspect, setSelectedSuspect] = useState(null);
   const [suspectFaceImage, setSuspectFaceImage] = useState('');
+  const [editingSuspect, setEditingSuspect] = useState(null);
   const [geography, setGeography] = useState({ regions: [], districts: [], wards: [] });
   const [transferHistory, setTransferHistory] = useState([]);
   const [assignableOfficers, setAssignableOfficers] = useState([]);
@@ -113,17 +114,18 @@ export default function CaseDetailsPage() {
   };
 
   useEffect(() => {
-    if (id) {
+    const allowedRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+    if (id && !authLoading && user && allowedRoles.includes(user.role)) {
       fetchCaseDetails();
       fetchTransferHistory();
       fetchGeography();
       // Only fetch assignable officers if user has the right role
       const assignRoles = ['admin', 'ward_commander', 'district_commander', 'police_station_commander', 'waax_commander', 'district_admin', 'neighborhood_admin'];
-      if (user && assignRoles.includes(user.role)) {
+      if (assignRoles.includes(user.role)) {
         fetchAssignableOfficers();
       }
     }
-  }, [id, fetchCaseDetails, fetchTransferHistory]);
+  }, [id, fetchCaseDetails, fetchTransferHistory, user, authLoading]);
 
   const handleUpdateStatus = async (values) => {
     setSubmitting(true);
@@ -175,23 +177,50 @@ export default function CaseDetailsPage() {
     }
   };
 
+  const handleOpenEditSuspect = (suspect) => {
+    setEditingSuspect(suspect);
+    suspectForm.setFieldsValue({
+      ...suspect,
+    });
+    if (suspect.face_capture_image) {
+      setSuspectFaceImage(suspect.face_capture_image);
+    } else if (suspect.photo_url) {
+      setSuspectFaceImage(suspect.photo_url);
+    } else {
+      setSuspectFaceImage('');
+    }
+    setIsSuspectModalOpen(true);
+  };
+
   const handleSuspect = async (values) => {
     setSubmitting(true);
     try {
-      await api.post('/criminals', {
-        ...values,
-        case_id: id,
-        face_capture_image: suspectFaceImage || null,
-        arrest_status: values.arrest_status || 'not_arrested',
-      });
-      message.success("Suspect added successfully.");
+      if (editingSuspect) {
+        await api.put(`/criminals/${editingSuspect.id}`, {
+          ...values,
+          case_id: id,
+          face_capture_image: (suspectFaceImage && suspectFaceImage.startsWith('data:')) ? suspectFaceImage : null,
+          arrest_status: values.arrest_status || 'not_arrested',
+          is_arrested: ['arrested', 'wanted'].includes(values.arrest_status) ? 1 : 0
+        });
+        message.success("Suspect details updated successfully.");
+      } else {
+        await api.post('/criminals', {
+          ...values,
+          case_id: id,
+          face_capture_image: (suspectFaceImage && suspectFaceImage.startsWith('data:')) ? suspectFaceImage : null,
+          arrest_status: values.arrest_status || 'not_arrested',
+        });
+        message.success("Suspect added successfully.");
+      }
       setIsSuspectModalOpen(false);
+      setEditingSuspect(null);
       setSuspectFaceImage('');
       setDuplicateAlert(null);
       suspectForm.resetFields();
       fetchCaseDetails();
     } catch (err) {
-      message.error(err.response?.data?.message || "Failed to add suspect.");
+      message.error(err.response?.data?.message || "Failed to save suspect details.");
     } finally {
       setSubmitting(false);
     }
@@ -513,6 +542,7 @@ export default function CaseDetailsPage() {
       <Table
         dataSource={data.referrals}
         rowKey={(record) => `referral-${record.id || `${record.referred_to_role}-${record.referred_at}`}`}
+        scroll={{ x: 'max-content' }}
         columns={[
           { title: 'Date', dataIndex: 'referred_at', render: d => dayjs(d).format('DD MMM YYYY') },
           { title: 'To', dataIndex: 'referred_to_role', render: r => <Tag color="purple">{r.toUpperCase()}</Tag> },
@@ -598,6 +628,7 @@ export default function CaseDetailsPage() {
       <Table
         dataSource={data.suspects}
         rowKey={(record) => `suspect-${record.id || `${record.full_name}-${record.role_in_case}`}`}
+        scroll={{ x: 'max-content' }}
         columns={[
           {
             title: 'Face',
@@ -618,10 +649,19 @@ export default function CaseDetailsPage() {
           {
             title: 'Action',
             key: 'action',
-            render: (_, record) => canManageInvestigation && !caseEndedAtCourtReferral && !record.is_arrested && (
-              <Button size="small" icon={<PlusOutlined />} onClick={() => { setSelectedSuspect(record); setIsArrestModalOpen(true); }}>
-                Record Arrest
-              </Button>
+            render: (_, record) => (
+              <Space>
+                {canManageInvestigation && !caseEndedAtCourtReferral && !record.is_arrested && (
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => { setSelectedSuspect(record); setIsArrestModalOpen(true); }}>
+                    Record Arrest
+                  </Button>
+                )}
+                {canManageInvestigation && !caseEndedAtCourtReferral && (
+                  <Button size="small" icon={<EditOutlined />} onClick={() => handleOpenEditSuspect(record)}>
+                    Edit
+                  </Button>
+                )}
+              </Space>
             )
           }
         ]}
@@ -650,7 +690,7 @@ export default function CaseDetailsPage() {
   );
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander']}>
+    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Space orientation="vertical">
@@ -893,7 +933,7 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title="Add Suspect to Case" open={isSuspectModalOpen} onCancel={() => { setIsSuspectModalOpen(false); stopCamera(); setDuplicateAlert(null); }} onOk={() => suspectForm.submit()} width={820}>
+      <Modal title={editingSuspect ? "Edit Suspect Details" : "Add Suspect to Case"} open={isSuspectModalOpen} onCancel={() => { setIsSuspectModalOpen(false); setEditingSuspect(null); stopCamera(); setDuplicateAlert(null); }} onOk={() => suspectForm.submit()} width={820}>
         <Form form={suspectForm} onFinish={handleSuspect} onValuesChange={handleFormValuesChange} layout="vertical">
           <Row gutter={16}>
             {duplicateAlert && (

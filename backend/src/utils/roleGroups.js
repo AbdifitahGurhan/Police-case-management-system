@@ -1,9 +1,9 @@
 'use strict';
 
-const COMMANDER_ROLES = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
+const COMMANDER_ROLES = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'ward_commander', 'waax_commander'];
 const OPERATIONAL_ROLES = ['ob_staff', 'staff'];
 const COURT_SPECIAL_ROLES = ['court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk'];
-const CORE_CASE_READ_ROLES = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander'];
+const CORE_CASE_READ_ROLES = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
 const UNIT_ROLES = ['state_admin', 'region_admin', 'city_admin', 'district_admin'];
 const CASE_READ_ROLES = [...CORE_CASE_READ_ROLES, ...COURT_SPECIAL_ROLES, 'jail'];
 const STATION_OPERATION_ROLES = ['district_admin'];

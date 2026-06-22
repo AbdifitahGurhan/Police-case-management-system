@@ -11,8 +11,8 @@ const { CASE_READ_ROLES, CASE_WRITE_ROLES, CASE_STATUS_ROLES } = require('../uti
 router.use(authMiddleware);
 
 router.get('/', allowRoles(...CASE_READ_ROLES), getCases);
-router.get('/stats', allowRoles(...CASE_READ_ROLES), getCaseStats);
-router.get('/my-assigned', allowRoles(...CASE_READ_ROLES), getMyAssignedCases);
+router.get('/stats', allowRoles(...CASE_READ_ROLES, 'officer'), getCaseStats);
+router.get('/my-assigned', allowRoles(...CASE_READ_ROLES, 'officer'), getMyAssignedCases);
 router.get('/assignable/officers', allowRoles('admin', 'district_commander', 'police_station_commander', 'district_admin'), getAssignableOfficers);
 router.get('/:id/export', allowRoles(...CASE_READ_ROLES), exportCasePackage);
 router.get('/:id', allowRoles(...CASE_READ_ROLES), getCaseById);

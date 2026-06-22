@@ -9,11 +9,13 @@ import api from '@/services/api';
 import CaseStatusTag from '@/components/shared/CaseStatusTag';
 import dayjs from 'dayjs';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 
 const { Title } = Typography;
 const { Option } = Select;
 
 export default function CaseListPage() {
+  const { user, loading: authLoading } = useAuth();
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 15, total: 0 });
@@ -44,8 +46,11 @@ export default function CaseListPage() {
   }, [filters]);
 
   useEffect(() => {
-    fetchCases();
-  }, [fetchCases]);
+    const allowedRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+    if (!authLoading && user && allowedRoles.includes(user.role)) {
+      fetchCases();
+    }
+  }, [fetchCases, user, authLoading]);
 
   const handleTableChange = (pagination) => {
     fetchCases(pagination.current, pagination.pageSize);
@@ -106,12 +111,12 @@ export default function CaseListPage() {
     },
   ];
   return (
-    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander']}>
+    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <Breadcrumb items={[{ title: 'Home' }, { title: 'Cases' }]} />
         
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Title level={2}>Case Register</Title>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+          <Title level={2} style={{ margin: 0 }}>Case Register</Title>
           <Link href="/ob-register">
             <Button type="primary" icon={<AuditOutlined />}>Go to OB Registration</Button>
           </Link>
@@ -155,6 +160,7 @@ export default function CaseListPage() {
             loading={loading}
             pagination={pagination}
             onChange={handleTableChange}
+            scroll={{ x: 'max-content' }}
           />
         </Card>
       </Space>

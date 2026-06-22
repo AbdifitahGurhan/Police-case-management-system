@@ -146,8 +146,8 @@ export default function OffendersPage() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
       });
       setCameraStream(stream);
       setIsCameraActive(true);
@@ -250,15 +250,28 @@ export default function OffendersPage() {
     setModalOpen(true);
   };
 
-  const openEdit = (record) => {
-    setEditing(record);
+  const openEdit = async (record) => {
     setDuplicateAlert(null);
-    setSuspectFaceImage(record.face_capture_image || record.photo_url || '');
-    form.setFieldsValue({
-      ...record,
-      is_arrested: Number(record.is_arrested) === 1,
-    });
-    setModalOpen(true);
+    setLoading(true);
+    try {
+      const res = await api.get(`/criminals/${record.id}`);
+      const fullRecord = res.data.data;
+      setEditing(fullRecord);
+      setSuspectFaceImage(fullRecord.face_capture_image || fullRecord.photo_url || '');
+      form.setFieldsValue({
+        ...fullRecord,
+        age: fullRecord.age ? Number(fullRecord.age) : null,
+        date_of_birth: fullRecord.date_of_birth ? dayjs(fullRecord.date_of_birth) : null,
+        arrest_status: fullRecord.arrest_status || 'not_arrested',
+        description: fullRecord.description || fullRecord.profile_notes || '',
+      });
+      setModalOpen(true);
+    } catch (err) {
+      console.error(err);
+      message.error('Failed to load offender details.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openRelease = (record) => {
@@ -316,11 +329,19 @@ export default function OffendersPage() {
       const payload = new FormData();
       Object.entries(values).forEach(([key, value]) => {
         if (key === 'photo') return;
+        if (key === 'date_of_birth' && value) {
+          payload.append(key, value.format('YYYY-MM-DD'));
+          return;
+        }
         if (value !== undefined && value !== null) payload.append(key, value);
       });
+      if (values.arrest_status) {
+        const isArrested = ['arrested', 'wanted'].includes(values.arrest_status);
+        payload.append('is_arrested', isArrested ? '1' : '0');
+      }
       const file = values.photo?.[0]?.originFileObj;
       if (file) payload.append('photo', file);
-      if (suspectFaceImage) {
+      if (suspectFaceImage && suspectFaceImage.startsWith('data:')) {
         payload.append('face_capture_image', suspectFaceImage);
       }
 
@@ -631,7 +652,7 @@ export default function OffendersPage() {
       width: 240,
       render: (_, row) => (
         <Space wrap size="small">
-          {canManageOffenders && <Button size="small" onClick={() => openEdit(row)}>Report</Button>}
+          {canManageOffenders && <Button size="small" onClick={() => openEdit(row)}>Edit</Button>}
           <Button size="small" icon={<HistoryOutlined />} onClick={() => openHistory(row)}>History</Button>
           {canReleaseOffenders && Number(row.is_arrested) === 1 && (
             <Button size="small" type="primary" icon={<UnlockOutlined />} onClick={() => openRelease(row)}>
@@ -690,14 +711,14 @@ export default function OffendersPage() {
           <Table columns={columns} dataSource={offenders} rowKey="id" loading={loading} scroll={{ x: 1200 }} />
         </Card>
 
-        <Modal 
-          title={editing ? 'Edit Offender Profile' : 'Register Offender'} 
-          open={modalOpen} 
-          onCancel={() => { setModalOpen(false); stopCamera(); setDuplicateAlert(null); }} 
-          onOk={() => form.submit()} 
-          confirmLoading={saving} 
-          width={820} 
-          destroyOnHidden 
+        <Modal
+          title={editing ? 'Edit Offender Profile' : 'Register Offender'}
+          open={modalOpen}
+          onCancel={() => { setModalOpen(false); stopCamera(); setDuplicateAlert(null); }}
+          onOk={() => form.submit()}
+          confirmLoading={saving}
+          width={820}
+          destroyOnHidden
           forceRender
         >
           <Form form={form} layout="vertical" onFinish={handleSubmit} onValuesChange={handleFormValuesChange}>
@@ -710,9 +731,9 @@ export default function OffendersPage() {
                     type="warning"
                     showIcon
                     action={
-                      <Button 
-                        size="small" 
-                        type="primary" 
+                      <Button
+                        size="small"
+                        type="primary"
                         onClick={() => handleLinkExisting(duplicateAlert)}
                       >
                         Isticmaal dambiilahan
@@ -723,7 +744,13 @@ export default function OffendersPage() {
                 </Col>
               )}
               <Col xs={24} md={12}><Form.Item name="full_name" label="Full Name" rules={[{ required: true, message: 'Full name is required.' }, { min: 3 }]}><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name="mother_name" label="Mother's Name"><Input /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="alias" label="Alias"><Input /></Form.Item></Col>
+              <Col xs={24} md={12}>
+                <Form.Item name="date_of_birth" label="Date of Birth">
+                  <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" placeholder="Select DOB" />
+                </Form.Item>
+              </Col>
               <Col xs={24} md={8}><Form.Item name="gender" label="Gender" initialValue="male" rules={[{ required: true }]}><Select options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }]} /></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[{ type: 'number', min: 1, max: 120 }]}><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="nationality" label="Nationality" initialValue="Somali"><Input /></Form.Item></Col>
@@ -737,18 +764,29 @@ export default function OffendersPage() {
               </Col>
               <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number"><Input /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="phone" label="Phone" rules={[{ pattern: /^[+\d][\d\s-]{6,24}$/, message: 'Use a valid phone number.' }]}><Input /></Form.Item></Col>
-              <Col xs={24} md={12}><Form.Item name="is_arrested" label="Arrested" valuePropName="checked"><Switch /></Form.Item></Col>
+              <Col xs={24} md={12}>
+                <Form.Item name="arrest_status" label="Arrest Status" initialValue="not_arrested" rules={[{ required: true }]}>
+                  <Select options={[
+                    { value: 'not_arrested', label: 'Not Arrested' },
+                    { value: 'arrested', label: 'Arrested' },
+                    { value: 'released', label: 'Released' },
+                    { value: 'wanted', label: 'Wanted' },
+                    { value: 'escaped', label: 'Escaped' },
+                  ]} />
+                </Form.Item>
+              </Col>
               <Col xs={24}><Form.Item name="address" label="Address"><Input /></Form.Item></Col>
+              <Col xs={24}><Form.Item name="description" label="Profile Notes / Description"><TextArea rows={3} placeholder="Enter description or profile notes about the offender" /></Form.Item></Col>
 
-              
+
               <Col span={24}>
                 <Form.Item label="Offender Photo / Face Capture">
-                  <div className="face-preview-panel" style={{ 
-                    height: 280, 
+                  <div className="face-preview-panel" style={{
+                    height: 280,
                     width: '100%',
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     border: '1px dashed #d9d9d9',
                     borderRadius: 8,
                     backgroundColor: '#f8fafc',
@@ -758,19 +796,19 @@ export default function OffendersPage() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={suspectFaceImage.startsWith('data:') || suspectFaceImage.startsWith('http') ? suspectFaceImage : `${UPLOAD_BASE_URL}${suspectFaceImage}`} alt="Suspect face capture preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
                     ) : isCameraActive ? (
-                      <video 
+                      <video
                         ref={videoRef}
-                        autoPlay 
-                        playsInline 
-                        muted 
-                        className="face-camera-video" 
-                        style={{ 
-                          width: '100%', 
-                          height: '100%', 
+                        autoPlay
+                        playsInline
+                        muted
+                        className="face-camera-video"
+                        style={{
+                          width: '100%',
+                          height: '100%',
                           objectFit: 'cover',
                           transform: 'scaleX(-1)',
                           borderRadius: 6
-                        }} 
+                        }}
                       />
                     ) : (
                       <Text type="secondary">No face image captured yet. Use the camera or upload a file.</Text>
@@ -835,14 +873,80 @@ export default function OffendersPage() {
                 {selectedProfile.repeat_offender && (
                   <Alert type="info" showIcon title="This person has previous arrest or case history connected to the same profile." />
                 )}
-                <Descriptions bordered size="small" column={2}>
-                  <Descriptions.Item label="Full Name">{selectedProfile.profile.full_name}</Descriptions.Item>
-                  <Descriptions.Item label="Alias">{selectedProfile.profile.alias || 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="ID Number">{selectedProfile.profile.id_number || 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="Phone">{selectedProfile.profile.phone || 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="First Arrest">{selectedProfile.first_arrest_date ? dayjs(selectedProfile.first_arrest_date).format('YYYY-MM-DD') : 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="Arrests">{selectedProfile.arrests.length}</Descriptions.Item>
-                </Descriptions>
+                <Row gutter={[16, 16]}>
+                  {/* Left Profile Panel */}
+                  <Col xs={24} md={6} style={{ textAlign: 'center' }}>
+                    <Card style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '12px 0' }}>
+                      <div style={{ marginBottom: 16 }}>
+                        {(selectedProfile.profile.face_capture_image || selectedProfile.profile.photo_url) ? (
+                          <Image
+                            width={140}
+                            height={140}
+                            style={{ objectFit: 'cover', borderRadius: 8, border: '2px solid #cbd5e1' }}
+                            src={(() => {
+                              const img = selectedProfile.profile.face_capture_image || selectedProfile.profile.photo_url;
+                              return (img.startsWith('data:') || img.startsWith('http')) ? img : `${UPLOAD_BASE_URL}${img}`;
+                            })()}
+                            alt={selectedProfile.profile.full_name}
+                          />
+                        ) : (
+                          <Avatar size={100} icon={<UserOutlined />} />
+                        )}
+                      </div>
+                      <Title level={4} style={{ margin: '0 0 4px 0', fontSize: '18px' }}>{selectedProfile.profile.full_name}</Title>
+                      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>{selectedProfile.profile.alias ? `"${selectedProfile.profile.alias}"` : 'No Alias'}</Text>
+
+                      <div style={{ marginBottom: 16 }}>
+                        {Number(selectedProfile.profile.is_arrested) === 1 ? (
+                          <Tag color="red" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: 'bold', borderRadius: '4px' }}>
+                            🔴 IN CUSTODY (XIRAN)
+                          </Tag>
+                        ) : selectedProfile.profile.arrest_status === 'wanted' || selectedProfile.profile.arrest_status === 'escaped' ? (
+                          <Tag color="volcano" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: 'bold', borderRadius: '4px' }}>
+                            ⚠️ WANTED / ESCAPED
+                          </Tag>
+                        ) : (
+                          <Tag color="green" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: 'bold', borderRadius: '4px' }}>
+                            🟢 RELEASED (XOR)
+                          </Tag>
+                        )}
+                      </div>
+
+                      <Row gutter={8} style={{ width: '100%', marginTop: 8 }}>
+                        <Col span={12} style={{ textAlign: 'center' }}>
+                          <Statistic title="Total Cases" value={selectedProfile.cases?.length || 0} styles={{ content: { fontSize: 16 } }} />
+                        </Col>
+                        <Col span={12} style={{ textAlign: 'center' }}>
+                          <Statistic title="Arrests" value={selectedProfile.arrests?.length || 0} styles={{ content: { fontSize: 16 } }} />
+                        </Col>
+                      </Row>
+                    </Card>
+                  </Col>
+
+                  {/* Right Descriptions Panel */}
+                  <Col xs={24} md={18}>
+                    <Descriptions bordered size="small" column={2} style={{ height: '100%' }}>
+                      <Descriptions.Item label="Mother's Name">{selectedProfile.profile.mother_name || 'N/A'}</Descriptions.Item>
+                      <Descriptions.Item label="Gender">{selectedProfile.profile.gender ? selectedProfile.profile.gender.toUpperCase() : 'N/A'}</Descriptions.Item>
+                      <Descriptions.Item label="Age / DOB">{selectedProfile.profile.age || 'N/A'} yrs {selectedProfile.profile.date_of_birth ? `(${dayjs(selectedProfile.profile.date_of_birth).format('YYYY-MM-DD')})` : ''}</Descriptions.Item>
+                      <Descriptions.Item label="Nationality">{selectedProfile.profile.nationality || 'Somali'}</Descriptions.Item>
+                      <Descriptions.Item label="ID Number">{selectedProfile.profile.id_type || 'ID'}: {selectedProfile.profile.id_number || 'N/A'}</Descriptions.Item>
+                      <Descriptions.Item label="Phone">{selectedProfile.profile.phone || 'N/A'}</Descriptions.Item>
+                      <Descriptions.Item label="Address" span={2}>{selectedProfile.profile.address || 'N/A'}</Descriptions.Item>
+                      <Descriptions.Item label="Description/Notes" span={2}>{selectedProfile.profile.description || selectedProfile.profile.profile_notes || 'No description notes available.'}</Descriptions.Item>
+                      <Descriptions.Item label="First Arrest Date">{selectedProfile.first_arrest_date ? dayjs(selectedProfile.first_arrest_date).format('YYYY-MM-DD') : 'N/A'}</Descriptions.Item>
+                      <Descriptions.Item label="Current Custody Location">
+                        {Number(selectedProfile.profile.is_arrested) === 1 && selectedProfile.arrests?.length > 0 ? (
+                          <Text strong type="danger">
+                            {selectedProfile.arrests[selectedProfile.arrests.length - 1]?.police_station_name || 'Unknown Station'}
+                          </Text>
+                        ) : (
+                          <Text type="secondary">Not in custody</Text>
+                        )}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </Col>
+                </Row>
                 <Tabs
                   items={[
                     {
@@ -918,42 +1022,12 @@ export default function OffendersPage() {
                         <Space orientation="vertical" style={{ width: '100%' }} size="large">
                           {canManageCustody && (
                             <Space wrap>
-                              <Button onClick={() => openCustodyAction('biometric')}>Add Biometric</Button>
-                              <Button onClick={() => openCustodyAction('document')}>Add Document</Button>
                               {['admin', 'jail'].includes(user?.role) && <Button onClick={() => openCustodyAction('transfer')}>Prison Transfer</Button>}
                               {['admin', 'jail'].includes(user?.role) && <Button onClick={() => openCustodyAction('medical')}>Medical Record</Button>}
                               {['admin', 'jail'].includes(user?.role) && <Button onClick={() => openCustodyAction('visitor')}>Visitor Log</Button>}
                               {['admin', 'jail'].includes(user?.role) && <Button type="primary" onClick={() => openCustodyAction('release')}>Request Release</Button>}
                             </Space>
                           )}
-                          <Table
-                            title={() => 'Biometric Identification'}
-                            size="small"
-                            rowKey="id"
-                            dataSource={selectedProfile.biometrics || []}
-                            pagination={false}
-                            columns={[
-                              { title: 'Type', dataIndex: 'biometric_type', render: (v) => <Tag>{v}</Tag> },
-                              { title: 'Hash', dataIndex: 'biometric_hash', ellipsis: true },
-                              { title: 'Quality', dataIndex: 'quality_score' },
-                              { title: 'Captured By', dataIndex: 'captured_by' },
-                              { title: 'Captured At', dataIndex: 'captured_at', render: (v) => v ? dayjs(v).format('YYYY-MM-DD HH:mm') : 'N/A' },
-                            ]}
-                          />
-                          <Table
-                            title={() => 'Documents'}
-                            size="small"
-                            rowKey="id"
-                            dataSource={selectedProfile.documents || []}
-                            pagination={false}
-                            columns={[
-                              { title: 'Type', dataIndex: 'document_type' },
-                              { title: 'Title', dataIndex: 'title' },
-                              { title: 'Uploaded By', dataIndex: 'uploaded_by' },
-                              { title: 'Date', dataIndex: 'uploaded_at', render: (v) => dayjs(v).format('YYYY-MM-DD') },
-                              { title: 'File', dataIndex: 'file_url', render: (v) => v ? <Button size="small" href={`${UPLOAD_BASE_URL}${v}`} target="_blank">Open</Button> : 'N/A' },
-                            ]}
-                          />
                           <Table
                             title={() => 'Prison Transfer History'}
                             size="small"
@@ -1047,6 +1121,7 @@ export default function OffendersPage() {
         <Modal
           title="Update Sentence / Prisoner Status"
           open={sentenceOpen}
+          zIndex={1100}
           onCancel={() => setSentenceOpen(false)}
           onOk={() => sentenceForm.submit()}
           confirmLoading={saving}
@@ -1106,6 +1181,7 @@ export default function OffendersPage() {
             release: 'Request Release Approval',
           }[custodyAction] || 'Custody Record'}
           open={custodyOpen}
+          zIndex={1100}
           onCancel={() => setCustodyOpen(false)}
           onOk={() => custodyForm.submit()}
           confirmLoading={saving}

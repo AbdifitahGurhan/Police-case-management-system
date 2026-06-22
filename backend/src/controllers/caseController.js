@@ -401,6 +401,16 @@ const createCase = async (req, res, next) => {
         );
         const newCriminalId = criminalResult.insertId;
 
+        const { writeAuditLog } = require('../utils/auditLogger');
+        await writeAuditLog({
+          userId: req.user.username || req.user.id,
+          userEmail: req.user.email,
+          action: 'CREATE_SUSPECT',
+          entityType: 'criminals',
+          entityId: newCriminalId,
+          newData: { full_name: offenderName || 'Unknown Offender', face_capture_image: faceCaptureUrl, fingerprint_hash: faceKey }
+        });
+
         await db.query(
           `INSERT INTO case_criminals (case_id, criminal_id, linked_by_user_id, role_in_case, added_by)
            VALUES (?, ?, ?, 'Suspect', ?)`,

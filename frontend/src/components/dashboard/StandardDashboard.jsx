@@ -98,6 +98,7 @@ export default function StandardDashboard({
                 rowKey={rowKey}
                 pagination={false}
                 size="middle"
+                scroll={{ x: 'max-content' }}
               />
               {tableData.length > 0 && (
                 <div className="standard-table-footer">

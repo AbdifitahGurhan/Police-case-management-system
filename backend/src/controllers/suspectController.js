@@ -57,6 +57,9 @@ const getFaceKeyFromDataImage = (faceImage) => parseFaceImage(faceImage).biometr
 
 const saveFaceCaptureImage = (faceImage) => {
   if (!faceImage) return null;
+  if (typeof faceImage === 'string' && (faceImage.startsWith('/uploads/') || faceImage.startsWith('http://') || faceImage.startsWith('https://'))) {
+    return null;
+  }
   const { buffer, extension, biometricKey } = parseFaceImage(faceImage);
   const uploadDir = path.join(__dirname, '../../uploads/offenders');
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -253,6 +256,47 @@ const createSuspect = async (req, res, next) => {
     });
 
     if (existingMatch) {
+      if (case_id) {
+        const suspectId = existingMatch.row.id;
+        const [[alreadyLinked]] = await db.query(
+          "SELECT id FROM case_criminals WHERE case_id = ? AND criminal_id = ? AND status = 'active'",
+          [case_id, suspectId]
+        );
+        if (alreadyLinked) {
+          return res.status(409).json({
+            success: false,
+            message: `Qofkani wuxuu mar hore ku xirnaa kiiskan (Suspect is already linked).`,
+          });
+        }
+
+        await db.query(
+          `INSERT INTO case_criminals (case_id, criminal_id, linked_by_user_id, role_in_case, added_by)
+           VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE status = 'active', role_in_case = VALUES(role_in_case)`,
+          [case_id, suspectId, req.user.username || req.user.id, role_in_case || null, req.user.username || req.user.id]
+        );
+        await db.query(
+          `INSERT INTO case_actions (case_id, performed_by, action_type, description)
+           VALUES (?, ?, 'SUSPECT_ADDED', ?)`,
+          [case_id, req.user.username || req.user.id, `Dambiile hore oo la yiraahdo ${existingMatch.row.full_name} ayaa lagu xiray kiiskan.`]
+        );
+        await writeAuditLog({
+          userId: req.user.username || req.user.id,
+          userEmail: req.user.email || req.user.username,
+          action: 'LINK_EXISTING_SUSPECT',
+          entityType: 'criminals',
+          entityId: suspectId,
+          newData: { case_id, role_in_case }
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: `Dambiile hore '${existingMatch.row.full_name}' waa lagu guuleystay in lagu xiro kiiska.`,
+          suspectId,
+          matchedExisting: true,
+        });
+      }
+
       // Profile already exists — do NOT link or create anything. Just notify the caller.
       return res.status(409).json({
         success: false,
@@ -322,7 +366,8 @@ const updateSuspect = async (req, res, next) => {
 
     const {
       full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number,
-      phone, address, description, is_arrested, face_capture_image, face_capture_notes, profile_notes, arrest_status
+      phone, address, description, is_arrested, face_capture_image, face_capture_notes, profile_notes, arrest_status,
+      case_id, role_in_case
     } = req.body;
     const photoUrl = buildPhotoUrl(req.file);
     const faceCapture = saveFaceCaptureImage(face_capture_image);
@@ -333,6 +378,11 @@ const updateSuspect = async (req, res, next) => {
       'id_type=?', 'id_number=?', 'phone=?', 'address=?', 'description=?',
       'is_arrested=?', 'face_capture_notes=?', 'profile_notes=?', 'arrest_status=?'
     ];
+    
+    const isArrestedValue = (is_arrested !== undefined)
+      ? (is_arrested === true || is_arrested === 'true' || is_arrested === '1' ? 1 : 0)
+      : (['arrested', 'wanted'].includes(arrest_status) ? 1 : 0);
+
     const params = [
       full_name.trim(),
       normalizeOptional(mother_name),
@@ -346,7 +396,7 @@ const updateSuspect = async (req, res, next) => {
       normalizeOptional(phone),
       normalizeOptional(address),
       normalizeOptional(description) || normalizeOptional(profile_notes),
-      is_arrested === true || is_arrested === 'true' || is_arrested === '1' ? 1 : 0,
+      isArrestedValue,
       normalizeOptional(face_capture_notes),
       normalizeOptional(profile_notes),
       normalizeOptional(arrest_status) || 'not_arrested',
@@ -367,7 +417,15 @@ const updateSuspect = async (req, res, next) => {
 
     params.push(req.params.id);
     await db.query(`UPDATE criminals SET ${updates.join(', ')} WHERE id=?`, params);
-    await writeAuditLog({ userId: req.user.id, userEmail: req.user.email, action: 'UPDATE_SUSPECT', entityType: 'criminals', entityId: req.params.id, newData: req.body });
+    
+    if (case_id && role_in_case) {
+      await db.query(
+        'UPDATE case_criminals SET role_in_case = ? WHERE case_id = ? AND criminal_id = ?',
+        [role_in_case, case_id, req.params.id]
+      );
+    }
+
+    await writeAuditLog({ userId: req.user.id || req.user.username, userEmail: req.user.email, action: 'UPDATE_SUSPECT', entityType: 'criminals', entityId: req.params.id, newData: req.body });
     res.json({ success: true, message: 'Suspect updated.' });
   } catch (err) { next(err); }
 };
@@ -643,13 +701,63 @@ const loadSuspectHistory = async (suspectId) => {
     ORDER BY c.created_at ASC
   `, [suspectId]);
 
-  const [actions] = await db.query(`
-    SELECT ca.*
+  const [caseActions] = await db.query(`
+    SELECT ca.id, ca.case_id, ca.performed_by, ca.action_type, ca.description, ca.created_at
     FROM case_actions ca
     JOIN case_criminals cs ON ca.case_id = cs.case_id
     WHERE cs.criminal_id = ?
-    ORDER BY ca.created_at ASC
   `, [suspectId]);
+
+  const [audits] = await db.query(`
+    SELECT id, action AS action_type, user_id AS performed_by, new_data, created_at
+    FROM audit_logs
+    WHERE entity_type = 'criminals' AND entity_id = ?
+  `, [suspectId]);
+
+  const formattedAudits = audits.map((audit) => {
+    let description = '';
+    let newData = {};
+    try {
+      if (audit.new_data) {
+        newData = typeof audit.new_data === 'string' ? JSON.parse(audit.new_data) : audit.new_data;
+      }
+    } catch (e) {
+      console.error('Failed to parse audit log new_data', e);
+    }
+
+    if (audit.action_type === 'CREATE_SUSPECT') {
+      description = `Offender profile registered. Initial status: ${newData.arrest_status || 'not_arrested'}.`;
+      audit.action_type = 'PROFILE_CREATED';
+    } else if (audit.action_type === 'RELEASE_SUSPECT') {
+      description = `Offender released from custody. Reason: ${newData.release_reason || 'N/A'}`;
+      audit.action_type = 'SUSPECT_RELEASED';
+    } else if (audit.action_type === 'UPDATE_SUSPECT') {
+      if (newData.arrest_status) {
+        description = `Offender status updated to ${newData.arrest_status.toUpperCase().replaceAll('_', ' ')}.`;
+      } else if (newData.is_arrested !== undefined) {
+        description = `Offender custody status updated to ${Number(newData.is_arrested) === 1 ? 'ARRESTED' : 'NOT ARRESTED'}.`;
+      } else {
+        description = 'Offender profile details updated (e.g., demographics, contact info).';
+      }
+      audit.action_type = 'PROFILE_UPDATED';
+    } else {
+      description = `Offender action: ${audit.action_type}`;
+    }
+
+    return {
+      id: `audit-${audit.id}`,
+      case_id: null,
+      performed_by: audit.performed_by || 'system',
+      action_type: audit.action_type,
+      description,
+      created_at: audit.created_at,
+    };
+  });
+
+  const actions = [
+    ...caseActions.map(a => ({ ...a, id: `case-action-${a.id}` })),
+    ...formattedAudits
+  ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const [biometrics] = await db.query('SELECT * FROM biometric_identifiers WHERE suspect_id = ? ORDER BY captured_at DESC', [suspectId]);
   const [documents] = await db.query('SELECT * FROM prisoner_documents WHERE suspect_id = ? ORDER BY uploaded_at DESC', [suspectId]);
   const [prison_transfers] = await db.query('SELECT * FROM prison_transfers WHERE suspect_id = ? ORDER BY transfer_date DESC', [suspectId]);

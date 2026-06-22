@@ -476,10 +476,16 @@ export default function ReportsPage() {
             <div class="grid">
               <div class="box"><strong>Name:</strong> ${offender.full_name}</div>
               <div class="box"><strong>Alias:</strong> ${offender.alias || 'N/A'}</div>
+              <div class="box"><strong>Mother's Name:</strong> ${offender.mother_name || 'N/A'}</div>
+              <div class="box"><strong>Gender:</strong> ${offender.gender || 'N/A'}</div>
+              <div class="box"><strong>Age:</strong> ${offender.age || 'N/A'} ${offender.date_of_birth ? `(DOB: ${dayjs(offender.date_of_birth).format('DD/MM/YYYY')})` : ''}</div>
               <div class="box"><strong>Nationality:</strong> ${offender.nationality || 'N/A'}</div>
-              <div class="box"><strong>Linked Cases:</strong> ${offender.case_count || 0}</div>
-              <div class="box"><strong>Arrest Status:</strong> ${Number(offender.is_arrested) === 1 ? 'Arrested' : 'Open'}</div>
-              <div class="box"><strong>Face Capture:</strong> ${offender.face_capture_image ? 'Captured' : 'Not Captured'}</div>
+              <div class="box"><strong>ID Document:</strong> ${offender.id_type || 'N/A'} - ${offender.id_number || 'N/A'}</div>
+              <div class="box"><strong>Phone:</strong> ${offender.phone || 'N/A'}</div>
+              <div class="box"><strong>Address:</strong> ${offender.address || 'N/A'}</div>
+              <div class="box"><strong>Arrest Status:</strong> ${offender.arrest_status?.toUpperCase() || (Number(offender.is_arrested) === 1 ? 'ARRESTED' : 'NOT ARRESTED')}</div>
+              <div class="box" style="grid-column: span 2"><strong>Description / Profile Notes:</strong> ${offender.description || offender.profile_notes || 'N/A'}</div>
+              <div class="box" style="grid-column: span 2"><strong>Linked Cases Count:</strong> ${offender.case_count || 0}</div>
             </div>
             ${tableHtml(['OB Number', 'Title', 'Category', 'Status', 'Role'], cases.map((row) => [row.ob_number, row.title, row.case_type, row.status, row.role_in_case]))}
           `
@@ -837,6 +843,7 @@ export default function ReportsPage() {
         pagination={false}
         loading={tableLoading}
         size="middle"
+        scroll={{ x: 'max-content' }}
         {...props}
       />
     );

@@ -8,16 +8,21 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 
 const { Title, Text } = Typography;
 const UPLOAD_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '');
 
 export default function EvidenceBrowserPage() {
+  const { user } = useAuth();
   const { message } = App.useApp();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [previewRecord, setPreviewRecord] = useState(null);
+
+  const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+  const canReadCases = user && caseReadRoles.includes(user.role);
 
   const fetchEvidence = useCallback(async () => {
     setLoading(true);
@@ -52,9 +57,11 @@ export default function EvidenceBrowserPage() {
       key: 'action',
       render: (_, record) => (
         <Space>
-           <Link href={`/cases/${record.case_id}`}>
-            <Button size="small" icon={<FileSearchOutlined />}>Case File</Button>
-           </Link>
+           {canReadCases && (
+             <Link href={`/cases/${record.case_id}`}>
+              <Button size="small" icon={<FileSearchOutlined />}>Case File</Button>
+             </Link>
+           )}
            {record.file_url && (
               <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => setPreviewRecord(record)}>
                 Preview
@@ -86,7 +93,7 @@ export default function EvidenceBrowserPage() {
             onChange={(e) => setSearch(e.target.value)}
             allowClear
           />
-          <Table columns={columns} dataSource={filteredData} rowKey="id" loading={loading} />
+          <Table columns={columns} dataSource={filteredData} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
         </Card>
 
         <Modal

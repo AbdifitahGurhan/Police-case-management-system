@@ -163,12 +163,12 @@ function RegionDashboard({ user }) {
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={12}>
             <Card variant="none" className="standard-panel" title="Police Station Performance Comparison">
-              <Table columns={stationColumns} dataSource={data?.stationPerformance || []} rowKey="id" pagination={false} />
+              <Table columns={stationColumns} dataSource={data?.stationPerformance || []} rowKey="id" pagination={false} scroll={{ x: 'max-content' }} />
             </Card>
           </Col>
           <Col xs={24} lg={12}>
             <Card variant="none" className="standard-panel" title="Waax Police Station Performance">
-              <Table columns={waaxColumns} dataSource={data?.waaxPerformance || []} rowKey="id" pagination={false} />
+              <Table columns={waaxColumns} dataSource={data?.waaxPerformance || []} rowKey="id" pagination={false} scroll={{ x: 'max-content' }} />
             </Card>
           </Col>
         </Row>
@@ -224,7 +224,7 @@ function RegionDashboard({ user }) {
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={14}>
             <Card variant="none" className="standard-panel" title="Recent Cases">
-              <Table columns={recentCaseColumns} dataSource={data?.recentCases || []} rowKey="id" pagination={false} />
+              <Table columns={recentCaseColumns} dataSource={data?.recentCases || []} rowKey="id" pagination={false} scroll={{ x: 'max-content' }} />
             </Card>
           </Col>
           <Col xs={24} lg={10}>

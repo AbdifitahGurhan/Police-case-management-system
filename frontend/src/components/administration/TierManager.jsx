@@ -106,7 +106,7 @@ export default function TierManager({
       </div>
 
       <Card variant="none">
-        <Table columns={combinedColumns} dataSource={data} rowKey="id" loading={loading} />
+        <Table columns={combinedColumns} dataSource={data} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
       </Card>
 
       <Modal 

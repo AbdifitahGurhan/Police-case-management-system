@@ -5,12 +5,16 @@ import { AuditOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { Breadcrumb, Button, Card, Space, Tag, Typography } from 'antd';
 import Link from 'next/link';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 
 const { Text, Title } = Typography;
 
 const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'waax_commander'];
 
 export default function NewCasePage() {
+  const { user } = useAuth();
+  const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+  const canReadCases = user && caseReadRoles.includes(user.role);
   return (
     <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', ...commanderRoles]}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
@@ -38,9 +42,11 @@ export default function NewCasePage() {
               <Link href="/ob-register">
                 <Button type="primary" icon={<AuditOutlined />}>Go to OB Registration</Button>
               </Link>
-              <Link href="/cases">
-                <Button icon={<ArrowLeftOutlined />}>Back to Cases</Button>
-              </Link>
+              {canReadCases && (
+                <Link href="/cases">
+                  <Button icon={<ArrowLeftOutlined />}>Back to Cases</Button>
+                </Link>
+              )}
             </Space>
           </Space>
         </Card>

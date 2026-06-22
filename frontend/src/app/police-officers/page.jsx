@@ -243,7 +243,7 @@ export default function PoliceOfficersPage() {
         </div>
 
         <Card variant="none">
-          <Table columns={columns} dataSource={data} rowKey="id" loading={loading} />
+          <Table columns={columns} dataSource={data} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
         </Card>
 
         {/* Create/Edit Modal */}

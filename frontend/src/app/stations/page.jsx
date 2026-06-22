@@ -120,16 +120,16 @@ export default function StationManagementPage() {
   return (
     <ProtectedRoute allowedRoles={['admin', 'region_admin']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
           <div>
-            <Title level={2}>District Police Station Registry</Title>
+            <Title level={2} style={{ margin: 0 }}>District Police Station Registry</Title>
             <Typography.Text type="secondary">Manage district stations, their login accounts, and their assigned command area.</Typography.Text>
           </div>
           {canEditStations && <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()}>Add Station</Button>}
         </div>
 
         <Card variant="none">
-          <Table columns={columns} dataSource={stations} rowKey="id" loading={loading} />
+          <Table columns={columns} dataSource={stations} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
         </Card>
 
         <Modal 
@@ -146,14 +146,14 @@ export default function StationManagementPage() {
               <Input placeholder="e.g. HPS-01" />
             </Form.Item>
             <Row gutter={16}>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
                   <Select placeholder="Select city">
                     {cities.map((city) => <Select.Option key={city.id} value={city.id}>{city.name}</Select.Option>)}
                   </Select>
                 </Form.Item>
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Form.Item name="username" label="Login Username" rules={usernameRules}>
                   <Input placeholder="e.g. hodan_station" />
                 </Form.Item>

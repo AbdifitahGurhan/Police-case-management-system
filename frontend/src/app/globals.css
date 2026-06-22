@@ -45,6 +45,34 @@ body {
   transition: margin-left 0.2s ease;
 }
 
+@media (min-width: 992px) {
+  .app-main.sidebar-expanded {
+    margin-left: 276px !important;
+  }
+  .app-main.sidebar-collapsed {
+    margin-left: 96px !important;
+  }
+}
+
+@media (max-width: 991px) {
+  .app-main {
+    margin-left: 0 !important;
+  }
+  .police-sidebar {
+    position: fixed !important;
+    left: -276px !important;
+    z-index: 1000 !important;
+    transition: left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  }
+  .police-sidebar:not(.ant-layout-sider-collapsed) {
+    left: 16px !important;
+  }
+  .app-content {
+    margin: 12px 10px 18px !important;
+    padding: 16px !important;
+  }
+}
+
 .app-content {
   min-height: calc(100vh - 112px);
   margin: 18px 16px 24px;
@@ -3073,4 +3101,51 @@ body {
   place-items: center;
   padding: 24px;
   text-align: center;
+}
+
+/* ============================================================
+   RESPONSIVE DESIGN LAYOUT OVERRIDES
+   ============================================================ */
+.app-main {
+  margin-left: 276px;
+  transition: margin-left 0.2s ease;
+}
+
+.app-main.sidebar-collapsed {
+  margin-left: 92px;
+}
+
+@media (max-width: 991px) {
+  .app-main,
+  .app-main.sidebar-collapsed {
+    margin-left: 0 !important;
+  }
+  
+  .police-sidebar {
+    position: fixed !important;
+    left: -276px !important;
+    z-index: 1000 !important;
+    height: calc(100vh - 32px) !important;
+    transition: left 0.2s ease !important;
+    width: 260px !important;
+    min-width: 260px !important;
+    max-width: 260px !important;
+  }
+  
+  /* Slide in active sidebar on mobile */
+  .police-sidebar:not(.ant-layout-sider-collapsed) {
+    left: 16px !important;
+  }
+  
+  .police-sidebar.ant-layout-sider-collapsed {
+    left: -276px !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+  }
+  
+  .app-content {
+    margin: 12px 8px 16px !important;
+    padding: 16px !important;
+  }
 }

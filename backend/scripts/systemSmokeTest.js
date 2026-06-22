@@ -19,13 +19,12 @@ const credentials = {
   region_admin: { username: 'mogadishu_region', password: 'Unit@123' },
   city_admin: { username: 'mogadishu_city', password: 'Unit@123' },
   district_admin: { username: 'hodan_district', password: 'Unit@123' },
-  neighborhood_admin: { username: 'bakaro_station', password: 'Unit@123' },
 };
 
 const results = [];
 const created = {
   cases: [],
-  suspects: [],
+  criminals: [],
   evidence: [],
   files: [],
 };
@@ -97,7 +96,7 @@ const createCase = async (token, suffix, overrides = {}) => {
     },
   });
   created.cases.push(data.caseId);
-  if (data.faceCapture?.suspectId) created.suspects.push(data.faceCapture.suspectId);
+  if (data.faceCapture?.suspectId) created.criminals.push(data.faceCapture.suspectId);
   return data;
 };
 
@@ -131,12 +130,12 @@ const cleanup = async () => {
     }
     if (created.cases.length) {
       await db.query(`DELETE FROM case_actions WHERE case_id IN (${created.cases.map(() => '?').join(',')})`, created.cases);
-      await db.query(`DELETE FROM case_suspects WHERE case_id IN (${created.cases.map(() => '?').join(',')})`, created.cases);
+      await db.query(`DELETE FROM case_criminals WHERE case_id IN (${created.cases.map(() => '?').join(',')})`, created.cases);
       await db.query(`DELETE FROM cases WHERE id IN (${created.cases.map(() => '?').join(',')})`, created.cases);
     }
-    const uniqueSuspects = [...new Set(created.suspects.filter(Boolean))];
-    if (uniqueSuspects.length) {
-      await db.query(`DELETE FROM suspects WHERE id IN (${uniqueSuspects.map(() => '?').join(',')})`, uniqueSuspects);
+    const uniquecriminals = [...new Set(created.criminals.filter(Boolean))];
+    if (uniquecriminals.length) {
+      await db.query(`DELETE FROM criminals WHERE id IN (${uniquecriminals.map(() => '?').join(',')})`, uniquecriminals);
     }
     for (const fileUrl of created.files) {
       const filePath = path.join(__dirname, '..', fileUrl.replace('/uploads/', 'uploads/'));
@@ -188,7 +187,7 @@ const runStep = async (name, fn) => {
   });
 
   await runStep('Captured face finds previous offender and links old profile', async () => {
-    const lookup = await request('/suspects/face-search', {
+    const lookup = await request('/criminals/face-search', {
       method: 'POST',
       token: tokens.officer,
       body: { face_image: FACE_IMAGE },
@@ -222,9 +221,9 @@ const runStep = async (name, fn) => {
   });
 
   await runStep('Offender search filters work by name, gender, repeat offender', async () => {
-    const byName = await request(`/suspects?search=${encodeURIComponent(`Smoke Test Offender ${RUN_ID}`)}`, { token: tokens.officer });
-    const byGender = await request('/suspects?gender=male', { token: tokens.officer });
-    const repeat = await request('/suspects?repeat=true', { token: tokens.officer });
+    const byName = await request(`/criminals?search=${encodeURIComponent(`Smoke Test Offender ${RUN_ID}`)}`, { token: tokens.officer });
+    const byGender = await request('/criminals?gender=male', { token: tokens.officer });
+    const repeat = await request('/criminals?repeat=true', { token: tokens.officer });
     assert(byName.data.data.length >= 1, 'Name search did not find smoke offender');
     assert(byGender.data.data.every((row) => row.gender === 'male'), 'Gender filter returned non-male records');
     assert(repeat.data.data.some((row) => Number(row.case_count) > 1), 'Repeat offender filter did not return repeat records');
@@ -232,35 +231,35 @@ const runStep = async (name, fn) => {
   });
 
   await runStep('Jail and admin can release arrested offenders', async () => {
-    const suspectId = created.suspects[0];
-    await db.query('UPDATE suspects SET is_arrested = 1 WHERE id = ?', [suspectId]);
-    await request(`/suspects/${suspectId}/release`, {
+    const suspectId = created.criminals[0];
+    await db.query('UPDATE criminals SET is_arrested = 1 WHERE id = ?', [suspectId]);
+    await request(`/criminals/${suspectId}/release`, {
       method: 'POST',
       token: tokens.court,
       body: { release_reason: 'Unauthorized court release attempt' },
       expect: 403,
     });
-    await request(`/suspects/${suspectId}/release`, {
+    await request(`/criminals/${suspectId}/release`, {
       method: 'POST',
       token: tokens.jail,
       body: { release_reason: 'Smoke test jail release approval' },
     });
-    const [[afterJail]] = await db.query('SELECT is_arrested FROM suspects WHERE id = ?', [suspectId]);
+    const [[afterJail]] = await db.query('SELECT is_arrested FROM criminals WHERE id = ?', [suspectId]);
     assert(Number(afterJail.is_arrested) === 0, 'Jail release did not clear arrested status');
 
-    await db.query('UPDATE suspects SET is_arrested = 1 WHERE id = ?', [suspectId]);
-    await request(`/suspects/${suspectId}/release`, {
+    await db.query('UPDATE criminals SET is_arrested = 1 WHERE id = ?', [suspectId]);
+    await request(`/criminals/${suspectId}/release`, {
       method: 'POST',
       token: tokens.admin,
       body: { release_reason: 'Smoke test admin release approval' },
     });
-    const [[afterAdmin]] = await db.query('SELECT is_arrested FROM suspects WHERE id = ?', [suspectId]);
+    const [[afterAdmin]] = await db.query('SELECT is_arrested FROM criminals WHERE id = ?', [suspectId]);
     assert(Number(afterAdmin.is_arrested) === 0, 'Admin release did not clear arrested status');
     return `Released suspect ${suspectId} by jail and admin`;
   });
 
   await runStep('Printable report data endpoints are available', async () => {
-    const offenderId = created.suspects[0];
+    const offenderId = created.criminals[0];
     await request(`/reports/offender-profile?offender_id=${offenderId}`, { token: tokens.admin });
     await request(`/reports/monthly-crime?year=${new Date().getFullYear()}`, { token: tokens.admin });
     await request('/reports/repeat-offenders', { token: tokens.admin });
@@ -291,7 +290,7 @@ const runStep = async (name, fn) => {
       },
       expect: 400,
     });
-    await request('/suspects', {
+    await request('/criminals', {
       method: 'POST',
       token: tokens.officer,
       body: { full_name: 'Invalid Gender Test', gender: 'other' },

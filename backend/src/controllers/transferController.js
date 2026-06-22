@@ -18,8 +18,6 @@ const transferCase = async (req, res, next) => {
       to_region_id,
       to_city_id,
       to_district_id,
-      to_ward_id,
-      to_neighborhood_id,
       to_officer_id,
       reason,
     } = req.body;
@@ -36,14 +34,12 @@ const transferCase = async (req, res, next) => {
     }
 
     const updateFields = {};
-    const targetNeighborhoodId = to_neighborhood_id || to_ward_id;
 
     if (transfer_type === 'location' || transfer_type === 'both') {
       updateFields.state_administration_id = to_state_administration_id || caseRow.state_administration_id;
       updateFields.region_id = to_region_id || caseRow.region_id;
       updateFields.city_id = to_city_id || caseRow.city_id;
       updateFields.district_id = to_district_id || caseRow.district_id;
-      updateFields.neighborhood_id = targetNeighborhoodId || caseRow.neighborhood_id;
       updateFields.status = 'TRANSFERRED';
     }
 
@@ -64,19 +60,18 @@ const transferCase = async (req, res, next) => {
     const [transferResult] = await connection.query(
       `INSERT INTO case_transfers (
          case_id,
-         from_state_administration_id, from_region_id, from_city_id, from_district_id, from_neighborhood_id,
-         to_state_administration_id, to_region_id, to_city_id, to_district_id, to_neighborhood_id,
+         from_state_administration_id, from_region_id, from_city_id, from_district_id,
+         to_state_administration_id, to_region_id, to_city_id, to_district_id,
          from_officer_id, to_officer_id,
          transferred_by, transfer_reason, transfer_type
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         case_id,
-        caseRow.state_administration_id, caseRow.region_id, caseRow.city_id, caseRow.district_id, caseRow.neighborhood_id,
+        caseRow.state_administration_id, caseRow.region_id, caseRow.city_id, caseRow.district_id,
         updateFields.state_administration_id || caseRow.state_administration_id,
         updateFields.region_id || caseRow.region_id,
         updateFields.city_id || caseRow.city_id,
         updateFields.district_id || caseRow.district_id,
-        updateFields.neighborhood_id || caseRow.neighborhood_id,
         caseRow.assigned_officer_id,
         updateFields.assigned_officer_id || caseRow.assigned_officer_id,
         req.user.username || String(req.user.id),
@@ -107,7 +102,6 @@ const transferCase = async (req, res, next) => {
         location: {
           region_id: updateFields.region_id || caseRow.region_id,
           district_id: updateFields.district_id || caseRow.district_id,
-          neighborhood_id: updateFields.neighborhood_id || caseRow.neighborhood_id,
         },
         assigned_officer_id: updateFields.assigned_officer_id || caseRow.assigned_officer_id,
         transfer_id: transferId,
@@ -145,9 +139,7 @@ const getTransferHistory = async (req, res, next) => {
               fr.region_name AS from_region_name,
               tr.region_name AS to_region_name,
               fd.district_name AS from_district_name,
-              td.district_name AS to_district_name,
-              fn.neighborhood_name AS from_neighborhood_name,
-              tn.neighborhood_name AS to_neighborhood_name
+              td.district_name AS to_district_name
        FROM case_transfers ct
        LEFT JOIN users u ON ct.transferred_by = u.username OR ct.transferred_by = CAST(u.id AS CHAR)
        LEFT JOIN police_officers fo ON ct.from_officer_id = fo.id
@@ -156,8 +148,6 @@ const getTransferHistory = async (req, res, next) => {
        LEFT JOIN regions tr ON ct.to_region_id = tr.id
        LEFT JOIN districts fd ON ct.from_district_id = fd.id
        LEFT JOIN districts td ON ct.to_district_id = td.id
-       LEFT JOIN neighborhoods fn ON ct.from_neighborhood_id = fn.id
-       LEFT JOIN neighborhoods tn ON ct.to_neighborhood_id = tn.id
        WHERE ct.case_id = ?
        ORDER BY ct.transferred_at DESC`,
       [req.params.caseId]

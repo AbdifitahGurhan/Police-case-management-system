@@ -21,7 +21,6 @@ export default function Home() {
           region_admin: '/dashboard/unit',
           city_admin: '/dashboard/unit',
           district_admin: '/dashboard/unit',
-          neighborhood_admin: '/dashboard/unit',
           officer: '/dashboard/officer',
           cid: '/dashboard/cid',
           cid_director: '/dashboard/cid',

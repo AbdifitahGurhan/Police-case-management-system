@@ -2,12 +2,12 @@
 'use client';
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { 
-  Row, Col, Card, Typography, Space, Tag, Button, Tabs, Descriptions, 
+import {
+  Row, Col, Card, Typography, Space, Tag, Button, Tabs, Descriptions,
   Timeline, Table, Modal, Form, Input, Select, Upload, Divider, App,
-  DatePicker
+  DatePicker, Alert
 } from 'antd';
-import { 
+import {
   ArrowLeftOutlined, EditOutlined, ShareAltOutlined, PlusOutlined,
   UserAddOutlined, SolutionOutlined, FileAddOutlined, HistoryOutlined,
   EnvironmentOutlined, DownloadOutlined, TeamOutlined
@@ -41,7 +41,7 @@ export default function CaseDetailsPage() {
   const { message, modal } = App.useApp();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+
   // Modals state
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
@@ -56,7 +56,8 @@ export default function CaseDetailsPage() {
   const [geography, setGeography] = useState({ regions: [], districts: [], wards: [] });
   const [transferHistory, setTransferHistory] = useState([]);
   const [assignableOfficers, setAssignableOfficers] = useState([]);
-  
+  const [duplicateAlert, setDuplicateAlert] = useState(null);
+
   const [statusForm] = Form.useForm();
   const [referralForm] = Form.useForm();
   const [suspectForm] = Form.useForm();
@@ -67,6 +68,7 @@ export default function CaseDetailsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
+  const [cameraStream, setCameraStream] = useState(null);
   const videoRef = useRef(null);
 
   const fetchCaseDetails = useCallback(async () => {
@@ -115,7 +117,11 @@ export default function CaseDetailsPage() {
       fetchCaseDetails();
       fetchTransferHistory();
       fetchGeography();
-      fetchAssignableOfficers();
+      // Only fetch assignable officers if user has the right role
+      const assignRoles = ['admin', 'ward_commander', 'district_commander', 'police_station_commander', 'waax_commander', 'district_admin', 'neighborhood_admin'];
+      if (user && assignRoles.includes(user.role)) {
+        fetchAssignableOfficers();
+      }
     }
   }, [id, fetchCaseDetails, fetchTransferHistory]);
 
@@ -172,7 +178,7 @@ export default function CaseDetailsPage() {
   const handleSuspect = async (values) => {
     setSubmitting(true);
     try {
-      await api.post('/suspects', {
+      await api.post('/criminals', {
         ...values,
         case_id: id,
         face_capture_image: suspectFaceImage || null,
@@ -181,6 +187,7 @@ export default function CaseDetailsPage() {
       message.success("Suspect added successfully.");
       setIsSuspectModalOpen(false);
       setSuspectFaceImage('');
+      setDuplicateAlert(null);
       suspectForm.resetFields();
       fetchCaseDetails();
     } catch (err) {
@@ -190,10 +197,54 @@ export default function CaseDetailsPage() {
     }
   };
 
+  const handleFormValuesChange = async (changedValues, allValues) => {
+    if (changedValues.id_number !== undefined || changedValues.id_type !== undefined) {
+      const idType = allValues.id_type;
+      const idNumber = allValues.id_number;
+      if (idType && idNumber && idNumber.length >= 3) {
+        try {
+          const res = await api.get('/criminals/check-duplicate', {
+            params: { id_type: idType, id_number: idNumber }
+          });
+          if (res.data.exists) {
+            setDuplicateAlert(res.data.data);
+          } else {
+            setDuplicateAlert(null);
+          }
+        } catch (err) {
+          console.error("Duplicate check failed", err);
+        }
+      } else {
+        setDuplicateAlert(null);
+      }
+    }
+  };
+
+  const handleLinkExisting = (criminal) => {
+    suspectForm.setFieldsValue({
+      full_name: criminal.full_name,
+      alias: criminal.alias,
+      gender: criminal.gender,
+      age: criminal.age,
+      nationality: criminal.nationality || 'Somali',
+      phone: criminal.phone,
+      address: criminal.address,
+    });
+    if (criminal.face_capture_image) {
+      setSuspectFaceImage(criminal.face_capture_image);
+    } else if (criminal.photo_url) {
+      setSuspectFaceImage(criminal.photo_url);
+    }
+    setDuplicateAlert(null);
+    message.success("Macluumaadka dambiilaha hore waa la soo qaatay!");
+  };
+
   const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach((track) => track.stop());
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
@@ -211,10 +262,10 @@ export default function CaseDetailsPage() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      setCameraStream(stream);
       setIsCameraActive(true);
     } catch (err) {
       console.error('Camera error', err);
@@ -222,19 +273,50 @@ export default function CaseDetailsPage() {
     }
   };
 
+  // Attach stream to video element whenever cameraStream changes
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !cameraStream) return;
+    if (video.srcObject !== cameraStream) {
+      video.srcObject = cameraStream;
+      video.play().catch((e) => console.error('Video play error:', e));
+    }
+  }, [cameraStream]);
+
   const captureFace = () => {
     const video = videoRef.current;
     if (!video) return;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageDataUrl = canvas.toDataURL('image/png');
-    setSuspectFaceImage(imageDataUrl);
-    stopCamera();
+    const doCapture = () => {
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Flip horizontally to un-mirror (selfie preview is mirrored, saved image should be correct)
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, width, height);
+
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      setSuspectFaceImage(imageDataUrl);
+      stopCamera();
+    };
+
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      doCapture();
+    } else {
+      // Wait for first decodable frame
+      const onCanPlay = () => {
+        video.removeEventListener('canplay', onCanPlay);
+        doCapture();
+      };
+      video.addEventListener('canplay', onCanPlay);
+    }
   };
 
   const handleWitness = async (values) => {
@@ -261,7 +343,7 @@ export default function CaseDetailsPage() {
       formData.append('description', values.description || '');
       formData.append('location_found', values.location_found || '');
       formData.append('collection_date', values.collection_date || dayjs().format('YYYY-MM-DD'));
-      
+
       if (values.file?.[0]?.originFileObj) {
         formData.append('file', values.file[0].originFileObj);
       }
@@ -402,13 +484,14 @@ export default function CaseDetailsPage() {
   if (!data) return <p>Case not found.</p>;
 
   const role = user?.role;
+  const commanderRoles = ['ward_commander', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'waax_commander'];
   const stationOperationRoles = ['district_admin', 'neighborhood_admin'];
   const canSubmitForReview = ['admin', 'officer', ...stationOperationRoles].includes(role);
-  const canReviewCase = ['admin', 'ward_commander'].includes(role);
-  const canTransferCase = ['admin', 'ward_commander'].includes(role);
-  const canAssignCase = ['admin', 'ward_commander', 'district_admin', 'neighborhood_admin'].includes(role);
-  const canUpdateStatus = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
-  const canReferCase = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
+  const canReviewCase = ['admin', 'ward_commander', ...commanderRoles].includes(role);
+  const canTransferCase = ['admin', 'ward_commander', ...commanderRoles].includes(role);
+  const canAssignCase = ['admin', 'ward_commander', 'district_admin', 'neighborhood_admin', 'district_commander', 'police_station_commander', 'waax_commander'].includes(role);
+  const canUpdateStatus = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
+  const canReferCase = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
   const canManageInvestigation = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
   const canAddWitness = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
   const caseEndedAtCourtReferral = data.status === 'referred_to_court';
@@ -427,8 +510,8 @@ export default function CaseDetailsPage() {
           </Button>
         )}
       </div>
-      <Table 
-        dataSource={data.referrals} 
+      <Table
+        dataSource={data.referrals}
         rowKey={(record) => `referral-${record.id || `${record.referred_to_role}-${record.referred_at}`}`}
         columns={[
           { title: 'Date', dataIndex: 'referred_at', render: d => dayjs(d).format('DD MMM YYYY') },
@@ -436,7 +519,7 @@ export default function CaseDetailsPage() {
           { title: 'By', dataIndex: 'referred_by_name' },
           { title: 'Status', dataIndex: 'status', render: s => <Tag color={s === 'pending' ? 'orange' : 'green'}>{s.toUpperCase()}</Tag> },
           { title: 'Reason', dataIndex: 'reason' },
-        ]} 
+        ]}
       />
     </Space>
   );
@@ -476,7 +559,7 @@ export default function CaseDetailsPage() {
               {ev.custodyLog && ev.custodyLog.length > 0 && (
                 <div style={{ marginTop: 12 }}>
                   <Typography.Text strong size="small">Custody History:</Typography.Text>
-                  <Timeline 
+                  <Timeline
                     mode="left"
                     size="small"
                     style={{ marginTop: 8 }}
@@ -512,8 +595,8 @@ export default function CaseDetailsPage() {
           </Button>
         )}
       </div>
-      <Table 
-        dataSource={data.suspects} 
+      <Table
+        dataSource={data.suspects}
         rowKey={(record) => `suspect-${record.id || `${record.full_name}-${record.role_in_case}`}`}
         columns={[
           {
@@ -532,16 +615,16 @@ export default function CaseDetailsPage() {
           { title: 'Arrest Status', dataIndex: 'arrest_status', render: (s, r) => <Tag color={r.is_arrested ? 'red' : 'default'}>{s || (r.is_arrested ? 'arrested' : 'not_arrested')}</Tag> },
           { title: 'Linked Date', dataIndex: 'linked_at', render: d => d ? dayjs(d).format('DD MMM YYYY') : 'N/A' },
           { title: 'Role', dataIndex: 'role_in_case' },
-          { 
-            title: 'Action', 
-            key: 'action', 
+          {
+            title: 'Action',
+            key: 'action',
             render: (_, record) => canManageInvestigation && !caseEndedAtCourtReferral && !record.is_arrested && (
               <Button size="small" icon={<PlusOutlined />} onClick={() => { setSelectedSuspect(record); setIsArrestModalOpen(true); }}>
                 Record Arrest
               </Button>
             )
           }
-        ]} 
+        ]}
       />
     </Space>
   );
@@ -567,7 +650,7 @@ export default function CaseDetailsPage() {
   );
 
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Space orientation="vertical">
@@ -580,12 +663,12 @@ export default function CaseDetailsPage() {
             </Space>
             <Text type="secondary">Registered by {data.officer_name} ({data.officer_badge}) at {data.station_name}</Text>
           </Space>
-          
+
           <Space>
             {canSubmitForReview && data.status === 'draft' && (
               <Button type="primary" onClick={submitForReview}>Submit for Review</Button>
             )}
-            
+
             {canReviewCase && data.status === 'pending_commander_review' && (
               <Space>
                 <Button type="primary" color="success" variant="solid" onClick={() => handleConfirmation('confirmed', 'Verified.')}>Confirm Case</Button>
@@ -628,73 +711,79 @@ export default function CaseDetailsPage() {
               <Tabs
                 defaultActiveKey="details"
                 items={[
-                  { key: 'details', label: 'Overview', children: (
-                    <Space orientation="vertical" style={{ width: '100%' }} size="large">
-                      <Descriptions title="Incident Particulars" bordered column={1}>
-                        <Descriptions.Item label="Case Number">{data.case_number || data.id}</Descriptions.Item>
-                        <Descriptions.Item label="Subject / Nature">{data.title}</Descriptions.Item>
-                        <Descriptions.Item label="Category">{data.case_type}</Descriptions.Item>
-                        <Descriptions.Item label="Incident Type">{data.incident_type || data.title}</Descriptions.Item>
-                        <Descriptions.Item label="Priority"><Tag>{data.priority?.toUpperCase()}</Tag></Descriptions.Item>
-                        <Descriptions.Item label="Incident Date">{dayjs(data.incident_date).format('DD MMM YYYY')}</Descriptions.Item>
-                        <Descriptions.Item label="Location">{data.incident_location}</Descriptions.Item>
-                        <Descriptions.Item label="Occurrence Details">
-                          <Paragraph>{data.description}</Paragraph>
-                        </Descriptions.Item>
-                      </Descriptions>
+                  {
+                    key: 'details', label: 'Overview', children: (
+                      <Space orientation="vertical" style={{ width: '100%' }} size="large">
+                        <Descriptions title="Incident Particulars" bordered column={1}>
+                          <Descriptions.Item label="Case Number">{data.case_number || data.id}</Descriptions.Item>
+                          <Descriptions.Item label="Subject / Nature">{data.title}</Descriptions.Item>
+                          <Descriptions.Item label="Category">{data.case_type}</Descriptions.Item>
+                          <Descriptions.Item label="Incident Type">{data.incident_type || data.title}</Descriptions.Item>
+                          <Descriptions.Item label="Priority"><Tag>{data.priority?.toUpperCase()}</Tag></Descriptions.Item>
+                          <Descriptions.Item label="Incident Date">{dayjs(data.incident_date).format('DD MMM YYYY')}</Descriptions.Item>
+                          <Descriptions.Item label="Location">{data.incident_location}</Descriptions.Item>
+                          <Descriptions.Item label="Occurrence Details">
+                            <Paragraph>{data.description}</Paragraph>
+                          </Descriptions.Item>
+                        </Descriptions>
 
-                      <Descriptions title="Linked OB Information" bordered column={1}>
-                        <Descriptions.Item label="Linked OB Number">{data.ob_number}</Descriptions.Item>
-                        <Descriptions.Item label="Original OB Staff">{data.ob_registered_by_name || data.original_ob_staff_name || 'N/A'}</Descriptions.Item>
-                        <Descriptions.Item label="OB Registration Date">
-                          {data.ob_registration_date ? `${dayjs(data.ob_registration_date).format('DD MMM YYYY')} ${data.ob_registration_time || ''}` : 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="State">{data.state_name || 'N/A'}</Descriptions.Item>
-                        <Descriptions.Item label="Region">{data.region_name || 'N/A'}</Descriptions.Item>
-                        <Descriptions.Item label="District / Police Station">{data.district_name || 'N/A'}</Descriptions.Item>
-                        <Descriptions.Item label="Waax">{data.ward_name || 'N/A'}</Descriptions.Item>
-                      </Descriptions>
+                        <Descriptions title="Linked OB Information" bordered column={1}>
+                          <Descriptions.Item label="Linked OB Number">{data.ob_number}</Descriptions.Item>
+                          <Descriptions.Item label="Original OB Staff">{data.ob_registered_by_name || data.original_ob_staff_name || 'N/A'}</Descriptions.Item>
+                          <Descriptions.Item label="OB Registration Date">
+                            {data.ob_registration_date ? `${dayjs(data.ob_registration_date).format('DD MMM YYYY')} ${data.ob_registration_time || ''}` : 'N/A'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="State">{data.state_name || 'N/A'}</Descriptions.Item>
+                          <Descriptions.Item label="Region">{data.region_name || 'N/A'}</Descriptions.Item>
+                          <Descriptions.Item label="District / Police Station">{data.district_name || 'N/A'}</Descriptions.Item>
+                          <Descriptions.Item label="Waax">{data.ward_name || 'N/A'}</Descriptions.Item>
+                        </Descriptions>
 
-                      <Descriptions title="Complainant Snapshot" bordered column={2}>
-                        <Descriptions.Item label="Full Name">{data.complainant_name}</Descriptions.Item>
-                        <Descriptions.Item label="Phone">{data.complainant_phone}</Descriptions.Item>
-                      </Descriptions>
-                      
-                      <div style={{ padding: '16px', border: '1px solid #f0f0f0', borderRadius: '8px', background: '#fafafa' }}>
-                        <HashVerifier entityType="case" entityId={data.id} />
-                      </div>
+                        <Descriptions title="Complainant Snapshot" bordered column={2}>
+                          <Descriptions.Item label="Full Name">{data.complainant_name}</Descriptions.Item>
+                          <Descriptions.Item label="Phone">{data.complainant_phone}</Descriptions.Item>
+                        </Descriptions>
 
-                      <Card title="Transfer & Proof History" size="small">
-                        <Tabs items={[
-                          { key: 'transfers', label: 'Transfers', children: (
-                            transferHistory.length === 0 ? <Text type="secondary">No transfer history.</Text> : (
-                              <Timeline items={transferHistory.map((t, index) => ({
-                                key: `transfer-${t.id || index}`,
-                                content: (
-                                  <>
-                                    <Text strong>{t.transfer_type.toUpperCase()} Transfer</Text> to {t.to_region_name || 'New Ward'}<br/>
-                                    <Text type="secondary" style={{ fontSize: '11px' }}>By {t.transferred_by_name} on {dayjs(t.transferred_at).format('DD MMM YYYY HH:mm')}</Text><br/>
-                                    <Text italic style={{ display: 'block', marginTop: 4 }}>Reason: {t.transfer_reason}</Text>
-                                  </>
+                        <div style={{ padding: '16px', border: '1px solid #f0f0f0', borderRadius: '8px', background: '#fafafa' }}>
+                          <HashVerifier entityType="case" entityId={data.id} />
+                        </div>
+
+                        <Card title="Transfer & Proof History" size="small">
+                          <Tabs items={[
+                            {
+                              key: 'transfers', label: 'Transfers', children: (
+                                transferHistory.length === 0 ? <Text type="secondary">No transfer history.</Text> : (
+                                  <Timeline items={transferHistory.map((t, index) => ({
+                                    key: `transfer-${t.id || index}`,
+                                    content: (
+                                      <>
+                                        <Text strong>{t.transfer_type.toUpperCase()} Transfer</Text> to {t.to_region_name || 'New Ward'}<br />
+                                        <Text type="secondary" style={{ fontSize: '11px' }}>By {t.transferred_by_name} on {dayjs(t.transferred_at).format('DD MMM YYYY HH:mm')}</Text><br />
+                                        <Text italic style={{ display: 'block', marginTop: 4 }}>Reason: {t.transfer_reason}</Text>
+                                      </>
+                                    )
+                                  }))} />
                                 )
-                              }))} />
-                            )
-                          )},
-                          { key: 'proofs', label: 'Blockchain Proofs', children: (
-                            <Timeline items={data.actions.filter(a => a.action_type === 'CONFIRMED_BY_COMMANDER' || a.action_type.includes('TRANSFER')).map((a, index) => ({
-                              key: `proof-${a.id || index}`,
-                              content: (
-                                <>
-                                  <Text strong>Integrity Proof Generated</Text><br/>
-                                  <Text type="secondary" style={{ fontSize: '11px' }}>Version recorded at {dayjs(a.created_at).format('DD MMM YYYY HH:mm')}</Text>
-                                </>
                               )
-                            }))} />
-                          )}
-                        ]} />
-                      </Card>
-                    </Space>
-                  )},
+                            },
+                            {
+                              key: 'proofs', label: 'Blockchain Proofs', children: (
+                                <Timeline items={data.actions.filter(a => a.action_type === 'CONFIRMED_BY_COMMANDER' || a.action_type.includes('TRANSFER')).map((a, index) => ({
+                                  key: `proof-${a.id || index}`,
+                                  content: (
+                                    <>
+                                      <Text strong>Integrity Proof Generated</Text><br />
+                                      <Text type="secondary" style={{ fontSize: '11px' }}>Version recorded at {dayjs(a.created_at).format('DD MMM YYYY HH:mm')}</Text>
+                                    </>
+                                  )
+                                }))} />
+                              )
+                            }
+                          ]} />
+                        </Card>
+                      </Space>
+                    )
+                  },
                   { key: 'suspects', label: `Suspects (${data.suspects.length})`, children: suspectsTab },
                   { key: 'evidence', label: `Evidence (${data.evidence.length})`, children: evidenceTab },
                   { key: 'referrals', label: `Referrals (${data.referrals.length})`, children: referralTab },
@@ -703,7 +792,7 @@ export default function CaseDetailsPage() {
               />
             </Card>
           </Col>
-          
+
           <Col xs={24} lg={8}>
             <Card title="Case Assignment" variant="none" style={{ marginBottom: 24 }}>
               <Descriptions column={1} size="small">
@@ -737,27 +826,27 @@ export default function CaseDetailsPage() {
                 <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('evidence-receipt')} block>Evidence Receipt</Button>
               </Space>
             </Card>
-            
+
             <Card title="Victims & Witnesses" variant="none">
-               <Space orientation="vertical" style={{ width: '100%' }}>
-                  <Text strong>Victims ({data.victims.length})</Text>
-                  {data.victims.length === 0 ? <Text type="secondary" size="small">No victims recorded</Text> : 
-                    data.victims.map((v, index) => <Tag key={`victim-${v.id}-${index}`}>{v.full_name}</Tag>)}
-                  
-                  <Divider style={{ margin: '12px 0' }} />
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <Text strong>Witness Statements ({data.witnesses.length})</Text>
-                    {canAddWitness && !caseEndedAtCourtReferral && <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => setIsWitnessModalOpen(true)}>Add Statement</Button>}
-                  </div>
-                  {data.witnesses.length === 0 ? <Text type="secondary" size="small">No statements taken</Text> : 
-                    data.witnesses.map((w, index) => (
-                      <div key={`witness-${w.id}-${index}`} style={{ marginBottom: 8 }}>
-                        <Text strong style={{ fontSize: '13px' }}>{w.full_name}</Text>
-                        <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ marginBottom: 0 }}>{w.statement}</Paragraph>
-                      </div>
-                    ))}
-               </Space>
+              <Space orientation="vertical" style={{ width: '100%' }}>
+                <Text strong>Victims ({data.victims.length})</Text>
+                {data.victims.length === 0 ? <Text type="secondary" size="small">No victims recorded</Text> :
+                  data.victims.map((v, index) => <Tag key={`victim-${v.id}-${index}`}>{v.full_name}</Tag>)}
+
+                <Divider style={{ margin: '12px 0' }} />
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <Text strong>Witness Statements ({data.witnesses.length})</Text>
+                  {canAddWitness && !caseEndedAtCourtReferral && <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => setIsWitnessModalOpen(true)}>Add Statement</Button>}
+                </div>
+                {data.witnesses.length === 0 ? <Text type="secondary" size="small">No statements taken</Text> :
+                  data.witnesses.map((w, index) => (
+                    <div key={`witness-${w.id}-${index}`} style={{ marginBottom: 8 }}>
+                      <Text strong style={{ fontSize: '13px' }}>{w.full_name}</Text>
+                      <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ marginBottom: 0 }}>{w.statement}</Paragraph>
+                    </div>
+                  ))}
+              </Space>
             </Card>
           </Col>
         </Row>
@@ -804,9 +893,29 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title="Add Suspect to Case" open={isSuspectModalOpen} onCancel={() => { setIsSuspectModalOpen(false); stopCamera(); }} onOk={() => suspectForm.submit()} width={820}>
-        <Form form={suspectForm} onFinish={handleSuspect} layout="vertical">
+      <Modal title="Add Suspect to Case" open={isSuspectModalOpen} onCancel={() => { setIsSuspectModalOpen(false); stopCamera(); setDuplicateAlert(null); }} onOk={() => suspectForm.submit()} width={820}>
+        <Form form={suspectForm} onFinish={handleSuspect} onValuesChange={handleFormValuesChange} layout="vertical">
           <Row gutter={16}>
+            {duplicateAlert && (
+              <Col span={24}>
+                <Alert
+                  title="Dambiilahan horey ayaa loo diiwaan-geliyey!"
+                  description={`Magaca: ${duplicateAlert.full_name} (${duplicateAlert.gender}, ${duplicateAlert.age} jir) - ID: ${duplicateAlert.id_number}`}
+                  type="warning"
+                  showIcon
+                  action={
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() => handleLinkExisting(duplicateAlert)}
+                    >
+                      Isticmaal dambiilahan
+                    </Button>
+                  }
+                  style={{ marginBottom: 16 }}
+                />
+              </Col>
+            )}
             <Col xs={24} md={16}><Form.Item name="full_name" label="Full Name" rules={nameRules('Suspect name')}><Input /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="alias" label="Alias" rules={[textLengthRule('Alias', 2, 150)]}><Input /></Form.Item></Col>
             <Col xs={24} md={8}>
@@ -816,7 +925,14 @@ export default function CaseDetailsPage() {
             </Col>
             <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[positiveIntegerRule('Age', 1, 120)]}><Input type="number" /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="nationality" label="Nationality" initialValue="Somali" rules={[textLengthRule('Nationality', 2, 100)]}><Input /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="id_type" label="ID Type" rules={[textLengthRule('ID type', 2, 50)]}><Input /></Form.Item></Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="id_type" label="ID Type" rules={[requiredRule('ID type')]}>
+                <Select placeholder="Select ID type">
+                  <Select.Option value="National ID">National ID</Select.Option>
+                  <Select.Option value="Passport">Passport</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
             <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number" rules={[textLengthRule('ID number', 2, 100)]}><Input /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="phone" label="Phone" rules={phoneRules}><Input /></Form.Item></Col>
             <Col xs={24} md={12}>
@@ -826,6 +942,16 @@ export default function CaseDetailsPage() {
                   <Option value="arrested">Arrested</Option>
                   <Option value="released">Released</Option>
                   <Option value="wanted">Wanted</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="role_in_case" label="Role in Case" rules={[requiredRule('Role in case')]}>
+                <Select placeholder="Select role">
+                  <Option value="suspect">Suspect</Option>
+                  <Option value="Principal Offender">Principal Offender</Option>
+                  <Option value="Accomplice">Accomplice</Option>
+                  <Option value="Conspirator">Conspirator</Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -840,21 +966,60 @@ export default function CaseDetailsPage() {
                 <Input value={data.ob_number} disabled />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
+            <Col span={24}>
               <Form.Item label="Offender Photo / Face Capture">
-                <div className="face-preview-panel" style={{ minHeight: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+                <div className="face-preview-panel" style={{
+                  height: 280,
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1px dashed #d9d9d9',
+                  borderRadius: 8,
+                  backgroundColor: '#f8fafc',
+                  overflow: 'hidden'
+                }}>
                   {suspectFaceImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={suspectFaceImage} alt="Suspect face capture preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
+                    <img src={suspectFaceImage.startsWith('data:') || suspectFaceImage.startsWith('http') ? suspectFaceImage : `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '')}${suspectFaceImage}`} alt="Suspect face capture preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
                   ) : isCameraActive ? (
-                    <video ref={videoRef} autoPlay playsInline muted className="face-camera-video" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="face-camera-video"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        transform: 'scaleX(-1)',
+                        borderRadius: 6
+                      }}
+                    />
                   ) : (
-                    <Text type="secondary">No face image captured yet. Use the camera to capture the suspect.</Text>
+                    <Text type="secondary">No face image captured yet. Use the camera or upload a file.</Text>
                   )}
                 </div>
-                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                   {!isCameraActive && !suspectFaceImage && (
-                    <Button type="primary" onClick={startCamera}>Start Camera</Button>
+                    <>
+                      <Button type="primary" onClick={startCamera}>Start Camera</Button>
+                      <Upload
+                        beforeUpload={(file) => {
+                          const reader = new FileReader();
+                          reader.onload = (e) => {
+                            setSuspectFaceImage(e.target.result);
+                          };
+                          reader.readAsDataURL(file);
+                          return false;
+                        }}
+                        showUploadList={false}
+                        accept="image/*"
+                      >
+                        <Button>Upload Photo File</Button>
+                      </Upload>
+                    </>
                   )}
                   {isCameraActive && (
                     <>
@@ -869,14 +1034,9 @@ export default function CaseDetailsPage() {
                     </>
                   )}
                 </div>
-                {cameraError && <Text type="danger" style={{ display: 'block', marginTop: 8 }}>{cameraError}</Text>}
+                {cameraError && <Text type="danger" style={{ display: 'block', marginTop: 8, textAlign: 'center' }}>{cameraError}</Text>}
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item name="face_capture_notes" label="Face Capture Notes" rules={[textLengthRule('Face capture notes', 3, 1000)]}><TextArea rows={4} /></Form.Item>
-              <Form.Item name="role_in_case" label="Role in Case" rules={[textLengthRule('Role in case', 2, 150)]}><Input /></Form.Item>
-            </Col>
-            <Col span={24}><Form.Item name="profile_notes" label="Profile Notes" rules={[textLengthRule('Profile notes', 3, 1000)]}><TextArea rows={3} /></Form.Item></Col>
           </Row>
         </Form>
       </Modal>
@@ -920,9 +1080,9 @@ export default function CaseDetailsPage() {
         <Form layout="vertical" onFinish={handleTransfer}>
           <Form.Item name="transfer_type" label="Transfer Type" rules={[requiredRule('Transfer type')]}>
             <Select placeholder="Select type">
-               <Select.Option value="location">Location Transfer</Select.Option>
-               <Select.Option value="officer">Officer Reassignment</Select.Option>
-               <Select.Option value="both">Both</Select.Option>
+              <Select.Option value="location">Location Transfer</Select.Option>
+              <Select.Option value="officer">Officer Reassignment</Select.Option>
+              <Select.Option value="both">Both</Select.Option>
             </Select>
           </Form.Item>
           <Form.Item noStyle shouldUpdate={(p, c) => p.transfer_type !== c.transfer_type}>

@@ -18,7 +18,7 @@ export default function UserManagementPage() {
   const [states, setStates] = useState([]);
   const [regions, setRegions] = useState([]);
   const [districts, setDistricts] = useState([]);
-  const [waaxUnits, setWaaxUnits] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -27,13 +27,12 @@ export default function UserManagementPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [uRes, rRes, stateRes, regionRes, districtRes, waaxRes] = await Promise.allSettled([
+      const [uRes, rRes, stateRes, regionRes, districtRes] = await Promise.allSettled([
         api.get('/users'),
         api.get('/users/roles'),
         api.get('/state-administrations'),
         api.get('/regions'),
         api.get('/districts'),
-        api.get('/neighborhoods')
       ]);
       if (uRes.status === 'rejected' || rRes.status === 'rejected') {
         throw uRes.reason || rRes.reason;
@@ -43,7 +42,6 @@ export default function UserManagementPage() {
       setStates(stateRes.status === 'fulfilled' ? stateRes.value.data.data : []);
       setRegions(regionRes.status === 'fulfilled' ? regionRes.value.data.data : []);
       setDistricts(districtRes.status === 'fulfilled' ? districtRes.value.data.data : []);
-      setWaaxUnits(waaxRes.status === 'fulfilled' ? waaxRes.value.data.data : []);
     } catch (err) {
       console.error(err);
       message.error("Failed to load user data.");
@@ -95,7 +93,16 @@ export default function UserManagementPage() {
     }
   };
 
-  const roleColors = { admin: 'magenta', officer: 'blue', cid: 'purple', OB_STAFF: 'cyan', STAFF: 'green', POLICE_STATION_COMMANDER: 'gold' };
+  const roleColors = { 
+    admin: 'magenta', 
+    officer: 'blue', 
+    cid: 'purple', 
+    OB_STAFF: 'cyan', 
+    STAFF: 'green', 
+    POLICE_STATION_COMMANDER: 'gold',
+    court: 'volcano',
+    jail: 'red'
+  };
 
   const columns = [
     { title: 'Full Name', dataIndex: 'full_name', key: 'full_name', render: (t) => <Typography.Text strong>{t}</Typography.Text> },
@@ -107,7 +114,7 @@ export default function UserManagementPage() {
     { title: 'State', dataIndex: 'state_name', key: 'state_name' },
     { title: 'Region', dataIndex: 'region_name', key: 'region_name' },
     { title: 'District / Police Station', dataIndex: 'district_police_station_name', key: 'district_police_station_name' },
-    { title: 'Waax', dataIndex: 'waax_name', key: 'waax_name' },
+
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', render: (a) => a ? <Tag color="success">ACTIVE</Tag> : <Tag color="error">INACTIVE</Tag> },
     {
       title: 'Actions',
@@ -194,7 +201,6 @@ export default function UserManagementPage() {
                     <Option value="STATE">State</Option>
                     <Option value="REGION">Region</Option>
                     <Option value="DISTRICT_POLICE_STATION">District / Police Station</Option>
-                    <Option value="WAAX">Waax</Option>
                   </Select>
                 </Form.Item>
               </Col>
@@ -219,13 +225,7 @@ export default function UserManagementPage() {
                   </Select>
                 </Form.Item>
               </Col>
-              <Col span={12}>
-                <Form.Item name="neighborhood_id" label="Assigned Waax">
-                  <Select allowClear showSearch optionFilterProp="children">
-                    {waaxUnits.map(w => <Option key={w.id} value={w.id}>{w.neighborhood_name}</Option>)}
-                  </Select>
-                </Form.Item>
-              </Col>
+
               <Col span={12}>
                 <Form.Item name="is_commander" label="Commander Status">
                   <Select>

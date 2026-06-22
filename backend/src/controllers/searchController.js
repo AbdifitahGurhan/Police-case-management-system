@@ -27,8 +27,8 @@ const globalSearch = async (req, res, next) => {
     if (status) { caseWhere += ' AND c.status = ?'; caseParams.push(status); }
     if (priority) { caseWhere += ' AND c.priority = ?'; caseParams.push(priority); }
     if (station) {
-      caseWhere += ' AND (d.district_name LIKE ? OR n.neighborhood_name LIKE ?)';
-      caseParams.push(like(station), like(station));
+      caseWhere += ' AND d.district_name LIKE ?';
+      caseParams.push(like(station));
     }
     if (from_date) { caseWhere += ' AND DATE(c.created_at) >= ?'; caseParams.push(from_date); }
     if (to_date) { caseWhere += ' AND DATE(c.created_at) <= ?'; caseParams.push(to_date); }
@@ -47,10 +47,9 @@ const globalSearch = async (req, res, next) => {
           c.created_at,
           CONCAT('/cases/', c.id) AS href
        FROM cases c
-       LEFT JOIN case_suspects cs ON cs.case_id = c.id
-       LEFT JOIN suspects s ON s.id = cs.suspect_id
+       LEFT JOIN case_criminals cs ON cs.case_id = c.id
+       LEFT JOIN criminals s ON s.id = cs.criminal_id
        LEFT JOIN districts d ON d.id = c.district_id
-       LEFT JOIN neighborhoods n ON n.id = c.neighborhood_id
        WHERE ${caseWhere}
        ORDER BY c.created_at DESC
        LIMIT ?`,
@@ -59,7 +58,7 @@ const globalSearch = async (req, res, next) => {
     results.push(...cases);
 
     if (term) {
-      const [suspects] = await db.query(
+      const [criminals] = await db.query(
         `SELECT
             'suspect' AS result_type,
             s.id,
@@ -72,13 +71,13 @@ const globalSearch = async (req, res, next) => {
             NULL AS station_name,
             s.created_at,
             CONCAT('/offenders?id=', s.id) AS href
-         FROM suspects s
+         FROM criminals s
          WHERE s.full_name LIKE ? OR s.phone LIKE ? OR s.id_number LIKE ? OR s.mother_name LIKE ?
          ORDER BY s.created_at DESC
          LIMIT ?`,
         [like(term), like(term), like(term), like(term), Math.min(safeLimit, 25)]
       );
-      results.push(...suspects);
+      results.push(...criminals);
     }
 
     res.json({

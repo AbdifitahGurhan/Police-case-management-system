@@ -92,15 +92,7 @@ const getStationById = async (req, res, next) => {
       [req.params.id]
     );
 
-    const [substations] = await db.query(
-      `SELECT id, neighborhood_name AS name, neighborhood_code AS code, username
-       FROM neighborhoods
-       WHERE district_id = ?
-       ORDER BY neighborhood_name ASC`,
-      [req.params.id]
-    );
-
-    res.json({ success: true, data: { ...rows[0], staff, substations } });
+    res.json({ success: true, data: { ...rows[0], staff } });
   } catch (err) { next(err); }
 };
 
@@ -169,15 +161,14 @@ const deleteStation = async (req, res, next) => {
     const [[dependencies]] = await db.query(
       `SELECT
          (SELECT COUNT(*) FROM cases WHERE district_id = ?) AS cases_count,
-         (SELECT COUNT(*) FROM neighborhoods WHERE district_id = ?) AS waax_count,
          (SELECT COUNT(*) FROM officer_assignments WHERE assignment_type = 'District' AND assignment_id = ? AND is_current = 1) AS officer_count`,
-      [stationId, stationId, stationId]
+      [stationId, stationId]
     );
 
-    if (dependencies.cases_count || dependencies.waax_count || dependencies.officer_count) {
+    if (dependencies.cases_count || dependencies.officer_count) {
       return res.status(409).json({
         success: false,
-        message: 'Station cannot be deleted while it has cases, Waax stations, or assigned officers.',
+        message: 'Station cannot be deleted while it has cases or assigned officers.',
         dependencies,
       });
     }
@@ -215,8 +206,7 @@ const getGeography = async (req, res, next) => {
     const [regions] = await db.query(`SELECT id, region_name AS name FROM regions WHERE ${regionWhere} ORDER BY region_name ASC`, params);
     const [cities] = await db.query(`SELECT id, city_name AS name, region_id FROM cities WHERE ${cityWhere} ORDER BY city_name ASC`, params);
     const [districts] = await db.query(`SELECT id, district_name AS name, city_id FROM districts WHERE ${districtWhere} ORDER BY district_name ASC`, params);
-    const [wards] = await db.query(`SELECT id, neighborhood_name AS name, district_id FROM neighborhoods WHERE ${wardWhere} ORDER BY neighborhood_name ASC`, params);
-    res.json({ success: true, data: { regions, cities, districts, wards } });
+    res.json({ success: true, data: { regions, cities, districts } });
   } catch (err) { next(err); }
 };
 

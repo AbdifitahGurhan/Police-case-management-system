@@ -4,6 +4,7 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../src/config/database');
+const { ensureCourtCaseForPoliceCase } = require('../src/services/courtService');
 
 async function columnExists(table, column) {
   const [rows] = await db.query(
@@ -27,12 +28,11 @@ async function ensureCompatibilityColumns() {
   await addColumnIfMissing('users', 'phone', 'VARCHAR(30) NULL AFTER full_name');
   await addColumnIfMissing('users', 'rank', 'VARCHAR(100) NULL AFTER phone');
   await addColumnIfMissing('users', 'user_type', "ENUM('COMMANDER','OB_STAFF','STAFF') DEFAULT 'STAFF' AFTER rank");
-  await addColumnIfMissing('users', 'assigned_level', "ENUM('ADMINISTRATION','STATE','REGION','DISTRICT_POLICE_STATION','WAAX') DEFAULT NULL AFTER user_type");
+  await addColumnIfMissing('users', 'assigned_level', "ENUM('ADMINISTRATION','STATE','REGION','DISTRICT_POLICE_STATION') DEFAULT NULL AFTER user_type");
   await addColumnIfMissing('users', 'state_administration_id', 'INT NULL AFTER assigned_level');
   await addColumnIfMissing('users', 'region_id', 'INT NULL AFTER state_administration_id');
   await addColumnIfMissing('users', 'district_id', 'INT NULL AFTER region_id');
-  await addColumnIfMissing('users', 'neighborhood_id', 'INT NULL AFTER district_id');
-  await addColumnIfMissing('users', 'is_commander', 'TINYINT(1) DEFAULT 0 AFTER neighborhood_id');
+  await addColumnIfMissing('users', 'is_commander', 'TINYINT(1) DEFAULT 0 AFTER district_id');
   await addColumnIfMissing('users', 'status', "ENUM('ACTIVE','INACTIVE','SUSPENDED') DEFAULT 'ACTIVE' AFTER is_commander");
   await addColumnIfMissing('users', 'created_by', 'VARCHAR(100) NULL AFTER last_login');
   await addColumnIfMissing('cases', 'case_number', 'VARCHAR(50) NULL UNIQUE FIRST');
@@ -49,20 +49,20 @@ async function ensureCompatibilityColumns() {
   await addColumnIfMissing('audit_logs', 'new_data', 'JSON NULL AFTER old_data');
   await addColumnIfMissing('blockchain_records', 'hash_sha256', 'VARCHAR(64) NULL AFTER sha256_hash');
   await addColumnIfMissing('blockchain_records', 'data_snapshot', 'JSON NULL AFTER hash_sha256');
-  await addColumnIfMissing('suspects', 'photo_url', 'VARCHAR(500) NULL AFTER description');
-  await addColumnIfMissing('suspects', 'offender_photo', 'VARCHAR(500) NULL AFTER photo_url');
-  await addColumnIfMissing('suspects', 'face_capture_image', 'VARCHAR(500) NULL AFTER offender_photo');
-  await addColumnIfMissing('suspects', 'face_capture_notes', 'TEXT NULL AFTER face_capture_image');
-  await addColumnIfMissing('suspects', 'profile_notes', 'TEXT NULL AFTER face_capture_notes');
-  await addColumnIfMissing('suspects', 'arrest_status', "ENUM('not_arrested','arrested','released','wanted') DEFAULT 'not_arrested' AFTER profile_notes");
-  await addColumnIfMissing('suspects', 'mother_name', 'VARCHAR(150) NULL AFTER full_name');
-  await addColumnIfMissing('suspects', 'date_of_birth', 'DATE NULL AFTER gender');
-  await addColumnIfMissing('suspects', 'fingerprint_hash', 'VARCHAR(255) NULL AFTER photo_url');
-  await addColumnIfMissing('suspects', 'biometric_notes', 'TEXT NULL AFTER fingerprint_hash');
+  await addColumnIfMissing('criminals', 'photo_url', 'VARCHAR(500) NULL AFTER description');
+  await addColumnIfMissing('criminals', 'offender_photo', 'VARCHAR(500) NULL AFTER photo_url');
+  await addColumnIfMissing('criminals', 'face_capture_image', 'VARCHAR(500) NULL AFTER offender_photo');
+  await addColumnIfMissing('criminals', 'face_capture_notes', 'TEXT NULL AFTER face_capture_image');
+  await addColumnIfMissing('criminals', 'profile_notes', 'TEXT NULL AFTER face_capture_notes');
+  await addColumnIfMissing('criminals', 'arrest_status', "ENUM('not_arrested','arrested','released','wanted') DEFAULT 'not_arrested' AFTER profile_notes");
+  await addColumnIfMissing('criminals', 'mother_name', 'VARCHAR(150) NULL AFTER full_name');
+  await addColumnIfMissing('criminals', 'date_of_birth', 'DATE NULL AFTER gender');
+  await addColumnIfMissing('criminals', 'fingerprint_hash', 'VARCHAR(255) NULL AFTER photo_url');
+  await addColumnIfMissing('criminals', 'biometric_notes', 'TEXT NULL AFTER fingerprint_hash');
   await addColumnIfMissing('arrests', 'police_station_id', 'INT NULL AFTER suspect_id');
-  await addColumnIfMissing('case_suspects', 'linked_by_user_id', 'VARCHAR(100) NULL AFTER suspect_id');
-  await addColumnIfMissing('case_suspects', 'linked_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER linked_by_user_id');
-  await addColumnIfMissing('case_suspects', 'status', "ENUM('active','removed') DEFAULT 'active' AFTER linked_at");
+  await addColumnIfMissing('case_criminals', 'linked_by_user_id', 'VARCHAR(100) NULL AFTER criminal_id');
+  await addColumnIfMissing('case_criminals', 'linked_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER linked_by_user_id');
+  await addColumnIfMissing('case_criminals', 'status', "ENUM('active','removed') DEFAULT 'active' AFTER linked_at");
   await addColumnIfMissing('arrests', 'court_decision', "ENUM('pending','convicted','acquitted','dismissed','adjourned') DEFAULT 'pending' AFTER charges");
   await addColumnIfMissing('arrests', 'court_decision_notes', 'TEXT NULL AFTER court_decision');
   await addColumnIfMissing('arrests', 'sentence_period_value', 'INT NULL AFTER court_decision_notes');
@@ -110,14 +110,13 @@ async function ensureCompatibilityColumns() {
       state_administration_id INT,
       region_id INT,
       district_id INT,
-      neighborhood_id INT,
       registration_date DATE NOT NULL,
       registration_time TIME NOT NULL,
       status ENUM('OB_REGISTERED','FORWARDED_FOR_REVIEW','CASE_OPENED','CLOSED') DEFAULT 'OB_REGISTERED',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_ob_registered_by (registered_by_user_id),
-      INDEX idx_ob_location (state_administration_id, region_id, district_id, neighborhood_id)
+      INDEX idx_ob_location (state_administration_id, region_id, district_id)
     )
   `);
   await db.query(`
@@ -133,7 +132,7 @@ async function ensureCompatibilityColumns() {
     )
   `);
 
-  const genderTables = ['police_officers', 'complainants', 'suspects', 'victims', 'witnesses'];
+  const genderTables = ['police_officers', 'complainants', 'criminals', 'victims', 'witnesses'];
   for (const table of genderTables) {
     await db.query(`UPDATE ${table} SET gender = 'male' WHERE gender NOT IN ('male', 'female') OR gender IS NULL`);
     await db.query(`ALTER TABLE ${table} MODIFY gender ENUM('male','female') DEFAULT 'male'`);
@@ -180,6 +179,81 @@ async function repairCaseSampleData() {
   `);
 }
 
+async function seedCourtData() {
+  console.log('Seeding court module sample data...');
+  // 1. Get all cases that are court ready (or referred/approved for court)
+  const [cases] = await db.query(`
+    SELECT id, case_title, case_number, ob_number
+    FROM cases
+    WHERE status IN ('ready_for_court', 'forwarded_to_court', 'approved_for_court', 'referred_to_court')
+  `);
+
+  for (const c of cases) {
+    // Sync into court_cases
+    const result = await ensureCourtCaseForPoliceCase(c.id, 'system');
+    if (!result) continue;
+    const courtCaseId = result.id;
+
+    // 2. Add sample hearings
+    const [hearingResult] = await db.query(`
+      INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, status, created_by)
+      VALUES (?, 'preliminary', DATE_ADD(CURDATE(), INTERVAL 2 DAY), '09:30:00', 'Room 3', 'Judge Ahmed', 'scheduled', 'system')
+    `, [courtCaseId]);
+
+    const [hearingCompletedResult] = await db.query(`
+      INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, status, created_by)
+      VALUES (?, 'evidence', DATE_SUB(CURDATE(), INTERVAL 3 DAY), '10:00:00', 'Room 1', 'Judge Ahmed', 'completed', 'system')
+    `, [courtCaseId]);
+
+    // 3. Add sample proceeding for completed hearing
+    await db.query(`
+      INSERT INTO court_proceedings (court_case_id, hearing_id, proceeding_date, notes, judge_remarks, prosecutor_remarks, defense_remarks, created_by)
+      VALUES (?, ?, DATE_SUB(CURDATE(), INTERVAL 3 DAY), ?, ?, ?, ?, ?)
+    `, [
+      courtCaseId,
+      hearingCompletedResult.insertId,
+      'Prosecution presented CCTV evidence and physical exhibits. Witnesses testified.',
+      'Evidence is admitted. Hearing set for final judgment.',
+      'Request conviction based on overwhelming evidence.',
+      "Requested mercy due to client's cooperation.",
+      'system'
+    ]);
+
+    // 4. Update status of the case to "in_trial" or "judgment_issued" if it has sentence/judgment in arrests table
+    // Let's check if there's an arrest with a court conviction
+    const [[arrest]] = await db.query(`
+      SELECT * FROM arrests WHERE case_id = ? AND court_decision IN ('convicted', 'acquitted', 'dismissed')
+    `, [c.id]);
+
+    if (arrest) {
+      // Add sample judgment matching the arrest decision
+      const [judgmentResult] = await db.query(`
+        INSERT INTO court_judgments (court_case_id, judge_name, decision_date, decision_type, judgment_summary, created_by)
+        VALUES (?, 'Judge Ahmed', DATE_SUB(CURDATE(), INTERVAL 1 DAY), ?, ?, 'system')
+      `, [courtCaseId, arrest.court_decision, arrest.court_decision_notes || 'judgment issued by regional court']);
+
+      // Update court case status and outcome
+      await db.query(`
+        UPDATE court_cases
+        SET status = ?, final_outcome = ?
+        WHERE id = ?
+      `, [arrest.court_decision === 'convicted' ? 'sentenced' : 'closed', arrest.court_decision, courtCaseId]);
+
+      if (arrest.court_decision === 'convicted') {
+        // Add sample sentence matching the arrest sentence details
+        await db.query(`
+          INSERT INTO court_sentences (court_case_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
+          VALUES (?, (SELECT full_name FROM criminals WHERE id = ?), 'imprisonment', ?, 500.00, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'system')
+        `, [
+          courtCaseId,
+          arrest.suspect_id,
+          arrest.sentence_period_value ? `${arrest.sentence_period_value} ${arrest.sentence_period_unit}` : '2 years'
+        ]);
+      }
+    }
+  }
+}
+
 async function seed() {
   try {
     console.log('Starting current-schema seed...');
@@ -203,7 +277,9 @@ async function seed() {
       ('POLICE_STATION_COMMANDER', 'Commander responsible for one district / police station'),
       ('WAAX_COMMANDER', 'Commander responsible for one waax'),
       ('OB_STAFF', 'Occurrence Book staff member'),
-      ('STAFF', 'Operational staff member')
+      ('STAFF', 'Operational staff member'),
+      ('court', 'Court system role'),
+      ('jail', 'Jail system role')
       ON DUPLICATE KEY UPDATE description = VALUES(description)
     `);
 
@@ -213,29 +289,29 @@ async function seed() {
     const obStaffRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['OB_STAFF']);
     const staffRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['STAFF']);
     const stationCommanderRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['POLICE_STATION_COMMANDER']);
+    const courtRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['court']);
+    const jailRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['jail']);
 
     await db.query(`
-      INSERT INTO users (role_id, username, email, full_name, password_hash, is_active) VALUES
-      (?, 'admin', 'admin@police.so', 'System Administrator', ?, 1),
-      (?, 'officer', 'officer@police.so', 'Ahmed Hassan Omar', ?, 1),
-      (?, 'cid', 'cid@police.so', 'Fatima Abdi Said', ?, 1)
+      INSERT INTO users (role_id, username, email, full_name, password_hash, is_active, user_type) VALUES
+      (?, 'admin', 'admin@police.so', 'System Administrator', ?, 1, 'STAFF'),
+      (?, 'officer', 'officer@police.so', 'Ahmed Hassan Omar', ?, 1, 'STAFF'),
+      (?, 'cid', 'cid@police.so', 'Fatima Abdi Said', ?, 1, 'STAFF'),
+      (?, 'court_user', 'court@court.gov.so', 'Mogadishu Regional Court', ?, 1, 'STAFF'),
+      (?, 'jail_user', 'jail@prisons.gov.so', 'Mogadishu Central Jail', ?, 1, 'STAFF')
       ON DUPLICATE KEY UPDATE
         role_id = VALUES(role_id),
         email = VALUES(email),
         full_name = VALUES(full_name),
         password_hash = VALUES(password_hash),
         is_active = 1
-    `, [adminRoleId, adminHash, officerRoleId, officerHash, cidRoleId, cidHash]);
-
-    await db.query(`
-      INSERT INTO special_users (username, password_hash, role, assigned_unit, created_by, is_active) VALUES
-      ('court_user', ?, 'COURT', 'Mogadishu Regional Court', 'admin', 1),
-      ('jail_user', ?, 'JAIL', 'Mogadishu Central Jail', 'admin', 1)
-      ON DUPLICATE KEY UPDATE
-        password_hash = VALUES(password_hash),
-        assigned_unit = VALUES(assigned_unit),
-        is_active = 1
-    `, [specialHash, specialHash]);
+    `, [
+      adminRoleId, adminHash, 
+      officerRoleId, officerHash, 
+      cidRoleId, cidHash, 
+      courtRoleId, specialHash, 
+      jailRoleId, specialHash
+    ]);
 
     await db.query(`
       INSERT INTO ranks (rank_name, rank_code, description) VALUES
@@ -346,49 +422,32 @@ async function seed() {
     const wadajirDistrictId = await getId('SELECT id FROM districts WHERE district_code = ?', ['WDJ']);
 
     await db.query(`
-      INSERT INTO neighborhoods
-        (district_id, neighborhood_name, neighborhood_code, username, password_hash, commander_officer_id, created_by)
-      VALUES
-        (?, 'Bakaro Market Station', 'BKR', 'bakaro_station', ?, ?, 'admin'),
-        (?, 'Airport Road Station', 'APR', 'airport_station', ?, ?, 'admin')
-      ON DUPLICATE KEY UPDATE
-        district_id = VALUES(district_id),
-        neighborhood_name = VALUES(neighborhood_name),
-        username = VALUES(username),
-        password_hash = VALUES(password_hash),
-        commander_officer_id = VALUES(commander_officer_id)
-    `, [hodanDistrictId, unitHash, sergeantOfficerId, wadajirDistrictId, unitHash, constableOfficerId]);
-    const bakaroNeighborhoodId = await getId('SELECT id FROM neighborhoods WHERE neighborhood_code = ?', ['BKR']);
-    const airportNeighborhoodId = await getId('SELECT id FROM neighborhoods WHERE neighborhood_code = ?', ['APR']);
-
-    await db.query(`
       INSERT INTO users
-        (role_id, username, email, full_name, phone, rank, user_type, assigned_level,
-         state_administration_id, region_id, district_id, neighborhood_id,
+        (role_id, username, email, full_name, phone, \`rank\`, user_type, assigned_level,
+         state_administration_id, region_id, district_id,
          is_commander, password_hash, is_active, status, created_by)
       VALUES
-        (?, 'ahmed.ob', 'ahmed.ob@police.so', 'Ahmed Ali', '+252-61-4000001', 'Sergeant', 'OB_STAFF', 'WAAX',
-         ?, ?, ?, ?, 0, ?, 1, 'ACTIVE', 'admin'),
+        (?, 'ahmed.ob', 'ahmed.ob@police.so', 'Ahmed Ali', '+252-61-4000001', 'Sergeant', 'OB_STAFF', 'DISTRICT_POLICE_STATION',
+         ?, ?, ?, 0, ?, 1, 'ACTIVE', 'admin'),
         (?, 'hodan.staff', 'hodan.staff@police.so', 'Amina Yusuf', '+252-61-4000002', 'Constable', 'STAFF', 'DISTRICT_POLICE_STATION',
-         ?, ?, ?, NULL, 0, ?, 1, 'ACTIVE', 'admin'),
+         ?, ?, ?, 0, ?, 1, 'ACTIVE', 'admin'),
         (?, 'hodan.commander', 'hodan.commander@police.so', 'Hodan Police Station Commander', '+252-61-4000003', 'Inspector', 'COMMANDER', 'DISTRICT_POLICE_STATION',
-         ?, ?, ?, NULL, 1, ?, 1, 'ACTIVE', 'admin')
+         ?, ?, ?, 1, ?, 1, 'ACTIVE', 'admin')
       ON DUPLICATE KEY UPDATE
         full_name = VALUES(full_name),
         phone = VALUES(phone),
-        rank = VALUES(rank),
+        \`rank\` = VALUES(\`rank\`),
         user_type = VALUES(user_type),
         assigned_level = VALUES(assigned_level),
         state_administration_id = VALUES(state_administration_id),
         region_id = VALUES(region_id),
         district_id = VALUES(district_id),
-        neighborhood_id = VALUES(neighborhood_id),
         is_commander = VALUES(is_commander),
         password_hash = VALUES(password_hash),
         is_active = 1,
         status = 'ACTIVE'
     `, [
-      obStaffRoleId, stateId, regionId, hodanDistrictId, bakaroNeighborhoodId, officerHash,
+      obStaffRoleId, stateId, regionId, hodanDistrictId, officerHash,
       staffRoleId, stateId, regionId, hodanDistrictId, officerHash,
       stationCommanderRoleId, stateId, regionId, hodanDistrictId, officerHash,
     ]);
@@ -400,15 +459,15 @@ async function seed() {
     `, [commanderId, stateId, commanderId, stateId]);
     await db.query(`
       INSERT INTO officer_assignments (officer_id, assignment_type, assignment_id, is_current, assigned_by, remarks)
-      SELECT ?, 'Neighborhood', ?, 1, 'admin', 'Seed assignment'
-      WHERE NOT EXISTS (SELECT 1 FROM officer_assignments WHERE officer_id = ? AND assignment_type = 'Neighborhood' AND assignment_id = ? AND is_current = 1)
-    `, [sergeantOfficerId, bakaroNeighborhoodId, sergeantOfficerId, bakaroNeighborhoodId]);
+      SELECT ?, 'District', ?, 1, 'admin', 'Seed assignment'
+      WHERE NOT EXISTS (SELECT 1 FROM officer_assignments WHERE officer_id = ? AND assignment_type = 'District' AND assignment_id = ? AND is_current = 1)
+    `, [sergeantOfficerId, hodanDistrictId, sergeantOfficerId, hodanDistrictId]);
     await db.query(`
       INSERT INTO officer_transfers
         (officer_id, from_assignment_type, from_assignment_id, to_assignment_type, to_assignment_id, transfer_reason, transferred_by, remarks)
-      SELECT ?, 'District', ?, 'Neighborhood', ?, 'Operational coverage for sample data', 'admin', 'Seed transfer'
-      WHERE NOT EXISTS (SELECT 1 FROM officer_transfers WHERE officer_id = ? AND to_assignment_type = 'Neighborhood' AND to_assignment_id = ?)
-    `, [sergeantOfficerId, hodanDistrictId, bakaroNeighborhoodId, sergeantOfficerId, bakaroNeighborhoodId]);
+      SELECT ?, 'District', ?, 'District', ?, 'Operational coverage for sample data', 'admin', 'Seed transfer'
+      WHERE NOT EXISTS (SELECT 1 FROM officer_transfers WHERE officer_id = ? AND to_assignment_type = 'District' AND to_assignment_id = ?)
+    `, [sergeantOfficerId, hodanDistrictId, hodanDistrictId, sergeantOfficerId, hodanDistrictId]);
 
     await db.query(`
       INSERT INTO complainants (full_name, gender, age, nationality, id_type, id_number, phone, address, email)
@@ -424,17 +483,17 @@ async function seed() {
     await db.query(`
       INSERT INTO cases
         (case_title, title, ob_number, description, incident_date, incident_location, case_type, status, priority,
-         state_administration_id, region_id, city_id, district_id, neighborhood_id, assigned_officer_id, created_by)
+         state_administration_id, region_id, city_id, district_id, assigned_officer_id, created_by)
       VALUES
         ('Armed Robbery at Bakaro Market', 'Armed Robbery at Bakaro Market', 'OB-2026-00001',
-         'Complainant reports an armed robbery involving two suspects at a market stall.', '2026-05-01',
-         'Bakaro Market, Hodan District', 'Robbery', 'DRAFT', 'high', ?, ?, ?, ?, ?, ?, 'officer'),
+         'Complainant reports an armed robbery involving two criminals at a market stall.', '2026-05-01',
+         'Bakaro Market, Hodan District', 'Robbery', 'DRAFT', 'high', ?, ?, ?, ?, ?, 'officer'),
         ('Vehicle Theft near Airport Road', 'Vehicle Theft near Airport Road', 'OB-2026-00002',
          'White Toyota Land Cruiser reported stolen from a residential compound.', '2026-05-03',
-         'Airport Road, Wadajir District', 'Theft', 'PENDING_COMMANDER_REVIEW', 'medium', ?, ?, ?, ?, ?, ?, 'officer'),
+         'Airport Road, Wadajir District', 'Theft', 'PENDING_COMMANDER_REVIEW', 'medium', ?, ?, ?, ?, ?, 'officer'),
         ('Assault Outside Cafe', 'Assault Outside Cafe', 'OB-2026-00003',
          'Victim reports assault outside a cafe; medical report pending.', '2026-05-05',
-         'Hodan District, Mogadishu', 'Assault', 'CONFIRMED_BY_COMMANDER', 'critical', ?, ?, ?, ?, ?, ?, 'cid')
+         'Hodan District, Mogadishu', 'Assault', 'CONFIRMED_BY_COMMANDER', 'critical', ?, ?, ?, ?, ?, 'cid')
       ON DUPLICATE KEY UPDATE
         case_title = VALUES(case_title),
         title = VALUES(title),
@@ -446,9 +505,9 @@ async function seed() {
         priority = VALUES(priority),
         assigned_officer_id = VALUES(assigned_officer_id)
     `, [
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId, sergeantOfficerId,
-      stateId, regionId, cityId, wadajirDistrictId, airportNeighborhoodId, constableOfficerId,
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId, inspectorOfficerId,
+      stateId, regionId, cityId, hodanDistrictId, sergeantOfficerId,
+      stateId, regionId, cityId, wadajirDistrictId, constableOfficerId,
+      stateId, regionId, cityId, hodanDistrictId, inspectorOfficerId,
     ]);
 
     const robberyCaseId = await getId('SELECT id FROM cases WHERE ob_number = ?', ['OB-2026-00001']);
@@ -456,22 +515,22 @@ async function seed() {
     const assaultCaseId = await getId('SELECT id FROM cases WHERE ob_number = ?', ['OB-2026-00003']);
 
     const suspectOneId = await insertIfMissing(
-      'SELECT id FROM suspects WHERE id_number = ?',
+      'SELECT id FROM criminals WHERE id_number = ?',
       ['SUS-SAMPLE-001'],
-      `INSERT INTO suspects (full_name, alias, gender, age, nationality, id_type, id_number, phone, address, description, is_arrested)
+      `INSERT INTO criminals (full_name, alias, gender, age, nationality, id_type, id_number, phone, address, description, is_arrested)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ['Abdi Unknown', 'Dheere', 'male', 30, 'Somali', 'Police File', 'SUS-SAMPLE-001', '+252-61-7000001', 'Unknown address', 'Tall suspect seen on CCTV near Bakaro Market.', 1]
     );
     const suspectTwoId = await insertIfMissing(
-      'SELECT id FROM suspects WHERE id_number = ?',
+      'SELECT id FROM criminals WHERE id_number = ?',
       ['SUS-SAMPLE-002'],
-      `INSERT INTO suspects (full_name, alias, gender, age, nationality, id_type, id_number, phone, address, description, is_arrested)
+      `INSERT INTO criminals (full_name, alias, gender, age, nationality, id_type, id_number, phone, address, description, is_arrested)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ['Unknown Vehicle Driver', 'Driver', 'male', 28, 'Somali', 'Police File', 'SUS-SAMPLE-002', null, 'Wadajir area', 'Suspected driver involved in vehicle theft.', 0]
     );
 
     await db.query(`
-      INSERT IGNORE INTO case_suspects (case_id, suspect_id, role_in_case, notes, added_by) VALUES
+      INSERT IGNORE INTO case_criminals (case_id, criminal_id, role_in_case, notes, added_by) VALUES
       (?, ?, 'Primary suspect', 'Linked to robbery sample case.', 'officer'),
       (?, ?, 'Person of interest', 'Linked to vehicle theft sample case.', 'officer')
     `, [robberyCaseId, suspectOneId, theftCaseId, suspectTwoId]);
@@ -538,8 +597,8 @@ async function seed() {
          sentence_status, bail_status, bail_amount, notes)
       SELECT ?, ?, ?, 'officer', 'Hodan District checkpoint', 'Armed robbery and possession of stolen property',
              'convicted', 18, 'months', '2026-05-06', '2027-11-06', 'serving', 'no_bail', NULL, 'Sample arrest record'
-      WHERE NOT EXISTS (SELECT 1 FROM arrests WHERE case_id = ? AND suspect_id = ?)
-    `, [robberyCaseId, suspectOneId, bakaroNeighborhoodId, robberyCaseId, suspectOneId]);
+       WHERE NOT EXISTS (SELECT 1 FROM arrests WHERE case_id = ? AND suspect_id = ?)
+    `, [robberyCaseId, suspectOneId, hodanDistrictId, robberyCaseId, suspectOneId]);
 
     await db.query(`
       INSERT INTO referrals (case_id, referred_by, referred_to_role, referred_to_user, reason, notes, status, response, responded_at)
@@ -548,8 +607,8 @@ async function seed() {
     `, [robberyCaseId, robberyCaseId]);
     await db.query(`
       INSERT INTO case_confirmations (case_id, commander_user_id, confirmation_status, comments)
-      SELECT ?, 'bakaro_station', 'approved', 'Case reviewed and approved for investigation.'
-      WHERE NOT EXISTS (SELECT 1 FROM case_confirmations WHERE case_id = ? AND commander_user_id = 'bakaro_station')
+      SELECT ?, 'hodan.commander', 'approved', 'Case reviewed and approved for investigation.'
+      WHERE NOT EXISTS (SELECT 1 FROM case_confirmations WHERE case_id = ? AND commander_user_id = 'hodan.commander')
     `, [robberyCaseId, robberyCaseId]);
 
     const chainHash = sha256({ entity_type: 'case', entity_id: robberyCaseId, ob_number: 'OB-2026-00001' });
@@ -563,15 +622,15 @@ async function seed() {
     );
     await db.query(`
       INSERT INTO case_transfers
-        (case_id, from_state_administration_id, from_region_id, from_city_id, from_district_id, from_neighborhood_id,
-         to_state_administration_id, to_region_id, to_city_id, to_district_id, to_neighborhood_id,
+        (case_id, from_state_administration_id, from_region_id, from_city_id, from_district_id,
+         to_state_administration_id, to_region_id, to_city_id, to_district_id,
          from_officer_id, to_officer_id, transferred_by, transfer_reason, transfer_type, blockchain_record_id)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'officer', 'Escalated to CID investigator for follow-up.', 'investigation', ?
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'officer', 'Escalated to CID investigator for follow-up.', 'investigation', ?
       WHERE NOT EXISTS (SELECT 1 FROM case_transfers WHERE case_id = ? AND transfer_type = 'investigation')
     `, [
       robberyCaseId,
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId,
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId,
+      stateId, regionId, cityId, hodanDistrictId,
+      stateId, regionId, cityId, hodanDistrictId,
       sergeantOfficerId, inspectorOfficerId, blockchainId, robberyCaseId,
     ]);
 
@@ -605,20 +664,20 @@ async function seed() {
     await db.query(`
       INSERT INTO cases
         (case_title, title, ob_number, description, incident_date, incident_location, case_type, status, priority,
-         state_administration_id, region_id, city_id, district_id, neighborhood_id, assigned_officer_id, created_by)
+         state_administration_id, region_id, city_id, district_id, assigned_officer_id, created_by)
       VALUES
         ('Hodan Station Mobile Phone Robbery', 'Hodan Station Mobile Phone Robbery', 'OB-HDN-2026-001',
-         'Complainant reported that two suspects robbed a mobile phone and cash near Taleex junction. Patrol recovered CCTV footage and identified one repeat offender.',
+         'Complainant reported that two criminals robbed a mobile phone and cash near Taleex junction. Patrol recovered CCTV footage and identified one repeat offender.',
          '2026-05-10 20:15:00', 'Taleex Junction, Hodan District', 'Robbery', 'under_investigation', 'high',
-         ?, ?, ?, ?, ?, ?, 'hodan_district'),
+         ?, ?, ?, ?, ?, 'hodan_district'),
         ('Hodan Station Narcotics Patrol Arrest', 'Hodan Station Narcotics Patrol Arrest', 'OB-HDN-2026-002',
          'Night patrol stopped a motorcycle near Bakaro entrance and recovered suspected narcotics prepared for street sale.',
          '2026-05-12 22:40:00', 'Bakaro South Gate, Hodan District', 'Narcotics', 'approved_for_court', 'critical',
-         ?, ?, ?, ?, ?, ?, 'hodan_district'),
+         ?, ?, ?, ?, ?, 'hodan_district'),
         ('Hodan Station Shop Assault Complaint', 'Hodan Station Shop Assault Complaint', 'OB-HDN-2026-003',
          'Shop owner reported assault and property damage after a dispute. Parties were interviewed and the suspect was released after court dismissal.',
          '2026-05-14 16:20:00', 'Suuqa Bakaro, Hodan District', 'Assault', 'closed', 'medium',
-         ?, ?, ?, ?, ?, ?, 'hodan_district')
+         ?, ?, ?, ?, ?, 'hodan_district')
       ON DUPLICATE KEY UPDATE
         case_title = VALUES(case_title),
         title = VALUES(title),
@@ -629,13 +688,12 @@ async function seed() {
         status = VALUES(status),
         priority = VALUES(priority),
         district_id = VALUES(district_id),
-        neighborhood_id = VALUES(neighborhood_id),
         assigned_officer_id = VALUES(assigned_officer_id),
         created_by = VALUES(created_by)
     `, [
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId, sergeantOfficerId,
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId, inspectorOfficerId,
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId, sergeantOfficerId,
+      stateId, regionId, cityId, hodanDistrictId, sergeantOfficerId,
+      stateId, regionId, cityId, hodanDistrictId, inspectorOfficerId,
+      stateId, regionId, cityId, hodanDistrictId, sergeantOfficerId,
     ]);
 
     const hodanRobberyCaseId = await getId('SELECT id FROM cases WHERE ob_number = ?', ['OB-HDN-2026-001']);
@@ -643,42 +701,42 @@ async function seed() {
     const hodanAssaultCaseId = await getId('SELECT id FROM cases WHERE ob_number = ?', ['OB-HDN-2026-003']);
 
     const hodanRobberySuspectId = await insertIfMissing(
-      'SELECT id FROM suspects WHERE id_number = ?',
+      'SELECT id FROM criminals WHERE id_number = ?',
       ['HDN-SUS-001'],
-      `INSERT INTO suspects (full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number, phone, address, description, fingerprint_hash, biometric_notes, is_arrested)
+      `INSERT INTO criminals (full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number, phone, address, description, fingerprint_hash, biometric_notes, is_arrested)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ['Mahad Ali Nur', 'Xaawo Said', 'Mahad Dheere', 'male', '1999-02-12', 27, 'Somali', 'Police File', 'HDN-SUS-001', '+252-61-7300101', 'Taleex area, Hodan', 'Repeat robbery suspect identified through face profile and witness statement.', sha256('HDN-SUS-001-face'), 'Sample face biometric hash recorded during Hodan station registration.', 1]
     );
     const hodanNarcoticsSuspectId = await insertIfMissing(
-      'SELECT id FROM suspects WHERE id_number = ?',
+      'SELECT id FROM criminals WHERE id_number = ?',
       ['HDN-SUS-002'],
-      `INSERT INTO suspects (full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number, phone, address, description, fingerprint_hash, biometric_notes, is_arrested)
+      `INSERT INTO criminals (full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number, phone, address, description, fingerprint_hash, biometric_notes, is_arrested)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ['Said Abukar Mohamud', 'Maryan Hassan', 'Saciid Moto', 'male', '1992-07-03', 34, 'Somali', 'Police File', 'HDN-SUS-002', '+252-61-7300102', 'Bakaro area, Hodan', 'Suspected narcotics distributor arrested during night patrol.', sha256('HDN-SUS-002-face'), 'Sample face biometric hash captured by Hodan station.', 1]
     );
     const hodanAssaultSuspectId = await insertIfMissing(
-      'SELECT id FROM suspects WHERE id_number = ?',
+      'SELECT id FROM criminals WHERE id_number = ?',
       ['HDN-SUS-003'],
-      `INSERT INTO suspects (full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number, phone, address, description, is_arrested)
+      `INSERT INTO criminals (full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number, phone, address, description, is_arrested)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ['Fadumo Omar Said', 'Asha Jama', 'Fadumo', 'female', '1996-11-22', 30, 'Somali', 'National ID', 'HDN-SUS-003', '+252-61-7300103', 'Bakaro Market, Hodan', 'Assault complaint suspect; released after case dismissal.', 0]
     );
 
     await db.query(`
-      UPDATE suspects SET mother_name = ?, date_of_birth = ?
+      UPDATE criminals SET mother_name = ?, date_of_birth = ?
       WHERE id_number = ? AND (mother_name IS NULL OR date_of_birth IS NULL)
     `, ['Xaawo Said', '1999-02-12', 'HDN-SUS-001']);
     await db.query(`
-      UPDATE suspects SET mother_name = ?, date_of_birth = ?
+      UPDATE criminals SET mother_name = ?, date_of_birth = ?
       WHERE id_number = ? AND (mother_name IS NULL OR date_of_birth IS NULL)
     `, ['Maryan Hassan', '1992-07-03', 'HDN-SUS-002']);
     await db.query(`
-      UPDATE suspects SET mother_name = ?, date_of_birth = ?
+      UPDATE criminals SET mother_name = ?, date_of_birth = ?
       WHERE id_number = ? AND (mother_name IS NULL OR date_of_birth IS NULL)
     `, ['Asha Jama', '1996-11-22', 'HDN-SUS-003']);
 
     await db.query(`
-      INSERT IGNORE INTO case_suspects (case_id, suspect_id, role_in_case, notes, added_by) VALUES
+      INSERT IGNORE INTO case_criminals (case_id, criminal_id, role_in_case, notes, added_by) VALUES
       (?, ?, 'Primary robbery suspect', 'Identified from CCTV and matched to prior Hodan robbery report.', 'hodan_district'),
       (?, ?, 'Primary narcotics suspect', 'Arrested with suspected narcotics evidence during night patrol.', 'hodan_district'),
       (?, ?, 'Assault suspect', 'Interviewed after shop dispute; court dismissed the complaint.', 'hodan_district')
@@ -788,7 +846,7 @@ async function seed() {
       SELECT ?, ?, ?, 'hodan_district', 'Taleex Junction patrol point', 'Robbery, intimidation, and possession of stolen property',
              'pending', NULL, NULL, NULL, NULL, 'awaiting_trial', 'bail_pending', 300.00, 'Awaiting court hearing after Hodan investigation'
       WHERE NOT EXISTS (SELECT 1 FROM arrests WHERE case_id = ? AND suspect_id = ?)
-    `, [hodanRobberyCaseId, hodanRobberySuspectId, bakaroNeighborhoodId, hodanRobberyCaseId, hodanRobberySuspectId]);
+    `, [hodanRobberyCaseId, hodanRobberySuspectId, hodanDistrictId, hodanRobberyCaseId, hodanRobberySuspectId]);
     await db.query(`
       INSERT INTO arrests
         (case_id, suspect_id, police_station_id, arrested_by, arrest_location, charges, court_decision,
@@ -798,7 +856,7 @@ async function seed() {
              'convicted', 'Court accepted patrol evidence and seizure report.', 2, 'years', '2026-05-16', '2028-05-16',
              'serving', 'no_bail', NULL, 'Convicted sample prisoner record from Hodan station'
       WHERE NOT EXISTS (SELECT 1 FROM arrests WHERE case_id = ? AND suspect_id = ?)
-    `, [hodanNarcoticsCaseId, hodanNarcoticsSuspectId, bakaroNeighborhoodId, hodanNarcoticsCaseId, hodanNarcoticsSuspectId]);
+    `, [hodanNarcoticsCaseId, hodanNarcoticsSuspectId, hodanDistrictId, hodanNarcoticsCaseId, hodanNarcoticsSuspectId]);
     await db.query(`
       INSERT INTO arrests
         (case_id, suspect_id, police_station_id, arrested_by, arrest_location, charges, court_decision,
@@ -807,7 +865,7 @@ async function seed() {
              'dismissed', 'Complainant withdrew after mediation and court dismissed the file.', 'dismissed', 'bail_granted',
              '2026-05-17', 'released_after_dismissal', 'Closed sample case for Hodan station'
       WHERE NOT EXISTS (SELECT 1 FROM arrests WHERE case_id = ? AND suspect_id = ?)
-    `, [hodanAssaultCaseId, hodanAssaultSuspectId, bakaroNeighborhoodId, hodanAssaultCaseId, hodanAssaultSuspectId]);
+    `, [hodanAssaultCaseId, hodanAssaultSuspectId, hodanDistrictId, hodanAssaultCaseId, hodanAssaultSuspectId]);
 
     await db.query(`
       INSERT INTO referrals (case_id, referred_by, referred_to_role, referred_to_user, reason, notes, status, response, responded_at)
@@ -843,15 +901,15 @@ async function seed() {
 
     await db.query(`
       INSERT INTO case_transfers
-        (case_id, from_state_administration_id, from_region_id, from_city_id, from_district_id, from_neighborhood_id,
-         to_state_administration_id, to_region_id, to_city_id, to_district_id, to_neighborhood_id,
+        (case_id, from_state_administration_id, from_region_id, from_city_id, from_district_id,
+         to_state_administration_id, to_region_id, to_city_id, to_district_id,
          from_officer_id, to_officer_id, transferred_by, transfer_reason, transfer_type, blockchain_record_id)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'hodan_district', 'Forwarded CCTV evidence to CID while station retains district ownership.', 'technical_review', ?
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'hodan_district', 'Forwarded CCTV evidence to CID while station retains district ownership.', 'technical_review', ?
       WHERE NOT EXISTS (SELECT 1 FROM case_transfers WHERE case_id = ? AND transfer_type = 'technical_review')
     `, [
       hodanRobberyCaseId,
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId,
-      stateId, regionId, cityId, hodanDistrictId, bakaroNeighborhoodId,
+      stateId, regionId, cityId, hodanDistrictId,
+      stateId, regionId, cityId, hodanDistrictId,
       sergeantOfficerId, inspectorOfficerId, hodanBlockchainId, hodanRobberyCaseId,
     ]);
 
@@ -888,6 +946,7 @@ async function seed() {
     ]);
 
     await repairCaseSampleData();
+    await seedCourtData();
 
     console.log('Database seeded successfully.');
     console.log('');

@@ -65,8 +65,8 @@ const sentenceMetrics = (row) => {
 const hydrateArrests = (rows) => rows.map((row) => ({ ...row, ...sentenceMetrics(row) }));
 
 const getCaseStationId = async (caseId) => {
-  const [[caseRow]] = await db.query('SELECT neighborhood_id FROM cases WHERE id = ?', [caseId]);
-  return caseRow?.neighborhood_id || null;
+  const [[caseRow]] = await db.query('SELECT district_id FROM cases WHERE id = ?', [caseId]);
+  return caseRow?.district_id || null;
 };
 
 const applyCaseScope = (user, sql, params) => {
@@ -74,13 +74,12 @@ const applyCaseScope = (user, sql, params) => {
   if (user.scopeType === 'region') { sql += ' AND c.region_id = ?'; params.push(user.scopeId); }
   if (user.scopeType === 'city') { sql += ' AND c.city_id = ?'; params.push(user.scopeId); }
   if (user.scopeType === 'district') { sql += ' AND c.district_id = ?'; params.push(user.scopeId); }
-  if (user.scopeType === 'neighborhood') { sql += ' AND c.neighborhood_id = ?'; params.push(user.scopeId); }
   return sql;
 };
 
 const canAccessCase = async (user, caseId) => {
   const [[caseRow]] = await db.query(
-    `SELECT state_administration_id, region_id, city_id, district_id, neighborhood_id
+    `SELECT state_administration_id, region_id, city_id, district_id
      FROM cases
      WHERE id = ?`,
     [caseId]
@@ -92,7 +91,6 @@ const canAccessCase = async (user, caseId) => {
     region: 'region_id',
     city: 'city_id',
     district: 'district_id',
-    neighborhood: 'neighborhood_id',
   };
   return Number(caseRow[columnMap[user.scopeType]]) === Number(user.scopeId);
 };
@@ -109,13 +107,12 @@ const getArrests = async (req, res, next) => {
              COALESCE(c.title, c.case_title) AS case_title,
              c.ob_number,
              c.status AS case_status,
-             COALESCE(n.neighborhood_name, d.district_name) AS police_station_name
+             d.district_name AS police_station_name
       FROM arrests a
-      JOIN suspects s ON a.suspect_id = s.id
+      JOIN criminals s ON a.suspect_id = s.id
       JOIN cases c ON a.case_id = c.id
       LEFT JOIN users u ON a.arrested_by = CAST(u.id AS CHAR) OR a.arrested_by = u.username
-      LEFT JOIN neighborhoods n ON COALESCE(a.police_station_id, c.neighborhood_id) = n.id
-      LEFT JOIN districts d ON c.district_id = d.id
+      LEFT JOIN districts d ON COALESCE(a.police_station_id, c.district_id) = d.id
       WHERE 1=1
     `;
     const params = [];
@@ -163,7 +160,7 @@ const createArrest = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Sentence unit must be days, months, or years.' });
     }
 
-    const [[suspect]] = await db.query('SELECT id, full_name FROM suspects WHERE id = ?', [suspect_id]);
+    const [[suspect]] = await db.query('SELECT id, full_name FROM criminals WHERE id = ?', [suspect_id]);
     if (!suspect) return res.status(404).json({ success: false, message: 'Suspect not found.' });
 
     const policeStationId = await getCaseStationId(case_id);
@@ -202,9 +199,9 @@ const createArrest = async (req, res, next) => {
     );
 
     const arrestId = result.insertId;
-    await db.query('UPDATE suspects SET is_arrested = 1 WHERE id = ?', [suspect_id]);
+    await db.query('UPDATE criminals SET is_arrested = 1 WHERE id = ?', [suspect_id]);
     await db.query(
-      `INSERT IGNORE INTO case_suspects (case_id, suspect_id, role_in_case, notes, added_by)
+      `INSERT IGNORE INTO case_criminals (case_id, criminal_id, role_in_case, notes, added_by)
        VALUES (?, ?, ?, ?, ?)`,
       [case_id, suspect_id, 'Arrested suspect', 'Automatically linked when arrest was recorded.', req.user.username || req.user.id]
     );
@@ -350,7 +347,7 @@ const updateArrestStatus = async (req, res, next) => {
     );
 
     const stillInCustody = ['awaiting_trial', 'sentenced', 'serving', 'release_review', 'escaped', 'wanted'].includes(sentence_status) ? 1 : 0;
-    await db.query('UPDATE suspects SET is_arrested = ? WHERE id = ?', [stillInCustody, existing.suspect_id]);
+    await db.query('UPDATE criminals SET is_arrested = ? WHERE id = ?', [stillInCustody, existing.suspect_id]);
 
     await db.query(
       `INSERT INTO case_actions (case_id, performed_by, action_type, description)

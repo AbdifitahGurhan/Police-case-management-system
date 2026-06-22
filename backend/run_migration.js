@@ -29,7 +29,7 @@ async function createCustodyTables() {
       captured_by VARCHAR(100),
       captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       notes TEXT,
-      CONSTRAINT fk_bio_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_bio_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
       UNIQUE KEY uq_biometric_type_hash (biometric_type, biometric_hash)
     )
   `);
@@ -45,7 +45,7 @@ async function createCustodyTables() {
       uploaded_by VARCHAR(100),
       uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       notes TEXT,
-      CONSTRAINT fk_doc_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_doc_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
       CONSTRAINT fk_doc_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
     )
   `);
@@ -62,7 +62,7 @@ async function createCustodyTables() {
       status ENUM('pending','completed','cancelled') DEFAULT 'completed',
       notes TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT fk_ptr_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_ptr_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
       CONSTRAINT fk_ptr_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
     )
   `);
@@ -79,7 +79,7 @@ async function createCustodyTables() {
       fitness_status ENUM('fit','needs_treatment','hospitalized','critical') DEFAULT 'fit',
       recorded_by VARCHAR(100),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT fk_med_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_med_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
       CONSTRAINT fk_med_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
     )
   `);
@@ -96,7 +96,7 @@ async function createCustodyTables() {
       approved_by VARCHAR(100),
       notes TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT fk_vis_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_vis_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
       CONSTRAINT fk_vis_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
     )
   `);
@@ -112,7 +112,7 @@ async function createCustodyTables() {
       reviewed_by VARCHAR(100),
       reviewed_at TIMESTAMP NULL,
       review_notes TEXT,
-      CONSTRAINT fk_rel_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_rel_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
       CONSTRAINT fk_rel_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE CASCADE
     )
   `);

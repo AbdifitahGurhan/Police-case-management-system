@@ -11,10 +11,8 @@ const REGION_ASSIGNABLE_ROLES = new Set([
   'ob_staff',
   'officer',
   'district_admin',
-  'neighborhood_admin',
   'district_commander',
-  'police_station_commander',
-  'waax_commander'
+  'police_station_commander'
 ]);
 
 const REGION_ASSIGNABLE_USER_TYPES = new Set(['OB_STAFF', 'STAFF', 'COMMANDER']);
@@ -55,20 +53,17 @@ const getUsers = async (req, res, next) => {
 
     const [rows] = await db.query(
       `SELECT u.id, u.username, NULL AS badge_number, u.full_name, u.email, u.profile_image,
-              u.phone, u.rank, u.user_type, u.assigned_level, u.is_commander,
+              u.phone, u.\`rank\`, u.user_type, u.assigned_level, u.is_commander,
               u.is_active, u.status, u.last_login, u.created_by, u.created_at,
               r.name AS role,
               sa.state_name,
               rg.region_name,
-              d.district_name AS district_police_station_name,
-              n.neighborhood_name AS waax_name,
-              n.neighborhood_name AS station_name
+              d.district_name AS district_police_station_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        LEFT JOIN state_administrations sa ON u.state_administration_id = sa.id
        LEFT JOIN regions rg ON u.region_id = rg.id
        LEFT JOIN districts d ON u.district_id = d.id
-       LEFT JOIN neighborhoods n ON u.neighborhood_id = n.id
        WHERE ${where}
        ORDER BY u.created_at DESC`,
       params
@@ -82,18 +77,16 @@ const getUserById = async (req, res, next) => {
   try {
     const [rows] = await db.query(
       `SELECT u.id, u.username, NULL AS badge_number, u.full_name, u.email, u.profile_image,
-              u.phone, u.rank, u.user_type, u.assigned_level, u.is_commander,
+              u.phone, u.\`rank\`, u.user_type, u.assigned_level, u.is_commander,
               u.is_active, u.status, u.last_login, u.created_by,
-              u.created_at, u.neighborhood_id AS station_id, r.id AS role_id, r.name AS role,
-              u.state_administration_id, u.region_id, u.district_id, u.neighborhood_id,
-              sa.state_name, rg.region_name, d.district_name AS district_police_station_name,
-              n.neighborhood_name AS waax_name, n.neighborhood_name AS station_name
+              u.created_at, r.id AS role_id, r.name AS role,
+              u.state_administration_id, u.region_id, u.district_id,
+              sa.state_name, rg.region_name, d.district_name AS district_police_station_name
        FROM users u
        JOIN roles r ON u.role_id = r.id
        LEFT JOIN state_administrations sa ON u.state_administration_id = sa.id
        LEFT JOIN regions rg ON u.region_id = rg.id
        LEFT JOIN districts d ON u.district_id = d.id
-       LEFT JOIN neighborhoods n ON u.neighborhood_id = n.id
        WHERE u.id = ?`,
       [req.params.id]
     );
@@ -110,7 +103,7 @@ const createUser = async (req, res, next) => {
   try {
     let {
       role_id, username, full_name, email, password, phone, rank, user_type,
-      assigned_level, state_administration_id, region_id, district_id, neighborhood_id,
+      assigned_level, state_administration_id, region_id, district_id,
       is_commander
     } = req.body;
     if (!full_name || !password || !role_id) {
@@ -126,10 +119,10 @@ const createUser = async (req, res, next) => {
     const hash = await bcrypt.hash(password, 12);
     const [result] = await db.query(
       `INSERT INTO users
-        (role_id, username, full_name, email, phone, rank, user_type, assigned_level,
-         state_administration_id, region_id, district_id, neighborhood_id,
+        (role_id, username, full_name, email, phone, \`rank\`, user_type, assigned_level,
+         state_administration_id, region_id, district_id,
          is_commander, password_hash, is_active, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?)`,
       [
         role_id,
         (username || email?.toLowerCase().split('@')[0] || full_name.toLowerCase().replace(/\s+/g, '.')).trim().toLowerCase(),
@@ -142,7 +135,6 @@ const createUser = async (req, res, next) => {
         state_administration_id || null,
         region_id || null,
         district_id || null,
-        neighborhood_id || null,
         is_commander ? 1 : 0,
         hash,
         req.user.username || req.user.id,
@@ -151,7 +143,7 @@ const createUser = async (req, res, next) => {
     await writeAuditLog({
       userId: req.user.id, userEmail: req.user.email,
       action: 'CREATE_USER', entityType: 'users', entityId: result.insertId,
-      newData: { full_name, email, role_id, user_type, assigned_level, state_administration_id, region_id, district_id, neighborhood_id },
+      newData: { full_name, email, role_id, user_type, assigned_level, state_administration_id, region_id, district_id },
     });
     res.status(201).json({ success: true, message: 'User created.', userId: result.insertId });
   } catch (err) { next(err); }
@@ -163,7 +155,7 @@ const updateUser = async (req, res, next) => {
     let {
       full_name, email, username, role_id, is_active, status, password, phone, rank,
       user_type, assigned_level, state_administration_id, region_id, district_id,
-      neighborhood_id, is_commander
+      is_commander
     } = req.body;
     const [existing] = await db.query('SELECT * FROM users WHERE id = ?', [req.params.id]);
     if (!existing.length) return res.status(404).json({ success: false, message: 'User not found.' });
@@ -190,13 +182,12 @@ const updateUser = async (req, res, next) => {
     if (is_active !== undefined) { params.push(['is_active', is_active ? 1 : 0]); }
     if (status) { params.push(['status', status]); }
     if (phone !== undefined) { params.push(['phone', phone || null]); }
-    if (rank !== undefined) { params.push(['rank', rank || null]); }
+    if (rank !== undefined) { params.push(['`rank`', rank || null]); }
     if (user_type) { params.push(['user_type', user_type]); }
     if (assigned_level !== undefined) { params.push(['assigned_level', assigned_level || null]); }
     if (state_administration_id !== undefined) { params.push(['state_administration_id', state_administration_id || null]); }
     if (region_id !== undefined) { params.push(['region_id', region_id || null]); }
     if (district_id !== undefined) { params.push(['district_id', district_id || null]); }
-    if (neighborhood_id !== undefined) { params.push(['neighborhood_id', neighborhood_id || null]); }
     if (is_commander !== undefined) { params.push(['is_commander', is_commander ? 1 : 0]); }
 
     if (!params.length && !password) {

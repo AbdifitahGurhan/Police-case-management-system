@@ -7,7 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const router = express.Router();
 const {
-  getSuspects,
+  getcriminals,
   getSuspectById,
   getSuspectHistory,
   getSuspectReport,
@@ -17,6 +17,7 @@ const {
   createSuspect,
   updateSuspect,
   releaseSuspect,
+  checkDuplicate,
 } = require('../controllers/suspectController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
@@ -48,8 +49,9 @@ const upload = multer({
 
 router.use(authMiddleware);
 
-router.get('/', allowRoles(...REPORT_ROLES), getSuspects);
+router.get('/', allowRoles(...REPORT_ROLES), getcriminals);
 router.get('/sentence-alerts', allowRoles('admin', 'jail'), getSentenceAlerts);
+router.get('/check-duplicate', allowRoles(...INVESTIGATION_WRITE_ROLES), checkDuplicate);
 router.post('/face-search', allowRoles(...REPORT_ROLES), searchSuspectByFace);
 router.post('/match-search', allowRoles(...REPORT_ROLES), searchAndMatch);
 router.get('/:id/history', allowRoles(...REPORT_ROLES), getSuspectHistory);

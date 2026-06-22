@@ -51,8 +51,7 @@ exports.transferOfficer = async (req, res, next) => {
       'State Administration': 'state_administrations',
       'Region': 'regions',
       'City': 'cities',
-      'District': 'districts',
-      'Neighborhood': 'neighborhoods'
+      'District': 'districts'
     };
 
     if (to_assignment_id && tableMap[to_assignment_type]) {

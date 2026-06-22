@@ -40,7 +40,7 @@ export default function SearchMatchingPage() {
         date_of_birth: values.date_of_birth ? values.date_of_birth.format('YYYY-MM-DD') : undefined,
         face_image: faceImage || undefined,
       };
-      const res = await api.post('/suspects/match-search', payload);
+      const res = await api.post('/criminals/match-search', payload);
       setResults(res.data.data || []);
       message.success(`${res.data.data?.length || 0} match(es) found.`);
     } catch (err) {

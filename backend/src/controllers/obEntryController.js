@@ -29,13 +29,11 @@ const getObEntries = async (req, res, next) => {
       `SELECT ob.*,
               sa.state_name,
               r.region_name,
-              d.district_name AS district_police_station_name,
-              n.neighborhood_name AS waax_name
+              d.district_name AS district_police_station_name
        FROM ob_entries ob
        LEFT JOIN state_administrations sa ON ob.state_administration_id = sa.id
        LEFT JOIN regions r ON ob.region_id = r.id
        LEFT JOIN districts d ON ob.district_id = d.id
-       LEFT JOIN neighborhoods n ON ob.neighborhood_id = n.id
        WHERE ${whereClause}
        ORDER BY ob.created_at DESC`,
       params
@@ -54,7 +52,6 @@ const getObEntryById = async (req, res, next) => {
               sa.state_name,
               r.region_name,
               d.district_name AS district_police_station_name,
-              n.neighborhood_name AS waax_name,
               c.id AS linked_case_id,
               c.case_number AS linked_case_number,
               c.status AS linked_case_status
@@ -62,7 +59,6 @@ const getObEntryById = async (req, res, next) => {
        LEFT JOIN state_administrations sa ON ob.state_administration_id = sa.id
        LEFT JOIN regions r ON ob.region_id = r.id
        LEFT JOIN districts d ON ob.district_id = d.id
-       LEFT JOIN neighborhoods n ON ob.neighborhood_id = n.id
        LEFT JOIN cases c ON c.ob_entry_id = ob.id OR c.ob_number = ob.ob_number
        WHERE ob.id = ? AND ${scope.clause}`,
       params
@@ -81,7 +77,7 @@ const createObEntry = async (req, res, next) => {
     }
 
     const location = await getUserLocation(req.user);
-    if (normalizeRole(req.user.role) !== 'admin' && !location.state_administration_id && !location.region_id && !location.district_id && !location.neighborhood_id) {
+    if (normalizeRole(req.user.role) !== 'admin' && !location.state_administration_id && !location.region_id && !location.district_id) {
       return res.status(400).json({ success: false, message: 'Your account has no assigned administrative location.' });
     }
 
@@ -95,9 +91,9 @@ const createObEntry = async (req, res, next) => {
           `INSERT INTO ob_entries
             (ob_number, incident_type, incident_location, description, reported_by, reporter_phone,
              registered_by_user_id, registered_by_name, registered_by_role, registered_by_rank,
-             state_administration_id, region_id, district_id, neighborhood_id,
+             state_administration_id, region_id, district_id,
              registration_date, registration_time, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OB_REGISTERED')`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OB_REGISTERED')`,
           [
             obNumber,
             incident_type,
@@ -112,7 +108,6 @@ const createObEntry = async (req, res, next) => {
             location.state_administration_id || null,
             location.region_id || null,
             location.district_id || null,
-            location.neighborhood_id || null,
             now.toISOString().slice(0, 10),
             now.toTimeString().slice(0, 8),
           ]
@@ -174,8 +169,7 @@ const convertObToCase = async (req, res, next) => {
              state_administration_id = COALESCE(?, state_administration_id),
              region_id = COALESCE(?, region_id),
              city_id = COALESCE(?, city_id),
-             district_id = COALESCE(?, district_id),
-             neighborhood_id = COALESCE(?, neighborhood_id)
+             district_id = COALESCE(?, district_id)
          WHERE id = ?`,
         [
           ob.id,
@@ -183,7 +177,6 @@ const convertObToCase = async (req, res, next) => {
           ob.region_id || null,
           ob.city_id || null,
           ob.district_id || null,
-          ob.neighborhood_id || null,
           existingCase.id,
         ]
       );
@@ -203,8 +196,8 @@ const convertObToCase = async (req, res, next) => {
       `INSERT INTO cases
         (case_number, case_title, title, ob_number, ob_entry_id, original_ob_staff_id, original_ob_staff_name,
          incident_type, description, incident_location, status, priority, state_administration_id, region_id, city_id,
-         district_id, neighborhood_id, assigned_officer_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         district_id, assigned_officer_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         caseNumber,
         ob.incident_type,
@@ -222,7 +215,6 @@ const convertObToCase = async (req, res, next) => {
         ob.region_id,
         ob.city_id || null,
         ob.district_id,
-        ob.neighborhood_id,
         assigned_staff_id || null,
         req.user.username,
       ]

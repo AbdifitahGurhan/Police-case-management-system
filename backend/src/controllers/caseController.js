@@ -83,8 +83,8 @@ const buildAssignableOfficerScope = (user) => {
   const { scopeType, scopeId } = user;
   if (!scopeType || !scopeId) return { clause: '1=0', params };
 
-  if (scopeType === 'neighborhood') {
-    params.push('Neighborhood', scopeId);
+  if (scopeType === 'district') {
+    params.push('District', scopeId);
     return {
       clause: `EXISTS (
         SELECT 1 FROM officer_assignments oa
@@ -97,50 +97,31 @@ const buildAssignableOfficerScope = (user) => {
     };
   }
 
-  if (scopeType === 'district') {
-    params.push('District', scopeId, scopeId);
-    return {
-      clause: `EXISTS (
-        SELECT 1 FROM officer_assignments oa
-        LEFT JOIN neighborhoods n ON oa.assignment_type = 'Neighborhood' AND oa.assignment_id = n.id
-        WHERE oa.officer_id = po.id
-          AND oa.is_current = 1
-          AND ((oa.assignment_type = ? AND oa.assignment_id = ?) OR n.district_id = ?)
-      )`,
-      params,
-    };
-  }
-
   if (scopeType === 'city') {
-    params.push('City', scopeId, scopeId, scopeId);
+    params.push('City', scopeId, scopeId);
     return {
       clause: `EXISTS (
         SELECT 1 FROM officer_assignments oa
         LEFT JOIN districts d ON oa.assignment_type = 'District' AND oa.assignment_id = d.id
-        LEFT JOIN neighborhoods n ON oa.assignment_type = 'Neighborhood' AND oa.assignment_id = n.id
-        LEFT JOIN districts nd ON n.district_id = nd.id
         WHERE oa.officer_id = po.id
           AND oa.is_current = 1
-          AND ((oa.assignment_type = ? AND oa.assignment_id = ?) OR d.city_id = ? OR nd.city_id = ?)
+          AND ((oa.assignment_type = ? AND oa.assignment_id = ?) OR d.city_id = ?)
       )`,
       params,
     };
   }
 
   if (scopeType === 'region') {
-    params.push('Region', scopeId, scopeId, scopeId, scopeId);
+    params.push('Region', scopeId, scopeId, scopeId);
     return {
       clause: `EXISTS (
         SELECT 1 FROM officer_assignments oa
         LEFT JOIN cities ci ON oa.assignment_type = 'City' AND oa.assignment_id = ci.id
         LEFT JOIN districts d ON oa.assignment_type = 'District' AND oa.assignment_id = d.id
         LEFT JOIN cities dci ON d.city_id = dci.id
-        LEFT JOIN neighborhoods n ON oa.assignment_type = 'Neighborhood' AND oa.assignment_id = n.id
-        LEFT JOIN districts nd ON n.district_id = nd.id
-        LEFT JOIN cities nci ON nd.city_id = nci.id
         WHERE oa.officer_id = po.id
           AND oa.is_current = 1
-          AND ((oa.assignment_type = ? AND oa.assignment_id = ?) OR ci.region_id = ? OR dci.region_id = ? OR nci.region_id = ?)
+          AND ((oa.assignment_type = ? AND oa.assignment_id = ?) OR ci.region_id = ? OR dci.region_id = ?)
       )`,
       params,
     };
@@ -155,10 +136,6 @@ const buildLinkedObScopeExists = (user) => {
   if (!user || role === 'admin') return { clause: '1=1', params };
 
   const source = user.location || user;
-  if (source.waaxId || source.neighborhood_id || user.scopeType === 'neighborhood') {
-    params.push(source.waaxId || source.neighborhood_id || user.scopeId);
-    return { clause: 'scoped_ob.neighborhood_id = ?', params };
-  }
   if (source.districtId || source.district_id || user.scopeType === 'district') {
     params.push(source.districtId || source.district_id || user.scopeId);
     return { clause: 'scoped_ob.district_id = ?', params };
@@ -236,8 +213,7 @@ const getCaseById = async (req, res, next) => {
               r.region_name,
               ci.city_name,
               d.district_name,
-              n.neighborhood_name AS ward_name,
-              n.neighborhood_name AS station_name
+              d.district_name AS station_name
        FROM cases c
        LEFT JOIN police_officers o ON c.assigned_officer_id = o.id
        LEFT JOIN ob_entries ob ON c.ob_entry_id = ob.id
@@ -245,7 +221,6 @@ const getCaseById = async (req, res, next) => {
        LEFT JOIN regions r ON c.region_id = r.id
        LEFT JOIN cities ci ON c.city_id = ci.id
        LEFT JOIN districts d ON c.district_id = d.id
-       LEFT JOIN neighborhoods n ON c.neighborhood_id = n.id
        WHERE c.id = ?
          AND (
            ${scope.clause}
@@ -261,15 +236,15 @@ const getCaseById = async (req, res, next) => {
     );
     if (!caseRow) return res.status(404).json({ success: false, message: 'Case not found.' });
 
-    const [suspects] = await db.query(
+    const [criminals] = await db.query(
       `SELECT s.*, cs.role_in_case, cs.notes AS case_notes, cs.linked_at, cs.linked_by_user_id,
               cs.status AS link_status,
               COALESCE(s.face_capture_image, s.offender_photo, s.photo_url) AS face_image,
               CASE WHEN s.face_capture_image IS NOT NULL OR s.offender_photo IS NOT NULL OR s.photo_url IS NOT NULL
                    THEN 'Captured' ELSE 'Not Captured' END AS face_capture_status,
-              (SELECT COUNT(*) FROM case_suspects csh WHERE csh.suspect_id = s.id) AS previous_case_count
-       FROM suspects s
-       JOIN case_suspects cs ON s.id = cs.suspect_id
+              (SELECT COUNT(*) FROM case_criminals csh WHERE csh.criminal_id = s.id) AS previous_case_count
+       FROM criminals s
+       JOIN case_criminals cs ON s.id = cs.criminal_id
        WHERE cs.case_id = ?
        ORDER BY cs.linked_at DESC`,
       [caseId]
@@ -291,7 +266,8 @@ const getCaseById = async (req, res, next) => {
       success: true,
       data: {
         ...caseRow,
-        suspects,
+        criminals,
+        suspects: criminals,
         victims,
         evidence,
         actions,
@@ -308,13 +284,19 @@ const createCase = async (req, res, next) => {
   try {
     let {
       title, description, incident_date, incident_location, priority, assigned_officer_id, status,
-      state_administration_id, region_id, city_id, district_id, neighborhood_id, ob_entry_id,
+      state_administration_id, region_id, city_id, district_id, ob_entry_id,
       case_type, incident_type, complainant_name, complainant_phone, victim_name
     } = req.body;
 
     if (!title) return res.status(400).json({ success: false, message: 'Case title is required.' });
     const incidentDateError = validateIncidentDate(incident_date);
     if (incidentDateError) return res.status(400).json({ success: false, message: incidentDateError });
+
+    const offenderName = req.body.offender_name;
+    const offenderFaceImage = req.body.offender_face_image;
+    if (offenderName && !offenderFaceImage) {
+      return res.status(400).json({ success: false, message: 'Offender face image is required when registering an offender.' });
+    }
 
     let ob = null;
     if (ob_entry_id) {
@@ -349,7 +331,6 @@ const createCase = async (req, res, next) => {
     region_id = ob?.region_id || location.region_id || region_id || null;
     city_id = location.city_id || city_id || null;
     district_id = ob?.district_id || location.district_id || district_id || null;
-    neighborhood_id = ob?.neighborhood_id || location.neighborhood_id || neighborhood_id || null;
     incident_type = incident_type || ob?.incident_type || title;
     incident_location = incident_location || ob?.incident_location || null;
     description = description || ob?.description || null;
@@ -360,20 +341,78 @@ const createCase = async (req, res, next) => {
       `INSERT INTO cases (case_number, ob_number, title, case_title, case_type, incident_type,
                           complainant_name, complainant_phone, victim_name,
                           description, incident_date, incident_location, priority, 
-                          state_administration_id, region_id, city_id, district_id, neighborhood_id, 
+                          state_administration_id, region_id, city_id, district_id, 
                           assigned_officer_id, created_by, status, ob_entry_id,
                           original_ob_staff_id, original_ob_staff_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       [caseNumber, obNumber, title, title, case_type || null, incident_type || null,
       complainant_name || null, complainant_phone || null, victim_name || null,
       description || null, incident_date || null, incident_location || null, priority || 'medium',
-      state_administration_id || null, region_id || null, city_id || null, district_id || null, neighborhood_id || null,
+      state_administration_id || null, region_id || null, city_id || null, district_id || null,
       assigned_officer_id || null, req.user.username, status || (ob ? 'CASE_REGISTERED' : 'draft'), ob_entry_id || null,
       ob?.registered_by_user_id || (req.user.role === 'ob_staff' ? req.user.id : null),
       ob?.registered_by_name || (req.user.role === 'ob_staff' ? (req.user.fullName || req.user.username) : null)]
     );
 
     const caseId = result.insertId;
+
+    let faceCapture = null;
+    if (offenderFaceImage) {
+      const { parseFaceImage } = require('../utils/faceBiometric');
+      const crypto = require('crypto');
+      const fs = require('fs');
+      const path = require('path');
+
+      const parsedFace = parseFaceImage(offenderFaceImage);
+      const faceKey = parsedFace.biometricKey;
+
+      const [[existingCriminal]] = await db.query(
+        'SELECT id FROM criminals WHERE fingerprint_hash = ? LIMIT 1',
+        [faceKey]
+      );
+
+      if (existingCriminal) {
+        await db.query(
+          `INSERT IGNORE INTO case_criminals (case_id, criminal_id, linked_by_user_id, role_in_case, notes, added_by)
+           VALUES (?, ?, ?, 'Suspect', ?, ?)`,
+          [
+            caseId,
+            existingCriminal.id,
+            req.user.username,
+            'Linked by facial match during case registration.',
+            req.user.username
+          ]
+        );
+        faceCapture = {
+          suspectId: existingCriminal.id,
+          matchedExisting: true
+        };
+      } else {
+        const uploadDir = path.join(__dirname, '../../uploads/offenders');
+        fs.mkdirSync(uploadDir, { recursive: true });
+        const filename = `face-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${parsedFace.extension}`;
+        fs.writeFileSync(path.join(uploadDir, filename), parsedFace.buffer, { mode: 0o600 });
+        const faceCaptureUrl = `/uploads/offenders/${filename}`;
+
+        const [criminalResult] = await db.query(
+          `INSERT INTO criminals (full_name, face_capture_image, fingerprint_hash, nationality, arrest_status, is_arrested)
+           VALUES (?, ?, ?, 'Somali', 'not_arrested', 0)`,
+          [offenderName || 'Unknown Offender', faceCaptureUrl, faceKey]
+        );
+        const newCriminalId = criminalResult.insertId;
+
+        await db.query(
+          `INSERT INTO case_criminals (case_id, criminal_id, linked_by_user_id, role_in_case, added_by)
+           VALUES (?, ?, ?, 'Suspect', ?)`,
+          [caseId, newCriminalId, req.user.username, req.user.username]
+        );
+
+        faceCapture = {
+          suspectId: newCriminalId,
+          matchedExisting: false
+        };
+      }
+    }
 
     await db.query(`INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after) VALUES (?, ?, ?, ?, ?)`,
       [caseId, req.user.username, ob ? 'CASE_CREATED_FROM_OB' : 'CASE_CREATED', ob ? `Case registered from ${ob.ob_number}.` : 'Case registered.', status || (ob ? 'CASE_REGISTERED' : 'draft')]);
@@ -384,7 +423,7 @@ const createCase = async (req, res, next) => {
 
     await writeAuditLog({ userId: req.user.username, userEmail: req.user.email, action: 'CREATE_CASE', entityType: 'cases', entityId: caseId, newData: { caseNumber, obNumber, title } });
 
-    res.status(201).json({ success: true, message: 'Case registered successfully.', caseId, caseNumber, obNumber });
+    res.status(201).json({ success: true, message: 'Case registered successfully.', caseId, caseNumber, obNumber, faceCapture });
   } catch (err) { next(err); }
 };
 
@@ -440,7 +479,8 @@ const updateCase = async (req, res, next) => {
     const incidentDateError = validateIncidentDate(incident_date);
     if (incidentDateError) return res.status(400).json({ success: false, message: incidentDateError });
     const nextStatus = status ? mapLegacyStatus(status) : status;
-    if (nextStatus && !canTransitionStatus(existing.status, nextStatus)) {
+    const isUserAdmin = req.user && (req.user.role === 'admin' || req.user.role?.toLowerCase() === 'admin' || req.user.username === 'admin@police.so');
+    if (nextStatus && !isUserAdmin && !canTransitionStatus(existing.status, nextStatus)) {
       return res.status(400).json({
         success: false,
         message: `Invalid status transition from ${existing.status} to ${nextStatus}.`,
@@ -525,7 +565,6 @@ const exportCasePackage = async (req, res, next) => {
               COALESCE(c.title, c.case_title) AS title,
               po.full_name AS officer_name,
               d.district_name AS station_name,
-              n.neighborhood_name AS waax_name,
               sa.state_name,
               r.region_name
        FROM cases c
@@ -533,15 +572,14 @@ const exportCasePackage = async (req, res, next) => {
        LEFT JOIN state_administrations sa ON sa.id = c.state_administration_id
        LEFT JOIN regions r ON r.id = c.region_id
        LEFT JOIN districts d ON d.id = c.district_id
-       LEFT JOIN neighborhoods n ON n.id = c.neighborhood_id
        WHERE c.id = ? AND ${scope.clause}`,
       [caseId, ...scope.params]
     );
     if (!caseRow) return res.status(404).json({ success: false, message: 'Case not found.' });
 
-    const [suspects] = await db.query(
+    const [criminals] = await db.query(
       `SELECT s.full_name, s.phone, s.gender, s.arrest_status, cs.role_in_case
-       FROM suspects s JOIN case_suspects cs ON cs.suspect_id = s.id
+       FROM criminals s JOIN case_criminals cs ON cs.criminal_id = s.id
        WHERE cs.case_id = ?`,
       [caseId]
     );
@@ -554,12 +592,12 @@ const exportCasePackage = async (req, res, next) => {
         generatedAt: new Date().toISOString(),
         generatedBy: req.user.username,
         case: caseRow,
-        suspects,
+        criminals,
         evidence,
         timeline: actions,
         templates: {
           caseSummary: true,
-          arrestWarrant: suspects.length > 0,
+          arrestWarrant: criminals.length > 0,
           courtReferral: ['approved_for_court', 'court_decided', 'closed', 'referred_to_court'].includes(caseRow.status),
           releaseCertificate: ['closed', 'court_decided'].includes(caseRow.status),
           evidenceReceipt: evidence.length > 0,

@@ -25,9 +25,10 @@ INSERT INTO roles (name, description) VALUES
   ('REGION_COMMANDER', 'Commander responsible for one region'),
   ('DISTRICT_COMMANDER', 'Commander responsible for one district / police station'),
   ('POLICE_STATION_COMMANDER', 'Commander responsible for one district / police station'),
-  ('WAAX_COMMANDER', 'Commander responsible for one waax'),
   ('OB_STAFF', 'Occurrence Book staff member'),
-  ('STAFF', 'Operational staff member')
+  ('STAFF', 'Operational staff member'),
+  ('court', 'Court system role'),
+  ('jail', 'Jail system role')
 ON DUPLICATE KEY UPDATE description = VALUES(description);
 
 CREATE TABLE IF NOT EXISTS users (
@@ -38,13 +39,12 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(150),
   phone VARCHAR(30),
-  rank VARCHAR(100),
+  `rank` VARCHAR(100),
   user_type ENUM('COMMANDER','OB_STAFF','STAFF') DEFAULT 'STAFF',
-  assigned_level ENUM('ADMINISTRATION','STATE','REGION','DISTRICT_POLICE_STATION','WAAX') DEFAULT NULL,
+  assigned_level ENUM('ADMINISTRATION','STATE','REGION','DISTRICT_POLICE_STATION') DEFAULT NULL,
   state_administration_id INT,
   region_id INT,
   district_id INT,
-  neighborhood_id INT,
   is_commander TINYINT(1) DEFAULT 0,
   status ENUM('ACTIVE','INACTIVE','SUSPENDED') DEFAULT 'ACTIVE',
   profile_image VARCHAR(500),
@@ -54,20 +54,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id),
-  INDEX idx_users_location (state_administration_id, region_id, district_id, neighborhood_id),
+  INDEX idx_users_location (state_administration_id, region_id, district_id),
   INDEX idx_users_type (user_type, assigned_level)
-);
-
-CREATE TABLE IF NOT EXISTS special_users (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  username VARCHAR(150) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
-  role ENUM('ADMIN', 'CID', 'CID_DIRECTOR', 'CID_SUPERVISOR', 'CID_OFFICER', 'PROSECUTOR', 'PROSECUTOR_LIAISON', 'COURT', 'COURT_ADMIN', 'JUDGE', 'COURT_CLERK', 'JAIL') NOT NULL,
-  assigned_unit VARCHAR(255),
-  created_by VARCHAR(100),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  is_active TINYINT(1) DEFAULT 1
 );
 
 -- ============================================================
@@ -78,6 +66,7 @@ CREATE TABLE IF NOT EXISTS ranks (
   rank_name VARCHAR(100) NOT NULL UNIQUE,
   rank_code VARCHAR(30) NOT NULL UNIQUE,
   description TEXT,
+  created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -168,21 +157,6 @@ CREATE TABLE IF NOT EXISTS districts (
   CONSTRAINT fk_district_commander FOREIGN KEY (commander_officer_id) REFERENCES police_officers(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS neighborhoods (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  district_id INT NOT NULL,
-  neighborhood_name VARCHAR(150) NOT NULL,
-  neighborhood_code VARCHAR(50) NOT NULL UNIQUE,
-  username VARCHAR(150) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
-  commander_officer_id INT,
-  created_by VARCHAR(100),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_neighborhood_district FOREIGN KEY (district_id) REFERENCES districts(id) ON DELETE CASCADE,
-  CONSTRAINT fk_neighborhood_commander FOREIGN KEY (commander_officer_id) REFERENCES police_officers(id) ON DELETE SET NULL
-);
-
 -- ============================================================
 -- 5. OFFICER ASSIGNMENTS & TRANSFERS
 -- ============================================================
@@ -236,7 +210,6 @@ CREATE TABLE IF NOT EXISTS cases (
   region_id INT,
   city_id INT,
   district_id INT,
-  neighborhood_id INT,
   assigned_officer_id INT,
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -245,7 +218,6 @@ CREATE TABLE IF NOT EXISTS cases (
   CONSTRAINT fk_case_region FOREIGN KEY (region_id) REFERENCES regions(id),
   CONSTRAINT fk_case_city FOREIGN KEY (city_id) REFERENCES cities(id),
   CONSTRAINT fk_case_district FOREIGN KEY (district_id) REFERENCES districts(id),
-  CONSTRAINT fk_case_neighborhood FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id),
   CONSTRAINT fk_case_officer FOREIGN KEY (assigned_officer_id) REFERENCES police_officers(id),
   INDEX idx_case_ob_entry (ob_entry_id),
   INDEX idx_case_original_ob_staff (original_ob_staff_id)
@@ -266,7 +238,6 @@ CREATE TABLE IF NOT EXISTS ob_entries (
   state_administration_id INT,
   region_id INT,
   district_id INT,
-  neighborhood_id INT,
   registration_date DATE NOT NULL,
   registration_time TIME NOT NULL,
   status ENUM('OB_REGISTERED','FORWARDED_FOR_REVIEW','CONVERTED_TO_CASE','CASE_OPENED','CLOSED') DEFAULT 'OB_REGISTERED',
@@ -276,9 +247,8 @@ CREATE TABLE IF NOT EXISTS ob_entries (
   CONSTRAINT fk_ob_state FOREIGN KEY (state_administration_id) REFERENCES state_administrations(id),
   CONSTRAINT fk_ob_region FOREIGN KEY (region_id) REFERENCES regions(id),
   CONSTRAINT fk_ob_district FOREIGN KEY (district_id) REFERENCES districts(id),
-  CONSTRAINT fk_ob_waax FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id),
   INDEX idx_ob_registered_by (registered_by_user_id),
-  INDEX idx_ob_location (state_administration_id, region_id, district_id, neighborhood_id)
+  INDEX idx_ob_location (state_administration_id, region_id, district_id)
 );
 
 CREATE TABLE IF NOT EXISTS login_logs (
@@ -321,12 +291,10 @@ CREATE TABLE IF NOT EXISTS case_transfers (
   from_region_id INT,
   from_city_id INT,
   from_district_id INT,
-  from_neighborhood_id INT,
   to_state_administration_id INT,
   to_region_id INT,
   to_city_id INT,
   to_district_id INT,
-  to_neighborhood_id INT,
   from_officer_id INT,
   to_officer_id INT,
   transferred_by VARCHAR(100),
@@ -353,11 +321,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   new_data JSON,
   ip_address VARCHAR(50),
   user_agent TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_logs_created_at (created_at)
 );
 
 -- ============================================================
--- 8. ANCILLARY TABLES (Complainants, Suspects, Victims, Witnesses, Evidence)
+-- 8. ANCILLARY TABLES (Complainants, criminals, Victims, Witnesses, Evidence)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS complainants (
@@ -374,7 +343,7 @@ CREATE TABLE IF NOT EXISTS complainants (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS suspects (
+CREATE TABLE IF NOT EXISTS criminals (
   id INT PRIMARY KEY AUTO_INCREMENT,
   full_name VARCHAR(150) NOT NULL,
   mother_name VARCHAR(150),
@@ -401,10 +370,10 @@ CREATE TABLE IF NOT EXISTS suspects (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS case_suspects (
+CREATE TABLE IF NOT EXISTS case_criminals (
   id INT PRIMARY KEY AUTO_INCREMENT,
   case_id INT NOT NULL,
-  suspect_id INT NOT NULL,
+  criminal_id INT NOT NULL,
   linked_by_user_id VARCHAR(100),
   linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   status ENUM('active','removed') DEFAULT 'active',
@@ -412,9 +381,9 @@ CREATE TABLE IF NOT EXISTS case_suspects (
   notes TEXT,
   added_by VARCHAR(100),
   added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_cs_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
-  CONSTRAINT fk_cs_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id),
-  UNIQUE KEY uq_case_suspect (case_id, suspect_id)
+  CONSTRAINT fk_cc_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cc_criminal FOREIGN KEY (criminal_id) REFERENCES criminals(id),
+  UNIQUE KEY uq_case_criminal (case_id, criminal_id)
 );
 
 CREATE TABLE IF NOT EXISTS victims (
@@ -520,8 +489,8 @@ CREATE TABLE IF NOT EXISTS arrests (
   bail_amount DECIMAL(12,2),
   notes TEXT,
   CONSTRAINT fk_ar_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
-  CONSTRAINT fk_ar_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
-  CONSTRAINT fk_ar_station FOREIGN KEY (police_station_id) REFERENCES neighborhoods(id) ON DELETE SET NULL
+  CONSTRAINT fk_ar_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ar_station FOREIGN KEY (police_station_id) REFERENCES districts(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS case_actions (
@@ -627,7 +596,7 @@ CREATE TABLE IF NOT EXISTS biometric_identifiers (
   captured_by VARCHAR(100),
   captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   notes TEXT,
-  CONSTRAINT fk_bio_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_bio_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
   UNIQUE KEY uq_biometric_type_hash (biometric_type, biometric_hash)
 );
 
@@ -642,7 +611,7 @@ CREATE TABLE IF NOT EXISTS prisoner_documents (
   uploaded_by VARCHAR(100),
   uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   notes TEXT,
-  CONSTRAINT fk_doc_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_doc_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
   CONSTRAINT fk_doc_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
 );
 
@@ -658,7 +627,7 @@ CREATE TABLE IF NOT EXISTS prison_transfers (
   status ENUM('pending','completed','cancelled') DEFAULT 'completed',
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_ptr_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ptr_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
   CONSTRAINT fk_ptr_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
 );
 
@@ -674,7 +643,7 @@ CREATE TABLE IF NOT EXISTS prisoner_medical_records (
   fitness_status ENUM('fit','needs_treatment','hospitalized','critical') DEFAULT 'fit',
   recorded_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_med_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_med_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
   CONSTRAINT fk_med_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
 );
 
@@ -690,7 +659,7 @@ CREATE TABLE IF NOT EXISTS prisoner_visitor_logs (
   approved_by VARCHAR(100),
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_vis_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_vis_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
   CONSTRAINT fk_vis_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE SET NULL
 );
 
@@ -718,7 +687,124 @@ CREATE TABLE IF NOT EXISTS release_approvals (
   reviewed_by VARCHAR(100),
   reviewed_at TIMESTAMP NULL,
   review_notes TEXT,
-  CONSTRAINT fk_rel_suspect FOREIGN KEY (suspect_id) REFERENCES suspects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_rel_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE,
   CONSTRAINT fk_rel_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE CASCADE
 );
+
+-- =========================================================================
+-- COURT SYSTEM TABLES
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS court_cases (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_number VARCHAR(50) NOT NULL UNIQUE,
+  police_case_id INT NOT NULL,
+  police_case_number VARCHAR(50),
+  ob_number VARCHAR(50),
+  case_title VARCHAR(255),
+  crime_category VARCHAR(100),
+  case_description TEXT,
+  source_status VARCHAR(50),
+  status ENUM('registered', 'awaiting_hearing', 'hearing_scheduled', 'in_trial', 'judgment_issued', 'sentenced', 'appealed', 'closed', 'archived') DEFAULT 'registered',
+  created_by VARCHAR(100),
+  registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  assigned_judge VARCHAR(150),
+  assigned_prosecutor VARCHAR(150),
+  final_outcome ENUM('convicted', 'acquitted', 'dismissed'),
+  closure_reason TEXT,
+  closure_date DATE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_court_cases_police FOREIGN KEY (police_case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS court_hearings (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_id INT NOT NULL,
+  hearing_type VARCHAR(100) NOT NULL,
+  hearing_date DATE NOT NULL,
+  hearing_time TIME NOT NULL,
+  court_room VARCHAR(50),
+  assigned_judge VARCHAR(150),
+  status ENUM('scheduled', 'completed', 'cancelled') DEFAULT 'scheduled',
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_hearings_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS court_witnesses (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_id INT NOT NULL,
+  witness_id INT NOT NULL,
+  status ENUM('summoned', 'present', 'absent') DEFAULT 'summoned',
+  testimony TEXT,
+  signed_statement_url VARCHAR(500),
+  summoned_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_court_witness_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_court_witness_witness FOREIGN KEY (witness_id) REFERENCES witnesses(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS court_evidence_notes (
+  court_case_id INT NOT NULL,
+  evidence_id INT NOT NULL,
+  notes TEXT,
+  PRIMARY KEY (court_case_id, evidence_id),
+  CONSTRAINT fk_court_ev_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_court_ev_evidence FOREIGN KEY (evidence_id) REFERENCES evidence(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS court_proceedings (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_id INT NOT NULL,
+  hearing_id INT NOT NULL,
+  proceeding_date DATE NOT NULL,
+  notes TEXT,
+  judge_remarks TEXT,
+  prosecutor_remarks TEXT,
+  defense_remarks TEXT,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_proc_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_proc_hearing FOREIGN KEY (hearing_id) REFERENCES court_hearings(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS court_judgments (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_id INT NOT NULL,
+  judge_name VARCHAR(150),
+  decision_date DATE NOT NULL,
+  decision_type ENUM('convicted', 'acquitted', 'dismissed') NOT NULL,
+  judgment_summary TEXT NOT NULL,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_judg_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS court_sentences (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_id INT NOT NULL,
+  defendant_name VARCHAR(150) NOT NULL,
+  sentence_type VARCHAR(100) NOT NULL,
+  duration VARCHAR(100),
+  fine_amount DECIMAL(15,2),
+  sentence_date DATE NOT NULL,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_sent_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS court_appeals (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_id INT NOT NULL,
+  filed_by VARCHAR(150) NOT NULL,
+  appeal_reason TEXT NOT NULL,
+  filing_date DATE NOT NULL,
+  status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_app_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE
+);
+
 

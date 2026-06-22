@@ -14,7 +14,7 @@ const normalizeOptional = (value) => {
 };
 
 const ensureSuspect = async (suspectId) => {
-  const [[row]] = await db.query('SELECT id, full_name FROM suspects WHERE id = ?', [suspectId]);
+  const [[row]] = await db.query('SELECT id, full_name FROM criminals WHERE id = ?', [suspectId]);
   return row || null;
 };
 
@@ -22,7 +22,7 @@ const ensureApproval = async (approvalId) => {
   const [[approval]] = await db.query(
     `SELECT ra.*, s.full_name AS suspect_name, c.ob_number, COALESCE(c.title, c.case_title) AS case_title
      FROM release_approvals ra
-     JOIN suspects s ON s.id = ra.suspect_id
+     JOIN criminals s ON s.id = ra.suspect_id
      JOIN arrests a ON a.id = ra.arrest_id
      JOIN cases c ON c.id = a.case_id
      WHERE ra.id = ?`,
@@ -76,10 +76,10 @@ const addBiometric = async (req, res, next) => {
     );
 
     if (biometric_type === 'fingerprint' || biometric_type === 'face') {
-      await db.query('UPDATE suspects SET fingerprint_hash = COALESCE(fingerprint_hash, ?) WHERE id = ?', [biometric_hash, suspectId]);
+      await db.query('UPDATE criminals SET fingerprint_hash = COALESCE(fingerprint_hash, ?) WHERE id = ?', [biometric_hash, suspectId]);
     }
 
-    await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'ADD_BIOMETRIC', entityType: 'suspects', entityId: Number(suspectId), newData: req.body });
+    await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'ADD_BIOMETRIC', entityType: 'criminals', entityId: Number(suspectId), newData: req.body });
     res.status(201).json({ success: true, message: 'Biometric identifier recorded.', id: result.insertId || null });
   } catch (err) { next(err); }
 };
@@ -287,7 +287,7 @@ const generateReleaseCertificate = async (req, res, next) => {
       "UPDATE arrests SET sentence_status = 'released', actual_release_date = COALESCE(actual_release_date, CURDATE()), final_status = COALESCE(?, final_status) WHERE id = ?",
       [`Released with certificate ${certificateNumber}`, approval.arrest_id]
     );
-    await db.query('UPDATE suspects SET is_arrested = 0 WHERE id = ?', [approval.suspect_id]);
+    await db.query('UPDATE criminals SET is_arrested = 0 WHERE id = ?', [approval.suspect_id]);
 
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'GENERATE_RELEASE_CERTIFICATE', entityType: 'release_approvals', entityId: Number(req.params.id), oldData: approval, newData: { certificateNumber, notes } });
     res.json({
@@ -345,11 +345,11 @@ const getWantedEscaped = async (_req, res, next) => {
   try {
     const [rows] = await db.query(`
       SELECT a.*, s.full_name, s.alias, s.photo_url, c.ob_number, COALESCE(c.title, c.case_title) AS case_title,
-             n.neighborhood_name AS police_station_name
+             d.district_name AS police_station_name
       FROM arrests a
-      JOIN suspects s ON s.id = a.suspect_id
+      JOIN criminals s ON s.id = a.suspect_id
       JOIN cases c ON c.id = a.case_id
-      LEFT JOIN neighborhoods n ON COALESCE(a.police_station_id, c.neighborhood_id) = n.id
+      LEFT JOIN districts d ON COALESCE(a.police_station_id, c.district_id) = d.id
       WHERE a.sentence_status IN ('wanted','escaped')
       ORDER BY a.arrest_date DESC
     `);

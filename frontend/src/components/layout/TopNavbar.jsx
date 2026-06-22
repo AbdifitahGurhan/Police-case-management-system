@@ -1,8 +1,8 @@
 // src/components/layout/TopNavbar.jsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Layout, Button, Avatar, Dropdown, Space, Typography, Tag, Modal, Upload, App as AntApp, Form, Input, Divider, Badge, Empty, Spin } from 'antd';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Layout, Button, Avatar, Dropdown, Space, Typography, Tag, Modal, Upload, App as AntApp, Form, Input, Divider, Badge, Empty, Spin, Tooltip } from 'antd';
 import {
   MenuUnfoldOutlined,
   MenuFoldOutlined,
@@ -10,7 +10,13 @@ import {
   LogoutOutlined,
   BellOutlined,
   CameraOutlined,
-  UploadOutlined
+  UploadOutlined,
+  CheckOutlined,
+  FileTextOutlined,
+  SafetyOutlined,
+  AuditOutlined,
+  AlertOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
@@ -18,6 +24,104 @@ import { emailRule, nameRules, optionalPasswordRules, usernameRules } from '@/ut
 
 const { Header } = Layout;
 const { Text } = Typography;
+
+// ─── Notification helpers ───────────────────────────────────────────────────
+
+const typeIcon = (type = '') => {
+  if (type.startsWith('CID'))    return <SafetyOutlined  style={{ color: '#7c3aed' }} />;
+  if (type.startsWith('audit'))  return <AuditOutlined   style={{ color: '#0284c7' }} />;
+  if (type.includes('CASE'))     return <FileTextOutlined style={{ color: '#0891b2' }} />;
+  if (type.includes('ALERT'))    return <AlertOutlined   style={{ color: '#dc2626' }} />;
+  return                                <ClockCircleOutlined style={{ color: '#6b7280' }} />;
+};
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'Just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// ─── Notification Dropdown Content ──────────────────────────────────────────
+
+function NotificationPanel({ notifications, loading, onMarkAllRead, unreadCount }) {
+  return (
+    <div className="notification-popover">
+      {/* Header */}
+      <div className="notification-popover-header">
+        <Space>
+          <Text strong style={{ fontSize: 14 }}>Notifications</Text>
+          {unreadCount > 0 && (
+            <Tag color="blue" style={{ borderRadius: 99, margin: 0 }}>{unreadCount} new</Tag>
+          )}
+        </Space>
+        {unreadCount > 0 && (
+          <Tooltip title="Mark all as read">
+            <Button
+              type="text"
+              size="small"
+              icon={<CheckOutlined />}
+              onClick={onMarkAllRead}
+              style={{ color: '#2563eb', fontSize: 12 }}
+            >
+              Mark all read
+            </Button>
+          </Tooltip>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="notification-list">
+        {loading && notifications.length === 0 ? (
+          <div className="notification-loading">
+            <Spin size="small" />
+          </div>
+        ) : notifications.length === 0 ? (
+          <div style={{ padding: '32px 0' }}>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No recent activity" />
+          </div>
+        ) : (
+          notifications.map((item) => (
+            <div
+              className={`notification-item${item.is_read ? '' : ' notification-item--unread'}`}
+              key={item.id || `${item.type}-${item.created_at}`}
+            >
+              <div className="notification-item-icon">
+                {typeIcon(item.type)}
+              </div>
+              <div className="notification-item-body">
+                <Text strong style={{ fontSize: 13, display: 'block', lineHeight: '1.4' }}>
+                  {item.title}
+                </Text>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: '1.4' }}>
+                  {item.message}
+                </Text>
+                <Text type="secondary" style={{ fontSize: 11, marginTop: 2, display: 'block' }}>
+                  {timeAgo(item.created_at)}
+                </Text>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Footer */}
+      {notifications.length > 0 && (
+        <div className="notification-popover-footer">
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Showing {notifications.length} recent event{notifications.length !== 1 ? 's' : ''}
+          </Text>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main TopNavbar ──────────────────────────────────────────────────────────
 
 const TopNavbar = ({ collapsed, setCollapsed }) => {
   const { user, logout, updateUser } = useAuth();
@@ -27,28 +131,61 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
   const [fileList, setFileList] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Notification state
   const [notifications, setNotifications] = useState([]);
+  const [readIds, setReadIds] = useState(new Set());
   const [notificationLoading, setNotificationLoading] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const timerRef = useRef(null);
+
+  const fetchNotifications = useCallback(async () => {
+    setNotificationLoading(true);
+    try {
+      const response = await api.get('/notifications', { params: { limit: 15 } });
+      setNotifications(response.data.data || []);
+    } catch (error) {
+      console.error('Notifications failed to load', error);
+    } finally {
+      setNotificationLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
-
-    const fetchNotifications = async () => {
-      setNotificationLoading(true);
-      try {
-        const response = await api.get('/notifications', { params: { limit: 12 } });
-        setNotifications(response.data.data || []);
-      } catch (error) {
-        console.error('Notifications failed to load', error);
-      } finally {
-        setNotificationLoading(false);
-      }
-    };
-
     fetchNotifications();
-    const timer = setInterval(fetchNotifications, 60000);
-    return () => clearInterval(timer);
-  }, [user]);
+    timerRef.current = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(timerRef.current);
+  }, [user, fetchNotifications]);
+
+  // When dropdown opens, refresh and mark visible items as read
+  const handleDropdownOpenChange = (open) => {
+    setDropdownOpen(open);
+    if (open) {
+      fetchNotifications();
+      // Mark current notifications as read locally
+      setReadIds((prev) => {
+        const next = new Set(prev);
+        notifications.forEach((n) => n.id && next.add(n.id));
+        return next;
+      });
+    }
+  };
+
+  const handleMarkAllRead = () => {
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      notifications.forEach((n) => n.id && next.add(n.id));
+      return next;
+    });
+  };
+
+  const enrichedNotifications = notifications.map((n) => ({
+    ...n,
+    is_read: readIds.has(n.id) ? 1 : n.is_read,
+  }));
+
+  const unreadCount = enrichedNotifications.filter((n) => !n.is_read).length;
 
   if (!user) return null;
 
@@ -178,45 +315,33 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
         icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
         onClick={() => setCollapsed(!collapsed)}
       />
-      
+
       <Space size="large">
+        {/* ── Notification bell ── */}
         <Dropdown
+          open={dropdownOpen}
+          onOpenChange={handleDropdownOpenChange}
           trigger={['click']}
           placement="bottomRight"
           popupRender={() => (
-            <div className="notification-popover">
-              <div className="notification-popover-header">
-                <Text strong>Notifications</Text>
-                <Tag color="blue">{notifications.length}</Tag>
-              </div>
-              {notifications.length === 0 ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No recent activity" />
-              ) : (
-                <div className="notification-list" aria-busy={notificationLoading}>
-                  {notificationLoading && (
-                    <div className="notification-loading">
-                      <Spin size="small" />
-                    </div>
-                  )}
-                  {notifications.map((item) => (
-                    <div className="notification-item" key={item.id || `${item.type}-${item.created_at}`}>
-                      <Space orientation="vertical" size={2}>
-                        <Text strong>{item.title}</Text>
-                        <Text type="secondary">{item.message}</Text>
-                        <Text type="secondary">{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</Text>
-                      </Space>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <NotificationPanel
+              notifications={enrichedNotifications}
+              loading={notificationLoading}
+              unreadCount={unreadCount}
+              onMarkAllRead={handleMarkAllRead}
+            />
           )}
         >
-          <Badge count={notifications.length} size="small">
-            <Button className="topbar-icon-button" type="text" icon={<BellOutlined />} />
+          <Badge count={unreadCount} size="small" offset={[-2, 2]}>
+            <Button
+              className={`topbar-icon-button${dropdownOpen ? ' topbar-icon-button--active' : ''}`}
+              type="text"
+              icon={<BellOutlined />}
+            />
           </Badge>
         </Dropdown>
-        
+
+        {/* ── User menu ── */}
         <Dropdown menu={{ items: menuItems }} placement="bottomRight">
           <Space className="topbar-user">
             <div className="topbar-user-copy">

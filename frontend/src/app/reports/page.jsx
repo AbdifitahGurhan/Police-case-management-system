@@ -164,7 +164,7 @@ export default function ReportsPage() {
         api.get('/reports/audit-logs', { params: { ...params, limit: 8 } }),
         api.get('/reports/by-station'),
         api.get('/stations'),
-        api.get('/suspects'),
+        api.get('/criminals'),
         api.get('/reports/custody-analytics', { params: { year: dayjs().year() } }),
         api.get('/police-officers'),
         api.get('/regions'),
@@ -535,12 +535,12 @@ export default function ReportsPage() {
                   <div class="box"><strong>Open / Closed:</strong> ${summary.open_cases || 0} / ${summary.closed_cases || 0}</div>
                   <div class="box"><strong>Waax Units:</strong> ${summary.total_waax || 0}</div>
                   <div class="box"><strong>Officers:</strong> ${summary.total_officers || 0}</div>
-                  <div class="box"><strong>Suspects:</strong> ${summary.total_suspects || 0}</div>
+                  <div class="box"><strong>criminals:</strong> ${summary.total_criminals || 0}</div>
                   <div class="box"><strong>Victims:</strong> ${summary.total_victims || 0}</div>
                   <div class="box"><strong>Arrests:</strong> ${summary.total_arrests || 0}</div>
                 </div>
                 <h3>Waax Units</h3>
-                ${tableHtml(['Waax', 'Code', 'Cases', 'Suspects'], report.waaxUnits.map((row) => [row.waax_name, row.waax_code, row.total_cases, row.total_suspects]))}
+                ${tableHtml(['Waax', 'Code', 'Cases', 'criminals'], report.waaxUnits.map((row) => [row.waax_name, row.waax_code, row.total_cases, row.total_criminals]))}
                 <h3>Cases</h3>
                 ${tableHtml(['Case', 'OB', 'Title', 'Type', 'Status', 'Priority', 'Waax'], report.cases.map((row) => [row.case_number, row.ob_number, row.title, row.case_type || row.incident_type, row.status, row.priority, row.waax_name]))}
               `;
@@ -567,15 +567,15 @@ export default function ReportsPage() {
               <div class="box"><strong>Open / Closed:</strong> ${summary.open_cases || 0} / ${summary.closed_cases || 0}</div>
               <div class="box"><strong>Waax Units:</strong> ${summary.total_waax || 0}</div>
               <div class="box"><strong>Officers:</strong> ${summary.total_officers || 0}</div>
-              <div class="box"><strong>Suspects:</strong> ${summary.total_suspects || 0}</div>
+              <div class="box"><strong>criminals:</strong> ${summary.total_criminals || 0}</div>
               <div class="box"><strong>Victims:</strong> ${summary.total_victims || 0}</div>
             </div>
             <h3>Waax Units</h3>
-            ${tableHtml(['Waax', 'Code', 'Cases', 'Suspects'], report.waaxUnits.map((row) => [row.waax_name, row.waax_code, row.total_cases, row.total_suspects]))}
+            ${tableHtml(['Waax', 'Code', 'Cases', 'criminals'], report.waaxUnits.map((row) => [row.waax_name, row.waax_code, row.total_cases, row.total_criminals]))}
             <h3>Cases</h3>
             ${tableHtml(['Case', 'OB', 'Title', 'Type', 'Status', 'Priority', 'Waax', 'Original OB Staff'], report.cases.map((row) => [row.case_number, row.ob_number, row.title, row.case_type || row.incident_type, row.status, row.priority, row.waax_name, row.original_ob_staff_name]))}
-            <h3>Suspects</h3>
-            ${tableHtml(['Name', 'Alias', 'Gender', 'Age', 'Phone', 'Status', 'Cases', 'OB Numbers'], report.suspects.map((row) => [row.full_name, row.alias, row.gender, row.age, row.phone, row.arrest_status, row.case_count, row.ob_numbers]))}
+            <h3>criminals</h3>
+            ${tableHtml(['Name', 'Alias', 'Gender', 'Age', 'Phone', 'Status', 'Cases', 'OB Numbers'], report.criminals.map((row) => [row.full_name, row.alias, row.gender, row.age, row.phone, row.arrest_status, row.case_count, row.ob_numbers]))}
             <h3>Victims</h3>
             ${tableHtml(['Name', 'Gender', 'Age', 'Phone', 'OB Numbers'], report.victims.map((row) => [row.full_name, row.gender, row.age, row.phone, row.ob_numbers]))}
             <h3>Arrests</h3>

@@ -58,7 +58,7 @@ export default function ObDetailPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', ...commanderRoles]}>
+    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <Space orientation="vertical">

@@ -14,7 +14,6 @@ exports.getAll = async (req, res, next) => {
               WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
-              WHEN a.assignment_type = 'Neighborhood' THEN (SELECT neighborhood_name FROM neighborhoods WHERE id = a.assignment_id)
               ELSE NULL
             END
             FROM officer_assignments a
@@ -23,7 +22,6 @@ exports.getAll = async (req, res, next) => {
             LIMIT 1
           ),
           (SELECT district_name FROM districts WHERE commander_officer_id = o.id LIMIT 1),
-          (SELECT neighborhood_name FROM neighborhoods WHERE commander_officer_id = o.id LIMIT 1),
           (SELECT region_name FROM regions WHERE commander_officer_id = o.id LIMIT 1),
           (SELECT state_name FROM state_administrations WHERE commander_officer_id = o.id LIMIT 1)
         ) AS current_assignment_name,
@@ -36,7 +34,6 @@ exports.getAll = async (req, res, next) => {
             LIMIT 1
           ),
           (SELECT 'District / Police Station' FROM districts WHERE commander_officer_id = o.id LIMIT 1),
-          (SELECT 'Waax Station' FROM neighborhoods WHERE commander_officer_id = o.id LIMIT 1),
           (SELECT 'Region' FROM regions WHERE commander_officer_id = o.id LIMIT 1),
           (SELECT 'State Administration' FROM state_administrations WHERE commander_officer_id = o.id LIMIT 1),
           'Unassigned'
@@ -74,7 +71,6 @@ exports.getById = async (req, res, next) => {
           WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
-          WHEN a.assignment_type = 'Neighborhood' THEN (SELECT neighborhood_name FROM neighborhoods WHERE id = a.assignment_id)
           ELSE 'Unknown'
         END as assignment_name
       FROM officer_assignments a 

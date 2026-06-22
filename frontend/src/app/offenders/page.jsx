@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   App,
   Alert,
@@ -74,16 +74,23 @@ export default function OffendersPage() {
   const [selectedArrest, setSelectedArrest] = useState(null);
   const [custodyAction, setCustodyAction] = useState(null);
   const [filters, setFilters] = useState({ search: '', gender: undefined, arrested: undefined, repeat: undefined });
-  const canManageOffenders = ['admin', 'officer', 'cid', 'district_admin', 'neighborhood_admin'].includes(user?.role);
+  const canManageOffenders = ['admin', 'officer', 'cid', 'district_admin', 'neighborhood_admin', 'ob_staff'].includes(user?.role);
   const canReleaseOffenders = ['admin', 'jail'].includes(user?.role);
   const canManageSentence = ['admin', 'court', 'jail'].includes(user?.role);
   const canManageCustody = ['admin', 'court', 'jail', 'cid', 'district_admin', 'neighborhood_admin'].includes(user?.role);
+
+  const [suspectFaceImage, setSuspectFaceImage] = useState('');
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [cameraStream, setCameraStream] = useState(null);
+  const videoRef = useRef(null);
+  const [duplicateAlert, setDuplicateAlert] = useState(null);
 
   const fetchOffenders = useCallback(async () => {
     setLoading(true);
     try {
       const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined && value !== ''));
-      const res = await api.get('/suspects', { params });
+      const res = await api.get('/criminals', { params });
       setOffenders(res.data.data || []);
     } catch (err) {
       console.error(err);
@@ -96,7 +103,7 @@ export default function OffendersPage() {
   const fetchSentenceAlerts = useCallback(async () => {
     if (!['admin', 'jail'].includes(user?.role)) return;
     try {
-      const res = await api.get('/suspects/sentence-alerts');
+      const res = await api.get('/criminals/sentence-alerts');
       setSentenceAlerts(res.data.data || []);
     } catch (err) {
       console.error(err);
@@ -116,14 +123,137 @@ export default function OffendersPage() {
     return { total, arrested, repeat, withPhotos };
   }, [offenders]);
 
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  useEffect(() => {
+    if (!modalOpen) stopCamera();
+  }, [modalOpen]);
+
+  const startCamera = async () => {
+    setCameraError('');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera not available in this browser.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
+      });
+      setCameraStream(stream);
+      setIsCameraActive(true);
+    } catch (err) {
+      console.error('Camera error', err);
+      setCameraError('Camera access denied or unavailable.');
+    }
+  };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !cameraStream) return;
+    if (video.srcObject !== cameraStream) {
+      video.srcObject = cameraStream;
+      video.play().catch((e) => console.error('Video play error:', e));
+    }
+  }, [cameraStream]);
+
+  const captureFace = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const doCapture = () => {
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, width, height);
+
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      setSuspectFaceImage(imageDataUrl);
+      stopCamera();
+    };
+
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      doCapture();
+    } else {
+      const onCanPlay = () => {
+        video.removeEventListener('canplay', onCanPlay);
+        doCapture();
+      };
+      video.addEventListener('canplay', onCanPlay);
+    }
+  };
+
+  const handleFormValuesChange = async (changedValues, allValues) => {
+    if (changedValues.id_number !== undefined || changedValues.id_type !== undefined) {
+      const idType = allValues.id_type;
+      const idNumber = allValues.id_number;
+      if (idType && idNumber && idNumber.length >= 3) {
+        try {
+          const res = await api.get('/criminals/check-duplicate', {
+            params: { id_type: idType, id_number: idNumber }
+          });
+          if (res.data.exists) {
+            setDuplicateAlert(res.data.data);
+          } else {
+            setDuplicateAlert(null);
+          }
+        } catch (err) {
+          console.error("Duplicate check failed", err);
+        }
+      } else {
+        setDuplicateAlert(null);
+      }
+    }
+  };
+
+  const handleLinkExisting = (criminal) => {
+    form.setFieldsValue({
+      full_name: criminal.full_name,
+      alias: criminal.alias,
+      gender: criminal.gender,
+      age: criminal.age,
+      nationality: criminal.nationality || 'Somali',
+      phone: criminal.phone,
+      address: criminal.address,
+    });
+    if (criminal.face_capture_image) {
+      setSuspectFaceImage(criminal.face_capture_image);
+    } else if (criminal.photo_url) {
+      setSuspectFaceImage(criminal.photo_url);
+    }
+    setDuplicateAlert(null);
+    message.success("Macluumaadka dambiilaha hore waa la soo qaatay!");
+  };
+
   const openCreate = () => {
     setEditing(null);
+    setSuspectFaceImage('');
+    setDuplicateAlert(null);
     form.resetFields();
     setModalOpen(true);
   };
 
   const openEdit = (record) => {
     setEditing(record);
+    setDuplicateAlert(null);
+    setSuspectFaceImage(record.face_capture_image || record.photo_url || '');
     form.setFieldsValue({
       ...record,
       is_arrested: Number(record.is_arrested) === 1,
@@ -142,7 +272,7 @@ export default function OffendersPage() {
     setHistoryLoading(true);
     setSelectedProfile(null);
     try {
-      const res = await api.get(`/suspects/${record.id}/history`);
+      const res = await api.get(`/criminals/${record.id}/history`);
       setSelectedProfile(res.data.data);
     } catch (err) {
       console.error(err);
@@ -170,7 +300,7 @@ export default function OffendersPage() {
 
   const refreshSelectedProfile = async () => {
     if (!selectedProfile?.profile?.id) return;
-    const res = await api.get(`/suspects/${selectedProfile.profile.id}/history`);
+    const res = await api.get(`/criminals/${selectedProfile.profile.id}/history`);
     setSelectedProfile(res.data.data);
   };
 
@@ -190,19 +320,35 @@ export default function OffendersPage() {
       });
       const file = values.photo?.[0]?.originFileObj;
       if (file) payload.append('photo', file);
+      if (suspectFaceImage) {
+        payload.append('face_capture_image', suspectFaceImage);
+      }
 
       if (editing) {
-        await api.put(`/suspects/${editing.id}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
+        await api.put(`/criminals/${editing.id}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
         message.success('Offender profile updated.');
       } else {
-        await api.post('/suspects', payload, { headers: { 'Content-Type': 'multipart/form-data' } });
+        await api.post('/criminals', payload, { headers: { 'Content-Type': 'multipart/form-data' } });
         message.success('Offender profile registered.');
       }
       setModalOpen(false);
       fetchOffenders();
     } catch (err) {
-      console.error(err);
-      message.error(err.response?.data?.message || 'Validation failed. Please check the form.');
+      if (err.response?.status === 409 && err.response?.data?.matchedExisting) {
+        // Profile already exists — no action taken, just inform the officer
+        const matched = err.response.data.data;
+        message.warning(
+          matched
+            ? `Qofkan horey ayaa loo diiwaan-geliyey: ${matched.full_name}. Wax ficil ah oo cusub lama samayn.`
+            : err.response.data.message || 'Qofkan horey ayaa loo diiwaan-geliyey.'
+        );
+        setModalOpen(false);
+        stopCamera();
+        setDuplicateAlert(null);
+      } else {
+        console.error(err);
+        message.error(err.response?.data?.message || 'Validation failed. Please check the form.');
+      }
     } finally {
       setSaving(false);
     }
@@ -212,7 +358,7 @@ export default function OffendersPage() {
     if (!releasing) return;
     setSaving(true);
     try {
-      await api.post(`/suspects/${releasing.id}/release`, values);
+      await api.post(`/criminals/${releasing.id}/release`, values);
       message.success('The offender has been released.');
       setReleaseOpen(false);
       setReleasing(null);
@@ -289,7 +435,7 @@ export default function OffendersPage() {
         });
         const file = values.document?.[0]?.originFileObj;
         if (file) payload.append('document', file);
-        await api.post(`/custody/suspects/${suspectId}/documents`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
+        await api.post(`/custody/criminals/${suspectId}/documents`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
       } else {
         const endpointByAction = {
           biometric: 'biometrics',
@@ -298,7 +444,7 @@ export default function OffendersPage() {
           visitor: 'visitor-logs',
           release: 'release-approvals',
         };
-        await api.post(`/custody/suspects/${suspectId}/${endpointByAction[custodyAction]}`, datePayload);
+        await api.post(`/custody/criminals/${suspectId}/${endpointByAction[custodyAction]}`, datePayload);
       }
 
       message.success('Custody record saved.');
@@ -461,8 +607,8 @@ export default function OffendersPage() {
       width: 260,
       render: (name, row) => (
         <Space align="start" style={{ minWidth: 220 }}>
-          {row.photo_url ? (
-            <Avatar size={48} src={<Image src={`${UPLOAD_BASE_URL}${row.photo_url}`} alt={name} preview={false} />} />
+          {(row.face_capture_image || row.photo_url) ? (
+            <Avatar size={48} src={<Image src={(() => { const img = row.face_capture_image || row.photo_url; return (img.startsWith('data:') || img.startsWith('http')) ? img : `${UPLOAD_BASE_URL}${img}`; })()} alt={name} preview={false} />} />
           ) : (
             <Avatar size={48} icon={<UserOutlined />} />
           )}
@@ -499,7 +645,7 @@ export default function OffendersPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'neighborhood_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'neighborhood_admin', 'ob_staff']}>
       <div className="offenders-page">
         {sentenceAlerts.length > 0 && (
           <Alert
@@ -507,7 +653,7 @@ export default function OffendersPage() {
             type="warning"
             showIcon
             icon={<WarningOutlined />}
-            message={`${sentenceAlerts.length} prisoner(s) have completed the expected sentence period and need release review.`}
+            title={`${sentenceAlerts.length} prisoner(s) have completed the expected sentence period and need release review.`}
             description={sentenceAlerts.slice(0, 3).map((alert) => alert.message).join(' ')}
           />
         )}
@@ -544,23 +690,128 @@ export default function OffendersPage() {
           <Table columns={columns} dataSource={offenders} rowKey="id" loading={loading} scroll={{ x: 1200 }} />
         </Card>
 
-        <Modal title={editing ? 'Edit Offender Profile' : 'Register Offender'} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} confirmLoading={saving} width={820} destroyOnHidden forceRender>
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Modal 
+          title={editing ? 'Edit Offender Profile' : 'Register Offender'} 
+          open={modalOpen} 
+          onCancel={() => { setModalOpen(false); stopCamera(); setDuplicateAlert(null); }} 
+          onOk={() => form.submit()} 
+          confirmLoading={saving} 
+          width={820} 
+          destroyOnHidden 
+          forceRender
+        >
+          <Form form={form} layout="vertical" onFinish={handleSubmit} onValuesChange={handleFormValuesChange}>
             <Row gutter={16}>
+              {duplicateAlert && (
+                <Col span={24}>
+                  <Alert
+                    title="Dambiilahan horey ayaa loo diiwaan-geliyey!"
+                    description={`Magaca: ${duplicateAlert.full_name} (${duplicateAlert.gender}, ${duplicateAlert.age} jir) - ID: ${duplicateAlert.id_number}`}
+                    type="warning"
+                    showIcon
+                    action={
+                      <Button 
+                        size="small" 
+                        type="primary" 
+                        onClick={() => handleLinkExisting(duplicateAlert)}
+                      >
+                        Isticmaal dambiilahan
+                      </Button>
+                    }
+                    style={{ marginBottom: 16 }}
+                  />
+                </Col>
+              )}
               <Col xs={24} md={12}><Form.Item name="full_name" label="Full Name" rules={[{ required: true, message: 'Full name is required.' }, { min: 3 }]}><Input /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="alias" label="Alias"><Input /></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="gender" label="Gender" initialValue="male" rules={[{ required: true }]}><Select options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }]} /></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[{ type: 'number', min: 1, max: 120 }]}><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="nationality" label="Nationality" initialValue="Somali"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="id_type" label="ID Type"><Input placeholder="National ID, passport..." /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="id_number" label="ID Number"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="phone" label="Phone" rules={[{ pattern: /^[+\d][\d\s-]{6,24}$/, message: 'Use a valid phone number.' }]}><Input /></Form.Item></Col>
-              <Col xs={24}><Form.Item name="address" label="Address"><Input /></Form.Item></Col>
-              <Col xs={24} md={12}><Form.Item name="fingerprint_hash" label="Fingerprint / Biometric Reference"><Input placeholder="Fingerprint hash or biometric reference" /></Form.Item></Col>
+              <Col xs={24} md={12}>
+                <Form.Item name="id_type" label="ID Type" rules={[{ required: true, message: 'ID Type is required.' }]}>
+                  <Select placeholder="Select ID type">
+                    <Select.Option value="National ID">National ID</Select.Option>
+                    <Select.Option value="Passport">Passport</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number"><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name="phone" label="Phone" rules={[{ pattern: /^[+\d][\d\s-]{6,24}$/, message: 'Use a valid phone number.' }]}><Input /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="is_arrested" label="Arrested" valuePropName="checked"><Switch /></Form.Item></Col>
-              <Col xs={24}><Form.Item name="biometric_notes" label="Biometric Notes"><TextArea rows={3} /></Form.Item></Col>
-              <Col xs={24}><Form.Item name="description" label="Profile Notes"><TextArea rows={3} /></Form.Item></Col>
-              <Col xs={24}><Form.Item name="photo" label="Offender Photo" valuePropName="fileList" getValueFromEvent={(event) => event?.fileList || []}><Upload beforeUpload={() => false} maxCount={1} accept="image/png,image/jpeg,image/webp"><Button icon={<PlusOutlined />}>Select Photo</Button></Upload></Form.Item></Col>
+              <Col xs={24}><Form.Item name="address" label="Address"><Input /></Form.Item></Col>
+
+              
+              <Col span={24}>
+                <Form.Item label="Offender Photo / Face Capture">
+                  <div className="face-preview-panel" style={{ 
+                    height: 280, 
+                    width: '100%',
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    border: '1px dashed #d9d9d9',
+                    borderRadius: 8,
+                    backgroundColor: '#f8fafc',
+                    overflow: 'hidden'
+                  }}>
+                    {suspectFaceImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={suspectFaceImage.startsWith('data:') || suspectFaceImage.startsWith('http') ? suspectFaceImage : `${UPLOAD_BASE_URL}${suspectFaceImage}`} alt="Suspect face capture preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
+                    ) : isCameraActive ? (
+                      <video 
+                        ref={videoRef}
+                        autoPlay 
+                        playsInline 
+                        muted 
+                        className="face-camera-video" 
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          objectFit: 'cover',
+                          transform: 'scaleX(-1)',
+                          borderRadius: 6
+                        }} 
+                      />
+                    ) : (
+                      <Text type="secondary">No face image captured yet. Use the camera or upload a file.</Text>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {!isCameraActive && !suspectFaceImage && (
+                      <>
+                        <Button type="primary" onClick={startCamera}>Start Camera</Button>
+                        <Upload
+                          beforeUpload={(file) => {
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                              setSuspectFaceImage(e.target.result);
+                            };
+                            reader.readAsDataURL(file);
+                            return false;
+                          }}
+                          showUploadList={false}
+                          accept="image/*"
+                        >
+                          <Button>Upload Photo File</Button>
+                        </Upload>
+                      </>
+                    )}
+                    {isCameraActive && (
+                      <>
+                        <Button type="primary" onClick={captureFace}>Capture Photo</Button>
+                        <Button onClick={stopCamera}>Stop Camera</Button>
+                      </>
+                    )}
+                    {suspectFaceImage && (
+                      <>
+                        <Button type="primary" onClick={() => { setSuspectFaceImage(''); startCamera(); }}>Retake Photo</Button>
+                        <Button danger onClick={() => setSuspectFaceImage('')}>Remove Photo</Button>
+                      </>
+                    )}
+                  </div>
+                  {cameraError && <Text type="danger" style={{ display: 'block', marginTop: 8, textAlign: 'center' }}>{cameraError}</Text>}
+                </Form.Item>
+              </Col>
             </Row>
           </Form>
         </Modal>

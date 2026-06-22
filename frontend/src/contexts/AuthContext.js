@@ -64,9 +64,7 @@ export const AuthProvider = ({ children }) => {
         region_admin: '/dashboard/unit',
         city_admin: '/dashboard/unit',
         district_admin: '/dashboard/unit',
-        neighborhood_admin: '/dashboard/unit',
         officer: '/dashboard/officer',
-        ward_commander: '/dashboard/ward_commander',
         cid: '/dashboard/cid',
         cid_director: '/dashboard/cid',
         cid_supervisor: '/dashboard/cid',
@@ -80,7 +78,6 @@ export const AuthProvider = ({ children }) => {
         jail: '/dashboard/jail',
         district_commander: '/dashboard/unit',
         police_station_commander: '/dashboard/unit',
-        waax_commander: '/dashboard/unit',
         ob_staff: '/ob-register',
         staff: '/cases'
       };

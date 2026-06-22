@@ -53,8 +53,8 @@ const getCourtDashboard = async (req, res, next) => {
         SUM(CASE WHEN final_outcome = 'convicted' THEN 1 ELSE 0 END) AS convicted_cases,
         SUM(CASE WHEN final_outcome = 'acquitted' THEN 1 ELSE 0 END) AS acquitted_cases,
         SUM(CASE WHEN status = 'appealed' THEN 1 ELSE 0 END) AS appeals_filed,
-        (SELECT COUNT(*) FROM special_users WHERE role IN ('COURT','COURT_ADMIN','JUDGE') AND is_active = 1) AS judges,
-        (SELECT COUNT(*) FROM special_users WHERE role = 'PROSECUTOR' AND is_active = 1) AS prosecutors
+        (SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'court' AND u.is_active = 1) AS judges,
+        0 AS prosecutors
       FROM court_cases cc
       WHERE 1=1 ${visibility}
     `, params);
@@ -111,8 +111,8 @@ const getCourtCases = async (req, res, next) => {
     if (to_date) { where += ' AND cc.registration_date <= ?'; params.push(to_date); }
     if (suspect_name) {
       where += ` AND EXISTS (
-        SELECT 1 FROM case_suspects cs
-        JOIN suspects s ON s.id = cs.suspect_id
+        SELECT 1 FROM case_criminals cs
+        JOIN criminals s ON s.id = cs.criminal_id
         WHERE cs.case_id = cc.police_case_id AND s.full_name LIKE ?
       )`;
       params.push(`%${suspect_name}%`);
@@ -122,8 +122,8 @@ const getCourtCases = async (req, res, next) => {
         cc.court_case_number LIKE ? OR cc.police_case_number LIKE ? OR cc.ob_number LIKE ?
         OR cc.case_title LIKE ? OR c.complainant_name LIKE ?
         OR EXISTS (
-          SELECT 1 FROM case_suspects cs2
-          JOIN suspects s2 ON s2.id = cs2.suspect_id
+          SELECT 1 FROM case_criminals cs2
+          JOIN criminals s2 ON s2.id = cs2.criminal_id
           WHERE cs2.case_id = cc.police_case_id AND s2.full_name LIKE ?
         )
       )`;
@@ -160,10 +160,10 @@ const getCourtCaseById = async (req, res, next) => {
     if (!courtCase) return res.status(404).json({ success: false, message: 'Court case not found.' });
 
     const policeCaseId = courtCase.police_case_id;
-    const [suspects] = await db.query(`
+    const [criminals] = await db.query(`
       SELECT s.*, cs.role_in_case
-      FROM suspects s
-      JOIN case_suspects cs ON cs.suspect_id = s.id
+      FROM criminals s
+      JOIN case_criminals cs ON cs.criminal_id = s.id
       WHERE cs.case_id = ?`,
       [policeCaseId]
     );
@@ -185,7 +185,7 @@ const getCourtCaseById = async (req, res, next) => {
     const [arrests] = await db.query(`
       SELECT a.*, s.full_name AS suspect_name
       FROM arrests a
-      JOIN suspects s ON s.id = a.suspect_id
+      JOIN criminals s ON s.id = a.suspect_id
       WHERE a.case_id = ?`,
       [policeCaseId]
     );
@@ -218,7 +218,7 @@ const getCourtCaseById = async (req, res, next) => {
       [courtCase.id, courtCase.id, courtCase.id, courtCase.id, courtCase.id, courtCase.id]
     );
 
-    res.json({ success: true, data: { courtCase, suspects, witnesses, evidence, arrests, hearings, proceedings, judgments, sentences, appeals, auditTrail } });
+    res.json({ success: true, data: { courtCase, criminals, suspects: criminals, witnesses, evidence, arrests, hearings, proceedings, judgments, sentences, appeals, auditTrail } });
   } catch (err) { next(err); }
 };
 
@@ -236,7 +236,7 @@ const getCourtCalendar = async (req, res, next) => {
   try {
     const { judge, court_room, hearing_type, case_status, from_date, to_date } = req.query;
     const params = [];
-    let where = '1=1';
+    let where = "ch.status = 'scheduled' AND cc.status NOT IN ('sentenced', 'closed', 'archived')";
     if (judge) { where += ' AND ch.assigned_judge LIKE ?'; params.push(`%${judge}%`); }
     if (court_room) { where += ' AND ch.court_room LIKE ?'; params.push(`%${court_room}%`); }
     if (hearing_type) { where += ' AND ch.hearing_type = ?'; params.push(hearing_type); }

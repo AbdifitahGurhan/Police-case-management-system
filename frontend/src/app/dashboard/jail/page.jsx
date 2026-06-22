@@ -32,7 +32,7 @@ export default function JailDashboard() {
       try {
         const [caseRes, offenderRes] = await Promise.all([
           api.get('/cases/stats'),
-          api.get('/suspects', { params: { arrested: '1' } }),
+          api.get('/criminals', { params: { arrested: '1' } }),
         ]);
         setCaseData(caseRes.data.data);
         setOffenders(offenderRes.data.data || []);

@@ -29,8 +29,8 @@ const getCidDashboard = async (req, res, next) => {
         SUM(CASE WHEN investigation_status IN ('open','supervisor_review') THEN 1 ELSE 0 END) AS pending_investigations,
         SUM(CASE WHEN investigation_status IN ('investigation_completed','approved','sent_to_prosecutor','sent_to_court') THEN 1 ELSE 0 END) AS completed_investigations,
         (SELECT COUNT(*) FROM evidence e JOIN cid_cases c2 ON c2.police_case_id = e.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')}) AS evidence_collected,
-        (SELECT COUNT(*) FROM case_suspects cs JOIN cid_cases c2 ON c2.police_case_id = cs.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')}) AS suspects_identified,
-        (SELECT COUNT(*) FROM arrests a JOIN cid_cases c2 ON c2.police_case_id = a.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')}) AS arrested_suspects,
+        (SELECT COUNT(*) FROM case_criminals cs JOIN cid_cases c2 ON c2.police_case_id = cs.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')}) AS criminals_identified,
+        (SELECT COUNT(*) FROM arrests a JOIN cid_cases c2 ON c2.police_case_id = a.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')}) AS arrested_criminals,
         SUM(CASE WHEN investigation_status = 'sent_to_prosecutor' THEN 1 ELSE 0 END) AS cases_sent_to_prosecutor,
         SUM(CASE WHEN investigation_status = 'sent_to_court' THEN 1 ELSE 0 END) AS cases_sent_to_court
       FROM cid_cases cid
@@ -121,9 +121,9 @@ const getCidCaseById = async (req, res, next) => {
       JOIN evidence e ON e.id = coc.evidence_id
       WHERE e.case_id = ?
       ORDER BY coc.transfer_date DESC`, [caseId]);
-    const [suspects] = await db.query(`
+    const [criminals] = await db.query(`
       SELECT s.*, cs.role_in_case, cs.status AS case_status
-      FROM suspects s JOIN case_suspects cs ON cs.suspect_id = s.id
+      FROM criminals s JOIN case_criminals cs ON cs.criminal_id = s.id
       WHERE cs.case_id = ?`, [caseId]);
     const [witnesses] = await db.query(`
       SELECT w.*, ws.statement, ws.statement_date, ws.taken_by
@@ -131,7 +131,7 @@ const getCidCaseById = async (req, res, next) => {
       WHERE ws.case_id = ?`, [caseId]);
     const [arrests] = await db.query(`
       SELECT a.*, s.full_name AS suspect_name
-      FROM arrests a JOIN suspects s ON s.id = a.suspect_id
+      FROM arrests a JOIN criminals s ON s.id = a.suspect_id
       WHERE a.case_id = ?`, [caseId]);
     const [auditTrail] = await db.query(`
       SELECT action, user_id AS performed_by, created_at, old_data AS previous_value, new_data AS new_value, entity_type, entity_id
@@ -143,7 +143,7 @@ const getCidCaseById = async (req, res, next) => {
       ORDER BY created_at DESC
       LIMIT 100`, [cidCase.id, cidCase.id, cidCase.id, cidCase.id]);
 
-    res.json({ success: true, data: { cidCase, progress, crimeScenes, reports, evidence, custody, suspects, witnesses, arrests, auditTrail } });
+    res.json({ success: true, data: { cidCase, progress, crimeScenes, reports, evidence, custody, criminals, suspects: criminals, witnesses, arrests, auditTrail } });
   } catch (err) { next(err); }
 };
 

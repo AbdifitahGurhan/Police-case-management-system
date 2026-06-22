@@ -106,7 +106,7 @@ export default function CaseListPage() {
     },
   ];
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <Breadcrumb items={[{ title: 'Home' }, { title: 'Cases' }]} />
         

@@ -195,8 +195,8 @@ export default function CIDDashboard() {
     { title: 'Pending Review', value: stats.pending_investigations, icon: <WarningOutlined /> },
     { title: 'Completed', value: stats.completed_investigations, icon: <CheckCircleOutlined /> },
     { title: 'Evidence Collected', value: stats.evidence_collected, icon: <FileProtectOutlined /> },
-    { title: 'Suspects Identified', value: stats.suspects_identified, icon: <TeamOutlined /> },
-    { title: 'Arrested Suspects', value: stats.arrested_suspects, icon: <UserSwitchOutlined /> },
+    { title: 'criminals Identified', value: stats.criminals_identified, icon: <TeamOutlined /> },
+    { title: 'Arrested criminals', value: stats.arrested_criminals, icon: <UserSwitchOutlined /> },
     { title: 'Sent to Prosecutor', value: stats.cases_sent_to_prosecutor, icon: <SendOutlined /> },
   ];
 
@@ -360,10 +360,10 @@ export default function CIDDashboard() {
                 },
                 {
                   key: 'people',
-                  label: 'Witnesses & Suspects',
+                  label: 'Witnesses & criminals',
                   children: <Row gutter={[16, 16]}>
                     <Col xs={24} lg={12}><Card title="Witnesses" variant="none"><Table rowKey="id" dataSource={selected.witnesses} pagination={false} columns={[{ title: 'Name', dataIndex: 'full_name' }, { title: 'Phone', dataIndex: 'phone', render: safe }, { title: 'Statement', dataIndex: 'statement', ellipsis: true }]} /></Card></Col>
-                    <Col xs={24} lg={12}><Card title="Suspects" variant="none"><Table rowKey="id" dataSource={selected.suspects} pagination={false} columns={[{ title: 'Name', dataIndex: 'full_name' }, { title: 'Phone', dataIndex: 'phone', render: safe }, { title: 'Status', dataIndex: 'case_status', render: (v) => <Tag>{safe(v)}</Tag> }]} /></Card></Col>
+                    <Col xs={24} lg={12}><Card title="criminals" variant="none"><Table rowKey="id" dataSource={selected.criminals} pagination={false} columns={[{ title: 'Name', dataIndex: 'full_name' }, { title: 'Phone', dataIndex: 'phone', render: safe }, { title: 'Status', dataIndex: 'case_status', render: (v) => <Tag>{safe(v)}</Tag> }]} /></Card></Col>
                   </Row>,
                 },
                 {

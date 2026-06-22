@@ -45,7 +45,6 @@ const buildScopedCaseJoinWhere = (user, params, alias = 'c') => {
   if (user.scopeType === 'region') { where += ` AND ${alias}.region_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'city') { where += ` AND ${alias}.city_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'district') { where += ` AND ${alias}.district_id = ?`; params.push(user.scopeId); }
-  if (user.scopeType === 'neighborhood') { where += ` AND ${alias}.neighborhood_id = ?`; params.push(user.scopeId); }
   return where;
 };
 
@@ -98,13 +97,12 @@ const applyCaseScope = (user, sql, params, alias = 'c_scope') => {
   if (user.scopeType === 'region') { sql += ` AND ${alias}.region_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'city') { sql += ` AND ${alias}.city_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'district') { sql += ` AND ${alias}.district_id = ?`; params.push(user.scopeId); }
-  if (user.scopeType === 'neighborhood') { sql += ` AND ${alias}.neighborhood_id = ?`; params.push(user.scopeId); }
   return sql;
 };
 
 const canAccessCase = async (user, caseId) => {
   const [[row]] = await db.query(
-    'SELECT state_administration_id, region_id, city_id, district_id, neighborhood_id FROM cases WHERE id = ?',
+    'SELECT state_administration_id, region_id, city_id, district_id FROM cases WHERE id = ?',
     [caseId]
   );
   if (!row) return false;
@@ -114,19 +112,18 @@ const canAccessCase = async (user, caseId) => {
     region: 'region_id',
     city: 'city_id',
     district: 'district_id',
-    neighborhood: 'neighborhood_id',
   };
   return Number(row[columnMap[user.scopeType]]) === Number(user.scopeId);
 };
 
 const findMatchingSuspect = async ({ id_number, phone, full_name }) => {
   if (id_number) {
-    const [[row]] = await db.query('SELECT * FROM suspects WHERE id_number = ? LIMIT 1', [id_number]);
+    const [[row]] = await db.query('SELECT * FROM criminals WHERE id_number = ? LIMIT 1', [id_number]);
     if (row) return { row, matchReason: 'id_number' };
   }
   if (phone && full_name) {
     const [[row]] = await db.query(
-      'SELECT * FROM suspects WHERE phone = ? AND LOWER(full_name) = LOWER(?) LIMIT 1',
+      'SELECT * FROM criminals WHERE phone = ? AND LOWER(full_name) = LOWER(?) LIMIT 1',
       [phone, full_name]
     );
     if (row) return { row, matchReason: 'phone_and_name' };
@@ -134,7 +131,24 @@ const findMatchingSuspect = async ({ id_number, phone, full_name }) => {
   return null;
 };
 
-const getSuspects = async (req, res, next) => {
+const checkDuplicate = async (req, res, next) => {
+  try {
+    const { id_type, id_number } = req.query;
+    if (!id_number) {
+      return res.status(400).json({ success: false, message: 'ID number is required.' });
+    }
+    const [[row]] = await db.query(
+      'SELECT * FROM criminals WHERE LOWER(id_type) = LOWER(?) AND id_number = ? LIMIT 1',
+      [id_type || '', id_number]
+    );
+    if (row) {
+      return res.json({ success: true, exists: true, data: row });
+    }
+    res.json({ success: true, exists: false });
+  } catch (err) { next(err); }
+};
+
+const getcriminals = async (req, res, next) => {
   try {
     const { case_id, search, gender, nationality, arrested, repeat } = req.query;
     if (case_id) {
@@ -145,20 +159,18 @@ const getSuspects = async (req, res, next) => {
       }
       const [rows] = await db.query(
         `SELECT s.*, cs.role_in_case, cs.notes AS case_notes,
-                COUNT(DISTINCT cs_all.case_id) AS case_count
-         FROM suspects s
-         JOIN case_suspects cs ON s.id = cs.suspect_id
+                (SELECT COUNT(*) FROM case_criminals csh WHERE csh.criminal_id = s.id) AS case_count
+         FROM criminals s
+         JOIN case_criminals cs ON s.id = cs.criminal_id
          JOIN cases c_scope ON c_scope.id = cs.case_id
-         LEFT JOIN case_suspects cs_all ON s.id = cs_all.suspect_id
          WHERE ${scopeWhere}
          GROUP BY s.id, cs.role_in_case, cs.notes`, scopeParams);
       return res.json({ success: true, data: rows });
     }
     let sql = `
-      SELECT s.*, COUNT(DISTINCT cs.case_id) AS case_count
-      FROM suspects s
-      LEFT JOIN case_suspects cs ON s.id = cs.suspect_id
-      ${req.user.scopeType ? 'JOIN case_suspects cs_scope ON s.id = cs_scope.suspect_id JOIN cases c_scope ON c_scope.id = cs_scope.case_id' : ''}
+      SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count
+      FROM criminals s
+      ${req.user.scopeType ? 'JOIN case_criminals cs_scope ON s.id = cs_scope.criminal_id JOIN cases c_scope ON c_scope.id = cs_scope.case_id' : ''}
       WHERE 1=1
     `;
     const params = [];
@@ -204,18 +216,17 @@ const getSuspects = async (req, res, next) => {
 const getSuspectById = async (req, res, next) => {
   try {
     const [[row]] = await db.query(`
-      SELECT s.*, COUNT(DISTINCT cs.case_id) AS case_count
-      FROM suspects s
-      LEFT JOIN case_suspects cs ON s.id = cs.suspect_id
+      SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count
+      FROM criminals s
       WHERE s.id = ?
       GROUP BY s.id
     `, [req.params.id]);
-    if (!row) return res.status(404).json({ success: false, message: 'Suspect not found.' });
+    if (!row) return res.status(404).json({ success: false, message: 'Criminal not found.' });
     const [cases] = await db.query(
       `SELECT c.id, c.ob_number, COALESCE(c.title, c.case_title) AS title, cs.role_in_case
        FROM cases c
-       JOIN case_suspects cs ON c.id = cs.case_id
-       WHERE cs.suspect_id = ?`,
+       JOIN case_criminals cs ON c.id = cs.case_id
+       WHERE cs.criminal_id = ?`,
       [req.params.id]
     );
     res.json({ success: true, data: { ...row, cases } });
@@ -242,36 +253,13 @@ const createSuspect = async (req, res, next) => {
     });
 
     if (existingMatch) {
-      if (case_id) {
-        await db.query(
-          `INSERT IGNORE INTO case_suspects (case_id, suspect_id, linked_by_user_id, role_in_case, notes, added_by)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            case_id,
-            existingMatch.row.id,
-            req.user.username || req.user.id,
-            role_in_case || 'Matched existing suspect',
-            `Existing profile matched by ${existingMatch.matchReason}; new case linked to prior arrest history.`,
-            req.user.username || req.user.id,
-          ]
-        );
-      }
-
-      await writeAuditLog({
-        userId: req.user.username || req.user.id,
-        userEmail: req.user.email || req.user.username,
-        action: 'MATCH_EXISTING_SUSPECT',
-        entityType: 'suspects',
-        entityId: existingMatch.row.id,
-        newData: { matchReason: existingMatch.matchReason, case_id: case_id || null },
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: 'Existing suspect profile matched and linked to this case.',
-        suspectId: existingMatch.row.id,
+      // Profile already exists — do NOT link or create anything. Just notify the caller.
+      return res.status(409).json({
+        success: false,
         matchedExisting: true,
         matchReason: existingMatch.matchReason,
+        data: existingMatch.row,
+        message: `Qofkan horey ayaa loo diiwaan-geliyey (${existingMatch.row.full_name}). Ma jiro wax ficil ah oo la qaadayo.`,
       });
     }
 
@@ -281,7 +269,7 @@ const createSuspect = async (req, res, next) => {
     const faceKey = faceCapture?.biometricKey || null;
     const isArrested = ['arrested', 'wanted'].includes(arrest_status) ? 1 : 0;
     const [result] = await db.query(
-      `INSERT INTO suspects
+      `INSERT INTO criminals
         (full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number,
          phone, address, description, photo_url, offender_photo, face_capture_image, face_capture_notes,
          profile_notes, arrest_status, fingerprint_hash, is_arrested)
@@ -312,7 +300,7 @@ const createSuspect = async (req, res, next) => {
     const suspectId = result.insertId;
     if (case_id) {
       await db.query(
-        `INSERT INTO case_suspects (case_id, suspect_id, linked_by_user_id, role_in_case, added_by)
+        `INSERT INTO case_criminals (case_id, criminal_id, linked_by_user_id, role_in_case, added_by)
          VALUES (?, ?, ?, ?, ?)`,
         [case_id, suspectId, req.user.username || req.user.id, role_in_case || null, req.user.username || req.user.id]
       );
@@ -322,7 +310,7 @@ const createSuspect = async (req, res, next) => {
         [case_id, req.user.username || req.user.id, `Suspect ${full_name.trim()} added and linked to this case.`]
       );
     }
-    await writeAuditLog({ userId: req.user.username || req.user.id, userEmail: req.user.email || req.user.username, action: 'CREATE_SUSPECT', entityType: 'suspects', entityId: suspectId, newData: req.body });
+    await writeAuditLog({ userId: req.user.username || req.user.id, userEmail: req.user.email || req.user.username, action: 'CREATE_SUSPECT', entityType: 'criminals', entityId: suspectId, newData: req.body });
     res.status(201).json({ success: true, message: 'Suspect added.', suspectId });
   } catch (err) { next(err); }
 };
@@ -378,8 +366,8 @@ const updateSuspect = async (req, res, next) => {
     }
 
     params.push(req.params.id);
-    await db.query(`UPDATE suspects SET ${updates.join(', ')} WHERE id=?`, params);
-    await writeAuditLog({ userId: req.user.id, userEmail: req.user.email, action: 'UPDATE_SUSPECT', entityType: 'suspects', entityId: req.params.id, newData: req.body });
+    await db.query(`UPDATE criminals SET ${updates.join(', ')} WHERE id=?`, params);
+    await writeAuditLog({ userId: req.user.id, userEmail: req.user.email, action: 'UPDATE_SUSPECT', entityType: 'criminals', entityId: req.params.id, newData: req.body });
     res.json({ success: true, message: 'Suspect updated.' });
   } catch (err) { next(err); }
 };
@@ -389,13 +377,13 @@ const releaseSuspect = async (req, res, next) => {
     const suspectId = req.params.id;
     const { case_id, release_reason, release_notes } = req.body;
 
-    const [[suspect]] = await db.query('SELECT id, full_name, is_arrested FROM suspects WHERE id = ?', [suspectId]);
+    const [[suspect]] = await db.query('SELECT id, full_name, is_arrested FROM criminals WHERE id = ?', [suspectId]);
     if (!suspect) return res.status(404).json({ success: false, message: 'Eedeysanaha lama helin.' });
     if (Number(suspect.is_arrested) !== 1) {
       return res.status(400).json({ success: false, message: 'Eedeysanahaan horey uma xirna.' });
     }
 
-    await db.query("UPDATE suspects SET is_arrested = 0, arrest_status = 'released' WHERE id = ?", [suspectId]);
+    await db.query("UPDATE criminals SET is_arrested = 0, arrest_status = 'released' WHERE id = ?", [suspectId]);
     await db.query(
       `UPDATE arrests
        SET sentence_status = CASE
@@ -425,7 +413,7 @@ const releaseSuspect = async (req, res, next) => {
       userId: req.user.username || req.user.id,
       userEmail: req.user.email || req.user.username,
       action: 'RELEASE_SUSPECT',
-      entityType: 'suspects',
+      entityType: 'criminals',
       entityId: parseInt(suspectId, 10),
       newData: {
         suspect_name: suspect.full_name,
@@ -448,9 +436,8 @@ const searchSuspectByFace = async (req, res, next) => {
 
     const biometricKey = getFaceKeyFromDataImage(face_image);
     const [[row]] = await db.query(`
-      SELECT s.*, COUNT(DISTINCT cs.case_id) AS case_count
-      FROM suspects s
-      LEFT JOIN case_suspects cs ON s.id = cs.suspect_id
+      SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count
+      FROM criminals s
       WHERE s.fingerprint_hash = ?
       GROUP BY s.id
       LIMIT 1
@@ -463,8 +450,8 @@ const searchSuspectByFace = async (req, res, next) => {
     const [cases] = await db.query(
       `SELECT c.id, c.ob_number, COALESCE(c.title, c.case_title) AS title, c.status, c.priority, c.created_at, cs.role_in_case
        FROM cases c
-       JOIN case_suspects cs ON c.id = cs.case_id
-       WHERE cs.suspect_id = ?
+       JOIN case_criminals cs ON c.id = cs.case_id
+       WHERE cs.criminal_id = ?
        ORDER BY c.created_at DESC`,
       [row.id]
     );
@@ -518,8 +505,8 @@ const searchAndMatch = async (req, res, next) => {
       filterParams.push(`%${previous_case_number}%`);
     }
     if (police_station) {
-      filters.push('(d.district_name LIKE ? OR d.district_code LIKE ? OR n.neighborhood_name LIKE ? OR n.neighborhood_code LIKE ?)');
-      filterParams.push(`%${police_station}%`, `%${police_station}%`, `%${police_station}%`, `%${police_station}%`);
+      filters.push('(d.district_name LIKE ? OR d.district_code LIKE ?)');
+      filterParams.push(`%${police_station}%`, `%${police_station}%`);
     }
     if (faceKey) {
       filters.push('s.fingerprint_hash = ?');
@@ -542,7 +529,7 @@ const searchAndMatch = async (req, res, next) => {
       name ? 1 : 0, nameLike, nameLike,
       mother_name ? 1 : 0, motherLike,
       previous_case_number ? 1 : 0, caseLike,
-      police_station ? 1 : 0, stationLike, stationLike, stationLike, stationLike,
+      police_station ? 1 : 0, stationLike, stationLike,
     ];
 
     const [rows] = await db.query(`
@@ -561,13 +548,12 @@ const searchAndMatch = async (req, res, next) => {
              MAX(CASE WHEN ? = 1 AND (s.full_name LIKE ? OR s.alias LIKE ?) THEN 1 ELSE 0 END) AS name_match,
              MAX(CASE WHEN ? = 1 AND s.mother_name LIKE ? THEN 1 ELSE 0 END) AS mother_name_match,
              MAX(CASE WHEN ? = 1 AND c.ob_number LIKE ? THEN 1 ELSE 0 END) AS previous_case_match,
-             MAX(CASE WHEN ? = 1 AND (d.district_name LIKE ? OR d.district_code LIKE ? OR n.neighborhood_name LIKE ? OR n.neighborhood_code LIKE ?) THEN 1 ELSE 0 END) AS station_match
-      FROM suspects s
-      LEFT JOIN case_suspects cs ON cs.suspect_id = s.id
+             MAX(CASE WHEN ? = 1 AND (d.district_name LIKE ? OR d.district_code LIKE ?) THEN 1 ELSE 0 END) AS station_match
+      FROM criminals s
+      LEFT JOIN case_criminals cs ON cs.criminal_id = s.id
       LEFT JOIN cases c ON c.id = cs.case_id
       LEFT JOIN arrests a ON a.suspect_id = s.id
       LEFT JOIN districts d ON d.id = c.district_id
-      LEFT JOIN neighborhoods n ON n.id = c.neighborhood_id
       WHERE ${scopeWhere}
         AND (${filters.join(' OR ')})
       GROUP BY s.id
@@ -612,9 +598,8 @@ const searchAndMatch = async (req, res, next) => {
 
 const loadSuspectHistory = async (suspectId) => {
   const [[profile]] = await db.query(`
-    SELECT s.*, COUNT(DISTINCT cs.case_id) AS case_count, COUNT(DISTINCT a.id) AS arrest_count
-    FROM suspects s
-    LEFT JOIN case_suspects cs ON s.id = cs.suspect_id
+    SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count, COUNT(DISTINCT a.id) AS arrest_count
+    FROM criminals s
     LEFT JOIN arrests a ON s.id = a.suspect_id
     WHERE s.id = ?
     GROUP BY s.id
@@ -631,16 +616,14 @@ const loadSuspectHistory = async (suspectId) => {
            c.incident_date,
            c.incident_location,
            c.description AS case_description,
-           n.neighborhood_name AS police_station_name,
-           d.district_name,
+           d.district_name AS police_station_name,
            ci.city_name,
            r.region_name,
            sa.state_name,
            COALESCE(u.full_name, a.arrested_by) AS arrested_by_name
     FROM arrests a
     JOIN cases c ON c.id = a.case_id
-    LEFT JOIN neighborhoods n ON COALESCE(a.police_station_id, c.neighborhood_id) = n.id
-    LEFT JOIN districts d ON c.district_id = d.id
+    LEFT JOIN districts d ON COALESCE(a.police_station_id, c.district_id) = d.id
     LEFT JOIN cities ci ON c.city_id = ci.id
     LEFT JOIN regions r ON c.region_id = r.id
     LEFT JOIN state_administrations sa ON c.state_administration_id = sa.id
@@ -652,19 +635,19 @@ const loadSuspectHistory = async (suspectId) => {
   const [cases] = await db.query(`
     SELECT c.id, c.ob_number, COALESCE(c.title, c.case_title) AS title, c.case_type, c.status, c.priority,
            c.incident_date, c.incident_location, cs.role_in_case, cs.notes,
-           n.neighborhood_name AS police_station_name
-    FROM case_suspects cs
+           d.district_name AS police_station_name
+    FROM case_criminals cs
     JOIN cases c ON c.id = cs.case_id
-    LEFT JOIN neighborhoods n ON c.neighborhood_id = n.id
-    WHERE cs.suspect_id = ?
+    LEFT JOIN districts d ON c.district_id = d.id
+    WHERE cs.criminal_id = ?
     ORDER BY c.created_at ASC
   `, [suspectId]);
 
   const [actions] = await db.query(`
     SELECT ca.*
     FROM case_actions ca
-    JOIN case_suspects cs ON ca.case_id = cs.case_id
-    WHERE cs.suspect_id = ?
+    JOIN case_criminals cs ON ca.case_id = cs.case_id
+    WHERE cs.criminal_id = ?
     ORDER BY ca.created_at ASC
   `, [suspectId]);
   const [biometrics] = await db.query('SELECT * FROM biometric_identifiers WHERE suspect_id = ? ORDER BY captured_at DESC', [suspectId]);
@@ -731,11 +714,11 @@ const getSentenceAlerts = async (_req, res, next) => {
       SELECT a.id AS arrest_id, a.suspect_id, s.full_name AS suspect_name,
              a.case_id, COALESCE(c.title, c.case_title) AS case_title, c.ob_number,
              a.sentence_start_date, a.expected_release_date, a.sentence_status,
-             n.neighborhood_name AS police_station_name
+             d.district_name AS police_station_name
       FROM arrests a
-      JOIN suspects s ON s.id = a.suspect_id
+      JOIN criminals s ON s.id = a.suspect_id
       JOIN cases c ON c.id = a.case_id
-      LEFT JOIN neighborhoods n ON COALESCE(a.police_station_id, c.neighborhood_id) = n.id
+      LEFT JOIN districts d ON COALESCE(a.police_station_id, c.district_id) = d.id
       WHERE a.expected_release_date <= CURDATE()
         AND a.sentence_status IN ('sentenced','serving','release_review')
       ORDER BY a.expected_release_date ASC
@@ -753,7 +736,7 @@ const getSentenceAlerts = async (_req, res, next) => {
 };
 
 module.exports = {
-  getSuspects,
+  getcriminals,
   getSuspectById,
   getSuspectHistory,
   getSuspectReport,
@@ -763,4 +746,5 @@ module.exports = {
   createSuspect,
   updateSuspect,
   releaseSuspect,
+  checkDuplicate,
 };

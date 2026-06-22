@@ -9,9 +9,9 @@ const { COMMANDER_ROLES } = require('../utils/roleGroups');
 
 router.use(authMiddleware);
 
-const OB_READ_ROLES = ['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', ...COMMANDER_ROLES];
-const OB_WRITE_ROLES = ['admin', 'ob_staff', 'officer', 'district_admin', 'neighborhood_admin'];
-const OB_CONVERT_ROLES = ['admin', 'officer', 'district_admin', 'neighborhood_admin', ...COMMANDER_ROLES];
+const OB_READ_ROLES = ['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...COMMANDER_ROLES];
+const OB_WRITE_ROLES = ['admin', 'ob_staff', 'officer', 'district_admin'];
+const OB_CONVERT_ROLES = ['admin', 'officer', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...COMMANDER_ROLES];
 
 router.get('/', allowRoles(...OB_READ_ROLES), getObEntries);
 router.get('/:id', allowRoles(...OB_READ_ROLES), getObEntryById);

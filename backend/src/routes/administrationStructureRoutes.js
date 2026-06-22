@@ -9,7 +9,7 @@ const { COMMANDER_ROLES } = require('../utils/roleGroups');
 
 router.use(authMiddleware);
 
-router.get('/hierarchy', allowRoles('admin', ...COMMANDER_ROLES, 'state_admin', 'region_admin', 'district_admin', 'neighborhood_admin'), getHierarchy);
-router.get('/locations', allowRoles('admin', ...COMMANDER_ROLES, 'state_admin', 'region_admin', 'district_admin', 'neighborhood_admin'), getLocationProfiles);
+router.get('/hierarchy', allowRoles('admin', ...COMMANDER_ROLES, 'state_admin', 'region_admin', 'district_admin'), getHierarchy);
+router.get('/locations', allowRoles('admin', ...COMMANDER_ROLES, 'state_admin', 'region_admin', 'district_admin'), getLocationProfiles);
 
 module.exports = router;

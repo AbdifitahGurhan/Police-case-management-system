@@ -6,7 +6,6 @@ const { normalizeRole } = require('../utils/locationScope');
 const hierarchyFilter = (user) => {
   if (!user || normalizeRole(user.role) === 'admin') return { where: '', params: [] };
   const location = user.location || {};
-  if (location.waaxId || user.scopeType === 'neighborhood') return { where: 'WHERE n.id = ?', params: [location.waaxId || user.scopeId] };
   if (location.districtId || user.scopeType === 'district') return { where: 'WHERE d.id = ?', params: [location.districtId || user.scopeId] };
   if (location.regionId || user.scopeType === 'region') return { where: 'WHERE r.id = ?', params: [location.regionId || user.scopeId] };
   if (location.stateId || user.scopeType === 'state_administration') return { where: 'WHERE sa.id = ?', params: [location.stateId || user.scopeId] };
@@ -23,9 +22,7 @@ const getHierarchy = async (req, res, next) => {
          r.id AS region_id, r.region_name, r.region_code, r.username AS region_username,
          rc.full_name AS region_commander_name, rc.phone AS region_commander_phone,
          d.id AS district_id, d.district_name, d.district_code, d.username AS district_username,
-         dc.full_name AS district_commander_name, dc.phone AS district_commander_phone,
-         n.id AS waax_id, n.neighborhood_name AS waax_name, n.neighborhood_code AS waax_code, n.username AS waax_username,
-         wc.full_name AS waax_commander_name, wc.phone AS waax_commander_phone
+         dc.full_name AS district_commander_name, dc.phone AS district_commander_phone
        FROM state_administrations sa
        LEFT JOIN police_officers sc ON sa.commander_officer_id = sc.id
        LEFT JOIN regions r ON r.state_administration_id = sa.id
@@ -33,10 +30,8 @@ const getHierarchy = async (req, res, next) => {
        LEFT JOIN cities c ON c.region_id = r.id
        LEFT JOIN districts d ON d.city_id = c.id
        LEFT JOIN police_officers dc ON d.commander_officer_id = dc.id
-       LEFT JOIN neighborhoods n ON n.district_id = d.id
-       LEFT JOIN police_officers wc ON n.commander_officer_id = wc.id
        ${filter.where}
-       ORDER BY sa.state_name, r.region_name, d.district_name, n.neighborhood_name`
+       ORDER BY sa.state_name, r.region_name, d.district_name`
       ,
       filter.params
     );
@@ -78,19 +73,8 @@ const getHierarchy = async (req, res, next) => {
           username: row.district_username,
           commanderName: row.district_commander_name,
           commanderPhone: row.district_commander_phone,
-          waax: [],
         };
         region.districts.push(district);
-      }
-      if (district && row.waax_id && !district.waax.find((item) => item.id === row.waax_id)) {
-        district.waax.push({
-          id: row.waax_id,
-          name: row.waax_name,
-          code: row.waax_code,
-          username: row.waax_username,
-          commanderName: row.waax_commander_name,
-          commanderPhone: row.waax_commander_phone,
-        });
       }
     });
 
@@ -99,7 +83,6 @@ const getHierarchy = async (req, res, next) => {
          (SELECT COUNT(*) FROM state_administrations) AS states,
          (SELECT COUNT(*) FROM regions) AS regions,
          (SELECT COUNT(*) FROM districts) AS district_police_stations,
-         (SELECT COUNT(*) FROM neighborhoods) AS waax_units,
          (SELECT COUNT(*) FROM users WHERE user_type = 'OB_STAFF' AND is_active = 1) AS ob_staff,
          (SELECT COUNT(*) FROM users WHERE user_type = 'STAFF' AND is_active = 1) AS staff,
          (SELECT COUNT(*) FROM cases WHERE status NOT IN ('closed','CLOSED')) AS active_cases`
@@ -114,9 +97,8 @@ const getLocationProfiles = async (req, res, next) => {
     const filter = hierarchyFilter(req.user);
     const locationWhere = (levelAlias) => {
       if (!filter.params.length) return '';
-      if (filter.where.includes('n.id')) return levelAlias === 'n' ? 'WHERE n.id = ?' : 'WHERE 1=0';
-      if (filter.where.includes('d.id')) return ['d', 'n'].includes(levelAlias) ? 'WHERE d.id = ?' : 'WHERE 1=0';
-      if (filter.where.includes('r.id')) return ['r', 'd', 'n'].includes(levelAlias) ? 'WHERE r.id = ?' : 'WHERE 1=0';
+      if (filter.where.includes('d.id')) return levelAlias === 'd' ? 'WHERE d.id = ?' : 'WHERE 1=0';
+      if (filter.where.includes('r.id')) return ['r', 'd'].includes(levelAlias) ? 'WHERE r.id = ?' : 'WHERE 1=0';
       if (filter.where.includes('sa.id')) return 'WHERE sa.id = ?';
       return '';
     };
@@ -124,7 +106,6 @@ const getLocationProfiles = async (req, res, next) => {
       ...(locationWhere('sa') ? filter.params : []),
       ...(locationWhere('r') ? filter.params : []),
       ...(locationWhere('d') ? filter.params : []),
-      ...(locationWhere('n') ? filter.params : []),
     ];
     const [rows] = await db.query(
       `SELECT 'STATE' AS level, sa.id, sa.state_name AS location_name, sa.state_code AS location_code,
@@ -156,20 +137,7 @@ const getLocationProfiles = async (req, res, next) => {
        LEFT JOIN cities ci ON d.city_id = ci.id
        LEFT JOIN regions r ON ci.region_id = r.id
        LEFT JOIN police_officers p ON d.commander_officer_id = p.id
-       ${locationWhere('d')}
-       UNION ALL
-       SELECT 'WAAX', n.id, n.neighborhood_name, n.neighborhood_code, d.district_name, p.full_name, p.phone,
-              (SELECT COUNT(*) FROM users u WHERE u.neighborhood_id = n.id AND u.user_type = 'OB_STAFF'),
-              (SELECT COUNT(*) FROM users u WHERE u.neighborhood_id = n.id AND u.user_type = 'STAFF'),
-              (SELECT COUNT(*) FROM cases c WHERE c.neighborhood_id = n.id AND c.status NOT IN ('closed','CLOSED')),
-              'ACTIVE'
-       FROM neighborhoods n
-       LEFT JOIN districts d ON n.district_id = d.id
-       LEFT JOIN cities ci ON d.city_id = ci.id
-       LEFT JOIN regions r ON ci.region_id = r.id
-       LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id
-       LEFT JOIN police_officers p ON n.commander_officer_id = p.id
-       ${locationWhere('n')}`,
+       ${locationWhere('d')}`,
       params
     );
     res.json({ success: true, data: rows });

@@ -17,7 +17,6 @@ const applyCaseScope = (user, where, params, alias = '') => {
   if (user.scopeType === 'region') { where += ` AND ${prefix}region_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'city') { where += ` AND ${prefix}city_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'district') { where += ` AND ${prefix}district_id = ?`; params.push(user.scopeId); }
-  if (user.scopeType === 'neighborhood') { where += ` AND ${prefix}neighborhood_id = ?`; params.push(user.scopeId); }
   return where;
 };
 
@@ -26,7 +25,6 @@ const applyArrestCaseScope = (user, where, params, caseAlias = 'c') => {
   if (user.scopeType === 'region') { where += ` AND ${caseAlias}.region_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'city') { where += ` AND ${caseAlias}.city_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'district') { where += ` AND ${caseAlias}.district_id = ?`; params.push(user.scopeId); }
-  if (user.scopeType === 'neighborhood') { where += ` AND ${caseAlias}.neighborhood_id = ?`; params.push(user.scopeId); }
   return where;
 };
 
@@ -44,7 +42,11 @@ const getAuditLogs = async (req, res, next) => {
     if (to_date) { where += ' AND DATE(al.created_at) <= ?'; params.push(to_date); }
 
     const [rows] = await db.query(
-      `SELECT al.* FROM audit_logs al WHERE ${where} ORDER BY al.created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT al.* FROM audit_logs al
+       INNER JOIN (
+         SELECT id FROM audit_logs WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?
+       ) sorted ON al.id = sorted.id
+       ORDER BY al.created_at DESC`,
       [...params, parseInt(limit), offset]
     );
     const [[{ total }]] = await db.query(`SELECT COUNT(*) AS total FROM audit_logs al WHERE ${where}`, params);
@@ -122,13 +124,9 @@ const getUnitDashboardStats = async (req, res, next) => {
       officerColumn = 'city_id';
       caseColumn = 'city_id';
     } else if (scopeType === 'district') {
-      childrenQuery = 'SELECT COUNT(*) as c FROM neighborhoods WHERE district_id = ?';
+      childrenQuery = null; // District is the lowest level now
       officerColumn = 'district_id';
       caseColumn = 'district_id';
-    } else if (scopeType === 'neighborhood') {
-      childrenQuery = null; // No children
-      officerColumn = 'neighborhood_id';
-      caseColumn = 'neighborhood_id';
     }
 
     // Children count
@@ -157,8 +155,7 @@ const getUnitDashboardStats = async (req, res, next) => {
       'state_administration': 'state_administrations',
       'region': 'regions',
       'city': 'cities',
-      'district': 'districts',
-      'neighborhood': 'neighborhoods'
+      'district': 'districts'
     };
     const tableName = tableMap[scopeType];
 
@@ -204,23 +201,18 @@ const getRegionDashboardStats = async (req, res, next) => {
          (SELECT COUNT(*) FROM cases WHERE region_id = ? AND status IN ('closed','CLOSED')) AS closed_cases,
          (SELECT COUNT(*) FROM cases WHERE region_id = ? AND status IN ('pending_commander_review','pending','CASE_REGISTERED')) AS pending_cases,
          (SELECT COUNT(DISTINCT d.id) FROM districts d JOIN cities ci ON d.city_id = ci.id WHERE ci.region_id = ?) AS district_police_stations,
-         (SELECT COUNT(DISTINCT n.id) FROM neighborhoods n JOIN districts d ON n.district_id = d.id JOIN cities ci ON d.city_id = ci.id WHERE ci.region_id = ?) AS waax_police_stations,
          (SELECT COUNT(DISTINCT oa.officer_id)
             FROM officer_assignments oa
             LEFT JOIN districts d ON oa.assignment_type = 'District' AND oa.assignment_id = d.id
             LEFT JOIN cities dci ON d.city_id = dci.id
-            LEFT JOIN neighborhoods n ON oa.assignment_type = 'Neighborhood' AND oa.assignment_id = n.id
-            LEFT JOIN districts nd ON n.district_id = nd.id
-            LEFT JOIN cities nci ON nd.city_id = nci.id
            WHERE oa.is_current = 1
              AND ((oa.assignment_type = 'Region' AND oa.assignment_id = ?)
-               OR dci.region_id = ?
-               OR nci.region_id = ?)) AS officers_registered,
-         (SELECT COUNT(DISTINCT cs.suspect_id) FROM case_suspects cs JOIN cases c ON c.id = cs.case_id WHERE c.region_id = ?) AS suspects_registered,
+               OR dci.region_id = ?)) AS officers_registered,
+         (SELECT COUNT(DISTINCT cs.criminal_id) FROM case_criminals cs JOIN cases c ON c.id = cs.case_id WHERE c.region_id = ?) AS criminals_registered,
          (SELECT COUNT(DISTINCT cv.victim_id) FROM case_victims cv JOIN cases c ON c.id = cv.case_id WHERE c.region_id = ?) AS victims_registered,
          (SELECT COUNT(DISTINCT s.id)
-            FROM suspects s
-            LEFT JOIN case_suspects cs ON cs.suspect_id = s.id
+            FROM criminals s
+            LEFT JOIN case_criminals cs ON cs.criminal_id = s.id
             LEFT JOIN cases c ON c.id = cs.case_id
             LEFT JOIN arrests a ON a.suspect_id = s.id
            WHERE c.region_id = ? AND (a.sentence_status = 'wanted' OR s.arrest_status = 'wanted')) AS wanted_persons,
@@ -274,22 +266,7 @@ const getRegionDashboardStats = async (req, res, next) => {
       params
     );
 
-    const [waaxPerformance] = await db.query(
-      `SELECT n.id, n.neighborhood_name AS waax_name, n.neighborhood_code AS waax_code,
-              d.district_name AS district_name,
-              COUNT(DISTINCT c.id) AS cases_count,
-              COUNT(DISTINCT oa.officer_id) AS officers_count,
-              MAX(c.created_at) AS last_activity
-       FROM neighborhoods n
-       JOIN districts d ON n.district_id = d.id
-       JOIN cities ci ON d.city_id = ci.id
-       LEFT JOIN cases c ON c.neighborhood_id = n.id
-       LEFT JOIN officer_assignments oa ON oa.assignment_type = 'Neighborhood' AND oa.assignment_id = n.id AND oa.is_current = 1
-       WHERE ci.region_id = ?
-       GROUP BY n.id
-       ORDER BY cases_count DESC, n.neighborhood_name ASC`,
-      params
-    );
+    const [waaxPerformance] = [[]]; // Removed - waax tier no longer exists
 
     const [crimeCategories] = await db.query(
       `SELECT COALESCE(case_type, incident_type, 'Unknown') AS category, COUNT(*) AS total
@@ -313,10 +290,9 @@ const getRegionDashboardStats = async (req, res, next) => {
 
     const [recentCases] = await db.query(
       `SELECT c.id, c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
-              c.status, c.priority, c.created_at, d.district_name, n.neighborhood_name AS waax_name
+              c.status, c.priority, c.created_at, d.district_name
        FROM cases c
        LEFT JOIN districts d ON c.district_id = d.id
-       LEFT JOIN neighborhoods n ON c.neighborhood_id = n.id
        WHERE c.region_id = ?
        ORDER BY c.created_at DESC
        LIMIT 8`,
@@ -372,7 +348,6 @@ const getCasesByStation = async (req, res, next) => {
     if (req.user.scopeType === 'region') { stationWhere += ' AND r.id = ?'; params.push(req.user.scopeId); }
     if (req.user.scopeType === 'city') { stationWhere += ' AND city.id = ?'; params.push(req.user.scopeId); }
     if (req.user.scopeType === 'district') { stationWhere += ' AND d.id = ?'; params.push(req.user.scopeId); }
-    if (req.user.scopeType === 'neighborhood') { stationWhere += ' AND c.neighborhood_id = ?'; params.push(req.user.scopeId); }
 
     const [rows] = await db.query(
       `SELECT d.district_name AS \`station_name\`, d.district_code AS \`code\`, COUNT(c.id) AS \`total_cases\`,
@@ -398,9 +373,8 @@ const getOffenderProfileReport = async (req, res, next) => {
     }
 
     const [[offender]] = await db.query(`
-      SELECT s.*, COUNT(DISTINCT cs.case_id) AS case_count
-      FROM suspects s
-      LEFT JOIN case_suspects cs ON s.id = cs.suspect_id
+      SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count
+      FROM criminals s
       WHERE s.id = ?
       GROUP BY s.id
     `, [offender_id]);
@@ -409,9 +383,9 @@ const getOffenderProfileReport = async (req, res, next) => {
     const [cases] = await db.query(`
       SELECT c.id, c.ob_number, COALESCE(c.title, c.case_title) AS title, c.case_type, c.status, c.priority,
              c.incident_date, c.incident_location, cs.role_in_case
-      FROM case_suspects cs
+      FROM case_criminals cs
       JOIN cases c ON c.id = cs.case_id
-      WHERE cs.suspect_id = ?
+      WHERE cs.criminal_id = ?
       ORDER BY c.created_at DESC
     `, [offender_id]);
 
@@ -432,7 +406,6 @@ const getStationFullReport = async (req, res, next) => {
     if (req.user.scopeType === 'region') { stationScope += ' AND r.id = ?'; params.push(req.user.scopeId); }
     if (req.user.scopeType === 'city') { stationScope += ' AND ci.id = ?'; params.push(req.user.scopeId); }
     if (req.user.scopeType === 'district') { stationScope += ' AND d.id = ?'; params.push(req.user.scopeId); }
-    if (req.user.scopeType === 'neighborhood') { stationScope += ' AND n.id = ?'; params.push(req.user.scopeId); }
 
     const [[station]] = await db.query(
       `SELECT d.id, d.district_name AS station_name, d.district_code AS station_code,
@@ -443,7 +416,6 @@ const getStationFullReport = async (req, res, next) => {
        LEFT JOIN regions r ON ci.region_id = r.id
        LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id
        LEFT JOIN police_officers po ON d.commander_officer_id = po.id
-       LEFT JOIN neighborhoods n ON n.district_id = d.id
        WHERE ${stationScope}
        GROUP BY d.id`,
       params
@@ -456,15 +428,13 @@ const getStationFullReport = async (req, res, next) => {
          COUNT(DISTINCT CASE WHEN c.status NOT IN ('closed','CLOSED','dismissed','rejected','archived') THEN c.id END) AS open_cases,
          COUNT(DISTINCT CASE WHEN c.status IN ('closed','CLOSED') THEN c.id END) AS closed_cases,
          COUNT(DISTINCT CASE WHEN c.status IN ('pending_commander_review','pending','CASE_REGISTERED') THEN c.id END) AS pending_cases,
-         COUNT(DISTINCT n.id) AS total_waax,
-         COUNT(DISTINCT cs.suspect_id) AS total_suspects,
+         COUNT(DISTINCT cs.criminal_id) AS total_criminals,
          COUNT(DISTINCT cv.victim_id) AS total_victims,
          COUNT(DISTINCT a.id) AS total_arrests,
          COUNT(DISTINCT oa.officer_id) AS total_officers
        FROM districts d
-       LEFT JOIN neighborhoods n ON n.district_id = d.id
        LEFT JOIN cases c ON c.district_id = d.id
-       LEFT JOIN case_suspects cs ON cs.case_id = c.id
+       LEFT JOIN case_criminals cs ON cs.case_id = c.id
        LEFT JOIN case_victims cv ON cv.case_id = c.id
        LEFT JOIN arrests a ON a.case_id = c.id
        LEFT JOIN officer_assignments oa ON oa.assignment_type = 'District' AND oa.assignment_id = d.id AND oa.is_current = 1
@@ -472,37 +442,25 @@ const getStationFullReport = async (req, res, next) => {
       [stationId]
     );
 
-    const [waaxUnits] = await db.query(
-      `SELECT n.id, n.neighborhood_name AS waax_name, n.neighborhood_code AS waax_code,
-              COUNT(DISTINCT c.id) AS total_cases,
-              COUNT(DISTINCT cs.suspect_id) AS total_suspects
-       FROM neighborhoods n
-       LEFT JOIN cases c ON c.neighborhood_id = n.id
-       LEFT JOIN case_suspects cs ON cs.case_id = c.id
-       WHERE n.district_id = ?
-       GROUP BY n.id
-       ORDER BY n.neighborhood_name ASC`,
-      [stationId]
-    );
+    const [waaxUnits] = [[]]; // Removed - waax tier no longer exists
 
     const [cases] = await db.query(
       `SELECT c.id, c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
               c.case_type, c.incident_type, c.status, c.priority, c.incident_date,
-              c.incident_location, c.original_ob_staff_name, n.neighborhood_name AS waax_name
+              c.incident_location, c.original_ob_staff_name
        FROM cases c
-       LEFT JOIN neighborhoods n ON c.neighborhood_id = n.id
        WHERE c.district_id = ?
        ORDER BY c.created_at DESC
        LIMIT 100`,
       [stationId]
     );
 
-    const [suspects] = await db.query(
+    const [criminals] = await db.query(
       `SELECT s.id, s.full_name, s.alias, s.gender, s.age, s.phone, s.arrest_status,
-              COUNT(DISTINCT cs.case_id) AS case_count,
+              (SELECT COUNT(*) FROM case_criminals csh WHERE csh.criminal_id = s.id) AS case_count,
               GROUP_CONCAT(DISTINCT c.ob_number ORDER BY c.created_at DESC SEPARATOR ', ') AS ob_numbers
-       FROM suspects s
-       JOIN case_suspects cs ON cs.suspect_id = s.id
+       FROM criminals s
+       JOIN case_criminals cs ON cs.criminal_id = s.id
        JOIN cases c ON c.id = cs.case_id
        WHERE c.district_id = ?
        GROUP BY s.id
@@ -527,7 +485,7 @@ const getStationFullReport = async (req, res, next) => {
               a.arrest_date, a.arrest_location, a.charges, a.sentence_status, a.bail_status
        FROM arrests a
        JOIN cases c ON c.id = a.case_id
-       JOIN suspects s ON s.id = a.suspect_id
+       JOIN criminals s ON s.id = a.suspect_id
        WHERE c.district_id = ?
        ORDER BY a.arrest_date DESC
        LIMIT 100`,
@@ -546,7 +504,7 @@ const getStationFullReport = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: { station, summary, waaxUnits, cases, suspects, victims, arrests, activities },
+      data: { station, summary, waaxUnits, cases, criminals, victims, arrests, activities },
     });
   } catch (err) { next(err); }
 };
@@ -579,17 +537,17 @@ const getRepeatOffenderReport = async (req, res, next) => {
     where = applyCaseScope(req.user, where, params, 'c');
     const [rows] = await db.query(`
       SELECT s.id, s.full_name, s.alias, s.gender, s.age, s.nationality, s.phone, s.is_arrested,
-             COUNT(DISTINCT cs.case_id) AS case_count,
+             (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count,
              COUNT(DISTINCT a.id) AS arrest_count,
              MAX(c.created_at) AS last_case_date
-      FROM suspects s
-      JOIN case_suspects cs ON cs.suspect_id = s.id
-      JOIN cases c ON c.id = cs.case_id
+      FROM criminals s
+      LEFT JOIN case_criminals cs ON cs.criminal_id = s.id
+      LEFT JOIN cases c ON c.id = cs.case_id
       LEFT JOIN arrests a ON a.suspect_id = s.id
       WHERE ${where}
       GROUP BY s.id
-      HAVING COUNT(DISTINCT cs.case_id) > 1 OR COUNT(DISTINCT a.id) > 1
-      ORDER BY GREATEST(COUNT(DISTINCT cs.case_id), COUNT(DISTINCT a.id)) DESC, last_case_date DESC
+      HAVING case_count > 1 OR COUNT(DISTINCT a.id) > 1
+      ORDER BY GREATEST(case_count, COUNT(DISTINCT a.id)) DESC, last_case_date DESC
     `, params);
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
@@ -611,9 +569,9 @@ const getCrimeCategoryReport = async (req, res, next) => {
              COUNT(*) AS total_cases,
              SUM(CASE WHEN c.priority = 'critical' THEN 1 ELSE 0 END) AS critical_cases,
              SUM(CASE WHEN c.status = 'closed' THEN 1 ELSE 0 END) AS closed_cases,
-             COUNT(DISTINCT cs.suspect_id) AS linked_offenders
+             COUNT(DISTINCT cs.criminal_id) AS linked_offenders
       FROM cases c
-      LEFT JOIN case_suspects cs ON cs.case_id = c.id
+      LEFT JOIN case_criminals cs ON cs.case_id = c.id
       WHERE ${dateWhere}
       GROUP BY COALESCE(c.case_type, 'Unknown')
       ORDER BY total_cases DESC
@@ -652,7 +610,7 @@ const getCustodyDashboardReport = async (req, res, next) => {
       SELECT a.id AS arrest_id, s.id AS suspect_id, s.full_name, c.ob_number,
              a.expected_release_date, a.sentence_status
       FROM arrests a
-      JOIN suspects s ON s.id = a.suspect_id
+      JOIN criminals s ON s.id = a.suspect_id
       JOIN cases c ON c.id = a.case_id
       WHERE ${where}
         AND a.expected_release_date <= CURDATE()
@@ -664,7 +622,7 @@ const getCustodyDashboardReport = async (req, res, next) => {
       SELECT a.id AS arrest_id, s.id AS suspect_id, s.full_name, c.ob_number,
              a.sentence_status, a.final_status
       FROM arrests a
-      JOIN suspects s ON s.id = a.suspect_id
+      JOIN criminals s ON s.id = a.suspect_id
       JOIN cases c ON c.id = a.case_id
       WHERE ${where}
         AND a.sentence_status IN ('wanted','escaped')
@@ -726,7 +684,7 @@ const getCustodyAnalyticsReport = async (req, res, next) => {
              a.actual_release_date,
              a.final_status
       FROM arrests a
-      JOIN suspects s ON s.id = a.suspect_id
+      JOIN criminals s ON s.id = a.suspect_id
       JOIN cases c ON c.id = a.case_id
       LEFT JOIN districts d ON d.id = c.district_id
       WHERE ${scopedWhere} AND ${extraWhere}
@@ -776,7 +734,7 @@ const getArrestsReport = async (req, res, next) => {
               c.id AS case_id, c.ob_number, d.district_name AS station_name,
               po.full_name AS assigned_officer
        FROM arrests a
-       JOIN suspects s ON s.id = a.suspect_id
+       JOIN criminals s ON s.id = a.suspect_id
        JOIN cases c ON c.id = a.case_id
        LEFT JOIN districts d ON d.id = c.district_id
        LEFT JOIN police_officers po ON po.id = c.assigned_officer_id

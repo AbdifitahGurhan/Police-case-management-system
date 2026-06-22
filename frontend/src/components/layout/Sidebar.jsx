@@ -34,7 +34,6 @@ const Sidebar = ({ collapsed }) => {
   const dashboardPathMap = {
     admin: '/dashboard/admin',
     officer: '/dashboard/officer',
-    ward_commander: '/dashboard/ward_commander',
     cid: '/dashboard/cid',
     cid_director: '/dashboard/cid',
     cid_supervisor: '/dashboard/cid',
@@ -43,12 +42,10 @@ const Sidebar = ({ collapsed }) => {
     region_admin: '/dashboard/unit',
     city_admin: '/dashboard/unit',
     district_admin: '/dashboard/unit',
-    neighborhood_admin: '/dashboard/unit',
     state_commander: '/dashboard/unit',
     region_commander: '/dashboard/unit',
     district_commander: '/dashboard/unit',
     police_station_commander: '/dashboard/unit',
-    waax_commander: '/dashboard/unit',
     ob_staff: '/ob-register',
     staff: '/cases',
     court: '/dashboard/court',
@@ -64,7 +61,6 @@ const Sidebar = ({ collapsed }) => {
   const roleNames = {
     admin: 'Administrator',
     officer: 'Officer',
-    ward_commander: 'Station Commander',
     cid: 'CID',
     cid_director: 'CID Director',
     cid_supervisor: 'CID Supervisor',
@@ -80,12 +76,10 @@ const Sidebar = ({ collapsed }) => {
     region_admin: 'Region Admin',
     city_admin: 'City Admin',
     district_admin: 'District Admin',
-    neighborhood_admin: 'Neighborhood Admin',
     state_commander: 'State Commander',
     region_commander: 'Region Commander',
     district_commander: 'District Commander',
     police_station_commander: 'Police Station Commander',
-    waax_commander: 'Waax Commander',
     ob_staff: 'OB Staff',
     staff: 'Staff',
   };
@@ -94,37 +88,45 @@ const Sidebar = ({ collapsed }) => {
   const sections = useMemo(() => {
     if (!role) return [];
 
-    const stationOperationRoles = ['district_admin', 'neighborhood_admin'];
-    const commanderRoles = ['ward_commander', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'waax_commander'];
-    const stationWorkflowRoles = ['ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', 'district_commander', 'police_station_commander', 'waax_commander'];
+    const stationOperationRoles = ['district_admin'];
+    const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
+    const stationWorkflowRoles = ['ob_staff', 'staff', 'officer', 'district_admin', 'district_commander', 'police_station_commander', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const courtRoles = ['court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk'];
     const cidRoles = ['cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const isCourtRole = courtRoles.includes(role);
-    const canViewOffenders = ['admin', 'officer', ...cidRoles, 'jail', 'staff', ...commanderRoles, ...stationOperationRoles].includes(role);
+    const canViewOffenders = ['admin', 'officer', ...cidRoles, 'jail', 'staff', ...commanderRoles, ...stationOperationRoles, 'ob_staff'].includes(role);
     const canViewReports = ['admin', 'region_admin', 'officer', ...cidRoles, 'jail', ...commanderRoles, ...stationOperationRoles].includes(role);
+
+    const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander'];
+    const canViewCases = caseReadRoles.includes(role);
 
     const primaryItems = [
       {
         key: dashboardPath,
-        icon: <DashboardOutlined />,
-        label: 'Dashboard',
+        icon: dashboardPath === '/ob-register' ? <DatabaseOutlined /> : <DashboardOutlined />,
+        label: isCourtRole ? 'Dashboard' : (dashboardPath === '/ob-register' ? 'OB Register' : 'Dashboard'),
       },
+      ...(isCourtRole ? [{
+        key: '/dashboard/court/cases',
+        icon: <BankOutlined />,
+        label: 'Kiisaska Maxkamadda',
+      }] : []),
       ...(!isCourtRole ? [{
         key: '/search',
         icon: <SearchOutlined />,
         label: 'Search',
       }] : []),
-      ...(!isCourtRole ? [{
+      ...(canViewCases && dashboardPath !== '/cases' ? [{
         key: '/cases',
         icon: <FileSearchOutlined />,
         label: 'Cases',
       }] : []),
-      ...(stationWorkflowRoles.includes(role) ? [{
+      ...(stationWorkflowRoles.includes(role) && dashboardPath !== '/ob-register' ? [{
         key: '/ob-register',
         icon: <DatabaseOutlined />,
         label: 'OB Register',
       }] : []),
-      ...(canViewOffenders ? [{
+      ...(canViewOffenders && dashboardPath !== '/offenders' ? [{
         key: '/offenders',
         icon: <IdcardOutlined />,
         label: 'Offenders',
@@ -135,24 +137,6 @@ const Sidebar = ({ collapsed }) => {
 
     if (role === 'admin') {
       adminMenus.push({ key: '/users', icon: <UserOutlined />, label: 'User Role Management' });
-      adminMenus.push({
-        key: 'special_users',
-        icon: <UserOutlined />,
-        label: 'Special Users',
-        children: [
-          { key: '/special-users/admin', label: 'Administrators' },
-          { key: '/special-users/cid', label: 'CID' },
-          { key: '/special-users/cid_director', label: 'CID Directors' },
-          { key: '/special-users/cid_supervisor', label: 'CID Supervisors' },
-          { key: '/special-users/cid_officer', label: 'CID Officers' },
-          { key: '/special-users/court', label: 'Court' },
-          { key: '/special-users/prosecutor', label: 'Prosecutors' },
-          { key: '/special-users/prosecutor_liaison', label: 'Prosecutor Liaisons' },
-          { key: '/special-users/judge', label: 'Judges' },
-          { key: '/special-users/court_clerk', label: 'Court Clerks' },
-          { key: '/special-users/jail', label: 'Jail' },
-        ],
-      });
       adminMenus.push({ key: '/ranks', icon: <StarOutlined />, label: 'Ranks' });
       adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'State Administrations' });
     }
@@ -178,15 +162,6 @@ const Sidebar = ({ collapsed }) => {
           { key: '/reports?section=station-performance', label: 'Station Reports' },
         ],
       });
-      adminMenus.push({
-        key: 'region_waax_stations',
-        icon: <EnvironmentOutlined />,
-        label: 'Waax Police Stations',
-        children: [
-          { key: '/neighborhoods', label: 'Waax Stations' },
-          { key: '/reports?section=waax-performance', label: 'Waax Reports' },
-        ],
-      });
       adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Police Officers' });
     }
 
@@ -204,10 +179,6 @@ const Sidebar = ({ collapsed }) => {
 
     if (['admin', 'state_admin', 'city_admin'].includes(role)) {
       adminMenus.push({ key: '/stations', icon: <EnvironmentOutlined />, label: 'District Stations' });
-    }
-
-    if (['admin', 'state_admin', 'city_admin', 'district_admin'].includes(role)) {
-      adminMenus.push({ key: '/neighborhoods', icon: <EnvironmentOutlined />, label: 'Neighborhood Stations' });
     }
 
     if (['admin', 'state_admin', 'city_admin', 'district_admin'].includes(role)) {

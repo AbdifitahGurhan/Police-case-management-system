@@ -60,7 +60,11 @@ api.interceptors.response.use(
          window.location.href = '/login';
       }
     }
-    if (error.response?.status !== 401) {
+    // 401 — handled above (redirect to login)
+    // 403 — access denied: silently ignore, let the UI handle it gracefully
+    // 409 — conflict (e.g. duplicate profile): let the calling page handle it
+    const skipStatuses = [401, 403, 409];
+    if (!skipStatuses.includes(error.response?.status)) {
       notify(
         'error',
         error.response?.data?.message || 'Request failed.',

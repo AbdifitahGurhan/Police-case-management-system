@@ -25,48 +25,39 @@ const login = async (req, res, next) => {
     // Look up across all login-capable tables
     const sql = `
       SELECT id, username, email, password_hash, is_active, role, full_name, profile_image,
-             phone, rank, user_type, assigned_level, is_commander,
-             state_administration_id, region_id, district_id, neighborhood_id,
-             state_name, region_name, district_name, neighborhood_name,
+             phone, \`rank\`, user_type, assigned_level, is_commander,
+             state_administration_id, region_id, district_id,
+             state_name, region_name, district_name,
              NULL AS scope_type, NULL as scope_id
       FROM (
         SELECT u.id, u.username, u.email, u.password_hash,
                CASE WHEN u.status = 'ACTIVE' THEN u.is_active ELSE 0 END AS is_active,
                (SELECT name FROM roles WHERE id = role_id) AS role, 
-               u.full_name, u.profile_image, u.phone, u.rank, u.user_type, u.assigned_level, u.is_commander,
-               u.state_administration_id, u.region_id, u.district_id, u.neighborhood_id,
-               sa.state_name, r.region_name, d.district_name, n.neighborhood_name
+               u.full_name, u.profile_image, u.phone, u.\`rank\`, u.user_type, u.assigned_level, u.is_commander,
+               u.state_administration_id, u.region_id, u.district_id,
+               sa.state_name, r.region_name, d.district_name
         FROM users u
         LEFT JOIN state_administrations sa ON u.state_administration_id = sa.id
         LEFT JOIN regions r ON u.region_id = r.id
         LEFT JOIN districts d ON u.district_id = d.id
-        LEFT JOIN neighborhoods n ON u.neighborhood_id = n.id
         WHERE u.username = ? OR u.email = ?
       ) u
       UNION ALL
       SELECT id, username, NULL as email, password_hash, 1 as is_active, 'state_admin' as role, state_name as full_name, NULL as profile_image,
-             NULL, NULL, 'COMMANDER', 'STATE', 1, id, NULL, NULL, NULL, state_name, NULL, NULL, NULL, 'state_administration' as scope_type, id as scope_id
+             NULL, NULL, 'COMMANDER', 'STATE', 1, id, NULL, NULL, state_name, NULL, NULL, 'state_administration' as scope_type, id as scope_id
       FROM state_administrations WHERE username = ?
       UNION ALL
       SELECT r.id, r.username, NULL as email, r.password_hash, 1 as is_active, 'region_admin' as role, r.region_name as full_name, NULL as profile_image,
-             NULL, NULL, 'COMMANDER', 'REGION', 1, r.state_administration_id, r.id, NULL, NULL, sa.state_name, r.region_name, NULL, NULL, 'region' as scope_type, r.id as scope_id
+             NULL, NULL, 'COMMANDER', 'REGION', 1, r.state_administration_id, r.id, NULL, sa.state_name, r.region_name, NULL, 'region' as scope_type, r.id as scope_id
       FROM regions r LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id WHERE r.username = ?
       UNION ALL
       SELECT c.id, c.username, NULL as email, c.password_hash, 1 as is_active, 'city_admin' as role, c.city_name as full_name, NULL as profile_image,
-             NULL, NULL, 'COMMANDER', 'REGION', 1, r.state_administration_id, r.id, NULL, NULL, sa.state_name, r.region_name, NULL, NULL, 'city' as scope_type, c.id as scope_id
+             NULL, NULL, 'COMMANDER', 'REGION', 1, r.state_administration_id, r.id, NULL, sa.state_name, r.region_name, NULL, 'city' as scope_type, c.id as scope_id
       FROM cities c LEFT JOIN regions r ON c.region_id = r.id LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id WHERE c.username = ?
       UNION ALL
       SELECT d.id, d.username, NULL as email, d.password_hash, 1 as is_active, 'district_admin' as role, d.district_name as full_name, NULL as profile_image,
-             NULL, NULL, 'COMMANDER', 'DISTRICT_POLICE_STATION', 1, r.state_administration_id, r.id, d.id, NULL, sa.state_name, r.region_name, d.district_name, NULL, 'district' as scope_type, d.id as scope_id
+             NULL, NULL, 'COMMANDER', 'DISTRICT_POLICE_STATION', 1, r.state_administration_id, r.id, d.id, sa.state_name, r.region_name, d.district_name, 'district' as scope_type, d.id as scope_id
       FROM districts d LEFT JOIN cities c ON d.city_id = c.id LEFT JOIN regions r ON c.region_id = r.id LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id WHERE d.username = ?
-      UNION ALL
-      SELECT n.id, n.username, NULL as email, n.password_hash, 1 as is_active, 'neighborhood_admin' as role, n.neighborhood_name as full_name, NULL as profile_image,
-             NULL, NULL, 'COMMANDER', 'WAAX', 1, r.state_administration_id, r.id, d.id, n.id, sa.state_name, r.region_name, d.district_name, n.neighborhood_name, 'neighborhood' as scope_type, n.id as scope_id
-      FROM neighborhoods n LEFT JOIN districts d ON n.district_id = d.id LEFT JOIN cities c ON d.city_id = c.id LEFT JOIN regions r ON c.region_id = r.id LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id WHERE n.username = ?
-      UNION ALL
-      SELECT id, username, NULL as email, password_hash, is_active, LOWER(role) as role, username as full_name, NULL as profile_image,
-             NULL, NULL, 'STAFF', NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'special_user' as scope_type, id as scope_id
-      FROM special_users WHERE username = ?
     `;
 
     const [rows] = await db.query(sql, [
@@ -74,8 +65,6 @@ const login = async (req, res, next) => {
       identifier, 
       identifier, 
       identifier, 
-      identifier, 
-      identifier,
       identifier
     ]);
 
@@ -133,9 +122,7 @@ const login = async (req, res, next) => {
         regionId: user.region_id,
         regionName: user.region_name,
         districtId: user.district_id,
-        districtName: user.district_name,
-        waaxId: user.neighborhood_id,
-        waaxName: user.neighborhood_name,
+        districtName: user.district_name
       }
     };
 

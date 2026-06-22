@@ -10,7 +10,7 @@ export default function NotificationBridge() {
     const handleNotify = (event) => {
       const { type = 'info', message, description } = event.detail || {};
       notification[type]({
-        message: message || (type === 'success' ? 'Success' : 'Error'),
+        title: message || (type === 'success' ? 'Success' : 'Error'),
         description,
         placement: 'topRight',
       });

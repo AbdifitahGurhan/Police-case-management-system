@@ -279,6 +279,8 @@ async function seed() {
       ('OB_STAFF', 'Occurrence Book staff member'),
       ('STAFF', 'Operational staff member'),
       ('court', 'Court system role'),
+      ('judge', 'Court judge role'),
+      ('prosecutor', 'Court prosecutor role'),
       ('jail', 'Jail system role')
       ON DUPLICATE KEY UPDATE description = VALUES(description)
     `);
@@ -290,6 +292,8 @@ async function seed() {
     const staffRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['STAFF']);
     const stationCommanderRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['POLICE_STATION_COMMANDER']);
     const courtRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['court']);
+    const judgeRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['judge']);
+    const prosecutorRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['prosecutor']);
     const jailRoleId = await getId('SELECT id FROM roles WHERE name = ?', ['jail']);
 
     await db.query(`
@@ -298,6 +302,8 @@ async function seed() {
       (?, 'officer', 'officer@police.so', 'Ahmed Hassan Omar', ?, 1, 'STAFF'),
       (?, 'cid', 'cid@police.so', 'Fatima Abdi Said', ?, 1, 'STAFF'),
       (?, 'court_user', 'court@court.gov.so', 'Mogadishu Regional Court', ?, 1, 'STAFF'),
+      (?, 'judge_user', 'judge@court.gov.so', 'Judge Hassan Ali', ?, 1, 'STAFF'),
+      (?, 'prosecutor_user', 'prosecutor@court.gov.so', 'Prosecutor Amina Yusuf', ?, 1, 'STAFF'),
       (?, 'jail_user', 'jail@prisons.gov.so', 'Mogadishu Central Jail', ?, 1, 'STAFF')
       ON DUPLICATE KEY UPDATE
         role_id = VALUES(role_id),
@@ -310,6 +316,8 @@ async function seed() {
       officerRoleId, officerHash, 
       cidRoleId, cidHash, 
       courtRoleId, specialHash, 
+      judgeRoleId, specialHash,
+      prosecutorRoleId, specialHash,
       jailRoleId, specialHash
     ]);
 

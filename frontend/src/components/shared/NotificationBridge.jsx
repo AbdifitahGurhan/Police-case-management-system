@@ -9,8 +9,10 @@ export default function NotificationBridge() {
   useEffect(() => {
     const handleNotify = (event) => {
       const { type = 'info', message, description } = event.detail || {};
+      const title = message || (type === 'success' ? 'Success' : 'Error');
       notification[type]({
-        title: message || (type === 'success' ? 'Success' : 'Error'),
+        key: `${type}:${title}:${description || ''}`,
+        title,
         description,
         placement: 'topRight',
       });

@@ -28,6 +28,8 @@ INSERT INTO roles (name, description) VALUES
   ('OB_STAFF', 'Occurrence Book staff member'),
   ('STAFF', 'Operational staff member'),
   ('court', 'Court system role'),
+  ('judge', 'Court judge role'),
+  ('prosecutor', 'Court prosecutor role'),
   ('jail', 'Jail system role')
 ON DUPLICATE KEY UPDATE description = VALUES(description);
 

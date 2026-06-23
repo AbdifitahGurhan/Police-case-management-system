@@ -7,6 +7,7 @@ const { allowRoles } = require('../middleware/roleMiddleware');
 const { COURT_READ_ROLES, COURT_ADMIN_ROLES, COURT_WRITE_ROLES } = require('../utils/roleGroups');
 const {
   getCourtDashboard,
+  getCourtPersonnel,
   getCourtCases,
   getCourtCaseById,
   getCourtCalendar,
@@ -25,6 +26,7 @@ const {
 router.use(authMiddleware);
 
 router.get('/dashboard', allowRoles(...COURT_READ_ROLES), getCourtDashboard);
+router.get('/personnel', allowRoles(...COURT_READ_ROLES), getCourtPersonnel);
 router.get('/calendar', allowRoles(...COURT_READ_ROLES), getCourtCalendar);
 router.get('/notifications', allowRoles(...COURT_READ_ROLES), getCourtNotifications);
 router.get('/cases', allowRoles(...COURT_READ_ROLES), getCourtCases);

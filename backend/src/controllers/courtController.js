@@ -40,6 +40,47 @@ const friendlyStatus = {
   archived: 'Closed',
 };
 
+const getCourtPersonnel = async (req, res, next) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT u.id, u.username, u.email, u.full_name, r.name AS role
+      FROM users u
+      JOIN roles r ON r.id = u.role_id
+      WHERE u.is_active = 1
+        AND COALESCE(u.status, 'ACTIVE') = 'ACTIVE'
+        AND r.name IN ('court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk')
+      ORDER BY
+        CASE r.name
+          WHEN 'judge' THEN 1
+          WHEN 'court' THEN 2
+          WHEN 'court_admin' THEN 3
+          WHEN 'prosecutor' THEN 4
+          WHEN 'prosecutor_liaison' THEN 5
+          ELSE 6
+        END,
+        u.full_name ASC
+    `);
+
+    const toOption = (row) => ({
+      id: row.id,
+      value: row.full_name || row.username,
+      label: row.full_name || row.username,
+      username: row.username,
+      email: row.email,
+      role: row.role,
+    });
+
+    const judges = rows
+      .filter((row) => ['judge', 'court', 'court_admin'].includes(String(row.role).toLowerCase()))
+      .map(toOption);
+    const prosecutors = rows
+      .filter((row) => ['prosecutor', 'prosecutor_liaison', 'court', 'court_admin'].includes(String(row.role).toLowerCase()))
+      .map(toOption);
+
+    res.json({ success: true, data: { judges, prosecutors, all: rows.map(toOption) } });
+  } catch (err) { next(err); }
+};
+
 const getCourtDashboard = async (req, res, next) => {
   try {
     const params = [];
@@ -486,6 +527,7 @@ const closeCourtCase = async (req, res, next) => {
 
 module.exports = {
   getCourtDashboard,
+  getCourtPersonnel,
   getCourtCases,
   getCourtCaseById,
   getCourtCalendar,

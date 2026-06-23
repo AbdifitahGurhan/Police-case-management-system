@@ -18,11 +18,19 @@ exports.getAll = async (req, res, next) => {
       params.push(req.query.city_id);
     }
 
-    if (req.user.scopeType === 'city') {
-      query += ` AND c.city_id = ?`;
+    if (req.user.scopeType === 'state_administration') {
+      query += ` AND ci.region_id IN (
+        SELECT id FROM regions WHERE state_administration_id = ?
+      )`;
       params.push(req.user.scopeId);
     } else if (req.user.scopeType === 'region') {
       query += ` AND ci.region_id = ?`;
+      params.push(req.user.scopeId);
+    } else if (req.user.scopeType === 'city') {
+      query += ` AND c.city_id = ?`;
+      params.push(req.user.scopeId);
+    } else if (req.user.scopeType === 'district') {
+      query += ` AND c.id = ?`;
       params.push(req.user.scopeId);
     } else if (req.user.scopeType) {
       if (req.user.role !== 'admin') return res.status(403).json({success: false, message: 'Forbidden'});

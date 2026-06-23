@@ -90,6 +90,7 @@ export default function CourtCasesPage() {
   const [modalType, setModalType] = useState(null);
   const [activeHearing, setActiveHearing] = useState(null);
   const [filters, setFilters] = useState({});
+  const [courtPersonnel, setCourtPersonnel] = useState({ judges: [], prosecutors: [] });
   const [form] = Form.useForm();
   const [searchForm] = Form.useForm();
 
@@ -127,6 +128,18 @@ export default function CourtCasesPage() {
     const timer = setInterval(() => loadCases(filters), 30000);
     return () => clearInterval(timer);
   }, [filters, loadCases]);
+
+  useEffect(() => {
+    const loadCourtPersonnel = async () => {
+      try {
+        const response = await api.get('/court/personnel');
+        setCourtPersonnel(response.data.data || { judges: [], prosecutors: [] });
+      } catch (error) {
+        message.error(error.response?.data?.message || 'Waa ku guuldareysatay in la soo raro shaqaalaha maxkamadda.');
+      }
+    };
+    loadCourtPersonnel();
+  }, [message]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -314,7 +327,23 @@ export default function CourtCasesPage() {
           title="Faahfaahinta Kiiska Maxkamadda (Court Case Profile)"
           open={detailOpen}
           onClose={() => setDetailOpen(false)}
-          size="large"
+          width="100vw"
+          placement="right"
+          styles={{
+            header: {
+              borderBottom: '1px solid #e5e7eb',
+              padding: '16px 24px',
+            },
+            body: {
+              minHeight: 'calc(100vh - 57px)',
+              padding: 24,
+              background: '#f8fafc',
+              overflowX: 'hidden',
+            },
+            content: {
+              height: '100vh',
+            },
+          }}
         >
           {courtCase ? (
             <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
@@ -614,8 +643,28 @@ export default function CourtCasesPage() {
           <Form form={form} layout="vertical" onFinish={submitModal}>
             {modalType === 'assign' && (
               <Row gutter={16}>
-                <Col span={12}><Form.Item name="assigned_judge" label="Garsooraha Kiiska loo Xilsaaray"><Input /></Form.Item></Col>
-                <Col span={12}><Form.Item name="assigned_prosecutor" label="Xeer-ilaaliyaha Kiiska"><Input /></Form.Item></Col>
+                <Col span={12}>
+                  <Form.Item name="assigned_judge" label="Garsooraha Kiiska loo Xilsaaray">
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="Dooro garsoore"
+                      options={courtPersonnel.judges}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="assigned_prosecutor" label="Xeer-ilaaliyaha Kiiska">
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="Dooro xeer-ilaaliye"
+                      options={courtPersonnel.prosecutors}
+                    />
+                  </Form.Item>
+                </Col>
               </Row>
             )}
             {modalType === 'hearing' && (
@@ -630,7 +679,17 @@ export default function CourtCasesPage() {
                 <Col span={12}><Form.Item name="court_room" label="Qolka Maxkamadda"><Input /></Form.Item></Col>
                 <Col span={12}><Form.Item name="hearing_date" label="Taariikhda Dhegeysiga" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
                 <Col span={12}><Form.Item name="hearing_time" label="Saacadda Dhegeysiga" rules={[{ required: true }]}><TimePicker style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={24}><Form.Item name="assigned_judge" label="Garsooraha Kiiska loo Xilsaaray"><Input /></Form.Item></Col>
+                <Col span={24}>
+                  <Form.Item name="assigned_judge" label="Garsooraha Kiiska loo Xilsaaray">
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="Dooro garsoore"
+                      options={courtPersonnel.judges}
+                    />
+                  </Form.Item>
+                </Col>
               </Row>
             )}
             {modalType === 'proceeding' && (

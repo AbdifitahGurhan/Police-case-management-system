@@ -74,10 +74,10 @@ export default function OffendersPage() {
   const [selectedArrest, setSelectedArrest] = useState(null);
   const [custodyAction, setCustodyAction] = useState(null);
   const [filters, setFilters] = useState({ search: '', gender: undefined, arrested: undefined, repeat: undefined });
-  const canManageOffenders = ['admin', 'officer', 'cid', 'district_admin', 'neighborhood_admin', 'ob_staff'].includes(user?.role);
+  const canManageOffenders = ['admin', 'officer', 'cid', 'district_admin', 'ob_staff'].includes(user?.role);
   const canReleaseOffenders = ['admin', 'jail'].includes(user?.role);
   const canManageSentence = ['admin', 'court', 'jail'].includes(user?.role);
-  const canManageCustody = ['admin', 'court', 'jail', 'cid', 'district_admin', 'neighborhood_admin'].includes(user?.role);
+  const canManageCustody = ['admin', 'court', 'jail', 'cid', 'district_admin'].includes(user?.role);
 
   const [suspectFaceImage, setSuspectFaceImage] = useState('');
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -666,7 +666,7 @@ export default function OffendersPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'neighborhood_admin', 'ob_staff']}>
+    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'ob_staff']}>
       <div className="offenders-page">
         {sentenceAlerts.length > 0 && (
           <Alert

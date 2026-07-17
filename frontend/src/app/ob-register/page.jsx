@@ -12,7 +12,7 @@ import { nameRules, phoneRules, requiredRule, textLengthRule } from '@/utils/val
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'waax_commander'];
+const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
 
 export default function ObRegisterPage() {
   const { user } = useAuth();
@@ -54,7 +54,7 @@ export default function ObRegisterPage() {
     }
   };
 
-  const canCreate = ['admin', 'ob_staff', 'officer', 'district_admin', 'neighborhood_admin'].includes(user?.role);
+  const canCreate = ['admin', 'ob_staff', 'officer', 'district_admin'].includes(user?.role);
   const location = user?.location || {};
 
   const columns = [
@@ -63,7 +63,6 @@ export default function ObRegisterPage() {
     { title: 'Reported By', dataIndex: 'reported_by', key: 'reported_by' },
     { title: 'Registered By', dataIndex: 'registered_by_name', key: 'registered_by_name' },
     { title: 'District / Police Station', dataIndex: 'district_police_station_name', key: 'district_police_station_name' },
-    { title: 'Waax', dataIndex: 'waax_name', key: 'waax_name' },
     { title: 'Date', dataIndex: 'registration_date', key: 'registration_date' },
     { title: 'Time', dataIndex: 'registration_time', key: 'registration_time' },
     { title: 'Status', dataIndex: 'status', key: 'status', render: (value) => <Tag color={value === 'CASE_OPENED' ? 'green' : 'blue'}>{value}</Tag> },
@@ -79,7 +78,7 @@ export default function ObRegisterPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]}>
+    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
@@ -95,10 +94,9 @@ export default function ObRegisterPage() {
 
         <Card variant="none">
           <Row gutter={[16, 16]}>
-            <Col xs={24} md={6}><Text type="secondary">Logged in as</Text><br /><Text strong>{user?.fullName || user?.username}</Text></Col>
-            <Col xs={24} md={6}><Text type="secondary">Role</Text><br /><Tag color="blue">{user?.roleCode || user?.role}</Tag></Col>
-            <Col xs={24} md={6}><Text type="secondary">District / Police Station</Text><br /><Text strong>{location.districtName || 'System level'}</Text></Col>
-            <Col xs={24} md={6}><Text type="secondary">Waax</Text><br /><Text strong>{location.waaxName || 'Not assigned'}</Text></Col>
+            <Col xs={24} md={8}><Text type="secondary">Logged in as</Text><br /><Text strong>{user?.fullName || user?.username}</Text></Col>
+            <Col xs={24} md={8}><Text type="secondary">Role</Text><br /><Tag color="blue">{user?.roleCode || user?.role}</Tag></Col>
+            <Col xs={24} md={8}><Text type="secondary">District / Police Station</Text><br /><Text strong>{location.districtName || 'System level'}</Text></Col>
           </Row>
         </Card>
 
@@ -117,7 +115,7 @@ export default function ObRegisterPage() {
           <Card size="small" variant="none" style={{ marginBottom: 16 }}>
             <Space orientation="vertical" size={2}>
               <Text><LoginOutlined /> Location is captured automatically from your user profile.</Text>
-              <Text type="secondary">{location.stateName || 'Administration'} → {location.regionName || 'Region'} → {location.districtName || 'District / Police Station'} → {location.waaxName || 'Waax'}</Text>
+              <Text type="secondary">{location.stateName || 'Administration'} → {location.regionName || 'Region'} → {location.districtName || 'District / Police Station'}</Text>
             </Space>
           </Card>
           <Form form={form} layout="vertical" onFinish={createEntry}>

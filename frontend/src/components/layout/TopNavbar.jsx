@@ -17,8 +17,11 @@ import {
   AuditOutlined,
   AlertOutlined,
   ClockCircleOutlined,
+  SunOutlined,
+  MoonOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import api from '@/services/api';
 import { emailRule, nameRules, optionalPasswordRules, usernameRules } from '@/utils/validation';
 
@@ -28,18 +31,18 @@ const { Text } = Typography;
 // ─── Notification helpers ───────────────────────────────────────────────────
 
 const typeIcon = (type = '') => {
-  if (type.startsWith('CID'))    return <SafetyOutlined  style={{ color: '#7c3aed' }} />;
-  if (type.startsWith('audit'))  return <AuditOutlined   style={{ color: '#0284c7' }} />;
-  if (type.includes('CASE'))     return <FileTextOutlined style={{ color: '#0891b2' }} />;
-  if (type.includes('ALERT'))    return <AlertOutlined   style={{ color: '#dc2626' }} />;
-  return                                <ClockCircleOutlined style={{ color: '#6b7280' }} />;
+  if (type.startsWith('CID')) return <SafetyOutlined style={{ color: '#7c3aed' }} />;
+  if (type.startsWith('audit')) return <AuditOutlined style={{ color: '#0284c7' }} />;
+  if (type.includes('CASE')) return <FileTextOutlined style={{ color: '#0891b2' }} />;
+  if (type.includes('ALERT')) return <AlertOutlined style={{ color: '#dc2626' }} />;
+  return <ClockCircleOutlined style={{ color: '#6b7280' }} />;
 };
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1)  return 'Just now';
+  if (m < 1) return 'Just now';
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
@@ -125,6 +128,7 @@ function NotificationPanel({ notifications, loading, onMarkAllRead, unreadCount 
 
 const TopNavbar = ({ collapsed, setCollapsed }) => {
   const { user, logout, updateUser } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const { message } = AntApp.useApp();
   const [profileForm] = Form.useForm();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -317,6 +321,16 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
       />
 
       <Space size="large">
+        {/* ── Theme toggle ── */}
+        <Tooltip title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+          <Button
+            className="topbar-icon-button"
+            type="text"
+            icon={theme === 'dark' ? <SunOutlined style={{ color: '#A8FF4D' }} /> : <MoonOutlined />}
+            onClick={toggleTheme}
+          />
+        </Tooltip>
+
         {/* ── Notification bell ── */}
         <Dropdown
           open={dropdownOpen}

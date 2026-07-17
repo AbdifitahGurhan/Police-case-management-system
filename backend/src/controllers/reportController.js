@@ -137,11 +137,17 @@ const getUnitDashboardStats = async (req, res, next) => {
 
     // Officer Count (current assignment logic dictates we query officer_assignments? Given the user requested a strict structure, 
     // we should simply query `officer_assignments` active records pointing to this scope.)
+    let typeClause = 'assignment_type = ?';
+    let typeParams = [scopeType.charAt(0).toUpperCase() + scopeType.slice(1).replace('_', ' '), scopeId];
+    if (scopeType === 'district') {
+      typeClause = 'assignment_type IN (?, ?)';
+      typeParams = ['District', 'District Station', scopeId];
+    }
     const [[officerRaw]] = await db.query(`
       SELECT COUNT(DISTINCT officer_id) as c 
       FROM officer_assignments 
-      WHERE assignment_type = ? AND assignment_id = ? AND is_current = 1
-    `, [scopeType.charAt(0).toUpperCase() + scopeType.slice(1).replace('_', ' '), scopeId]);
+      WHERE ${typeClause} AND assignment_id = ? AND is_current = 1
+    `, typeParams);
     stats.officers_deployed = officerRaw.c;
 
     // Case Count
@@ -203,11 +209,11 @@ const getRegionDashboardStats = async (req, res, next) => {
          (SELECT COUNT(DISTINCT d.id) FROM districts d JOIN cities ci ON d.city_id = ci.id WHERE ci.region_id = ?) AS district_police_stations,
          (SELECT COUNT(DISTINCT oa.officer_id)
             FROM officer_assignments oa
-            LEFT JOIN districts d ON oa.assignment_type = 'District' AND oa.assignment_id = d.id
-            LEFT JOIN cities dci ON d.city_id = dci.id
-           WHERE oa.is_current = 1
-             AND ((oa.assignment_type = 'Region' AND oa.assignment_id = ?)
-               OR dci.region_id = ?)) AS officers_registered,
+             LEFT JOIN districts d ON oa.assignment_type IN ('District', 'District Station') AND oa.assignment_id = d.id
+             LEFT JOIN cities dci ON d.city_id = dci.id
+            WHERE oa.is_current = 1
+              AND ((oa.assignment_type = 'Region' AND oa.assignment_id = ?)
+                OR dci.region_id = ?)) AS officers_registered,
          (SELECT COUNT(DISTINCT cs.criminal_id) FROM case_criminals cs JOIN cases c ON c.id = cs.case_id WHERE c.region_id = ?) AS criminals_registered,
          (SELECT COUNT(DISTINCT cv.victim_id) FROM case_victims cv JOIN cases c ON c.id = cv.case_id WHERE c.region_id = ?) AS victims_registered,
          (SELECT COUNT(DISTINCT s.id)
@@ -259,7 +265,7 @@ const getRegionDashboardStats = async (req, res, next) => {
        FROM districts d
        JOIN cities ci ON d.city_id = ci.id
        LEFT JOIN cases c ON c.district_id = d.id
-       LEFT JOIN officer_assignments oa ON oa.assignment_type = 'District' AND oa.assignment_id = d.id AND oa.is_current = 1
+       LEFT JOIN officer_assignments oa ON oa.assignment_type IN ('District', 'District Station') AND oa.assignment_id = d.id AND oa.is_current = 1
        WHERE ci.region_id = ?
        GROUP BY d.id
        ORDER BY cases_count DESC, d.district_name ASC`,

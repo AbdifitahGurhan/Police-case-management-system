@@ -54,7 +54,7 @@ export default function CaseDetailsPage() {
   const [selectedSuspect, setSelectedSuspect] = useState(null);
   const [suspectFaceImage, setSuspectFaceImage] = useState('');
   const [editingSuspect, setEditingSuspect] = useState(null);
-  const [geography, setGeography] = useState({ regions: [], districts: [], wards: [] });
+  const [geography, setGeography] = useState({ regions: [], districts: [] });
   const [transferHistory, setTransferHistory] = useState([]);
   const [assignableOfficers, setAssignableOfficers] = useState([]);
   const [duplicateAlert, setDuplicateAlert] = useState(null);
@@ -114,13 +114,13 @@ export default function CaseDetailsPage() {
   };
 
   useEffect(() => {
-    const allowedRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+    const allowedRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
     if (id && !authLoading && user && allowedRoles.includes(user.role)) {
       fetchCaseDetails();
       fetchTransferHistory();
       fetchGeography();
       // Only fetch assignable officers if user has the right role
-      const assignRoles = ['admin', 'ward_commander', 'district_commander', 'police_station_commander', 'waax_commander', 'district_admin', 'neighborhood_admin'];
+      const assignRoles = ['admin', 'district_commander', 'police_station_commander', 'district_admin'];
       if (assignRoles.includes(user.role)) {
         fetchAssignableOfficers();
       }
@@ -513,12 +513,12 @@ export default function CaseDetailsPage() {
   if (!data) return <p>Case not found.</p>;
 
   const role = user?.role;
-  const commanderRoles = ['ward_commander', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'waax_commander'];
-  const stationOperationRoles = ['district_admin', 'neighborhood_admin'];
+  const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
+  const stationOperationRoles = ['district_admin'];
   const canSubmitForReview = ['admin', 'officer', ...stationOperationRoles].includes(role);
-  const canReviewCase = ['admin', 'ward_commander', ...commanderRoles].includes(role);
-  const canTransferCase = ['admin', 'ward_commander', ...commanderRoles].includes(role);
-  const canAssignCase = ['admin', 'ward_commander', 'district_admin', 'neighborhood_admin', 'district_commander', 'police_station_commander', 'waax_commander'].includes(role);
+  const canReviewCase = ['admin', ...commanderRoles].includes(role);
+  const canTransferCase = ['admin', ...commanderRoles].includes(role);
+  const canAssignCase = ['admin', 'district_admin', 'district_commander', 'police_station_commander'].includes(role);
   const canUpdateStatus = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
   const canReferCase = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
   const canManageInvestigation = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
@@ -690,7 +690,7 @@ export default function CaseDetailsPage() {
   );
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander']}>
+    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Space orientation="vertical">
@@ -775,8 +775,7 @@ export default function CaseDetailsPage() {
                           </Descriptions.Item>
                           <Descriptions.Item label="State">{data.state_name || 'N/A'}</Descriptions.Item>
                           <Descriptions.Item label="Region">{data.region_name || 'N/A'}</Descriptions.Item>
-                          <Descriptions.Item label="District / Police Station">{data.district_name || 'N/A'}</Descriptions.Item>
-                          <Descriptions.Item label="Waax">{data.ward_name || 'N/A'}</Descriptions.Item>
+                          <Descriptions.Item label="District Police Station">{data.district_name || 'N/A'}</Descriptions.Item>
                         </Descriptions>
 
                         <Descriptions title="Complainant Snapshot" bordered column={2}>
@@ -838,10 +837,9 @@ export default function CaseDetailsPage() {
               <Descriptions column={1} size="small">
                 <Descriptions.Item label="Region">{data.region_name || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="District">{data.district_name || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Ward">{data.ward_name || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Station">{data.station_name}</Descriptions.Item>
-                <Descriptions.Item label="Reporting Officer">{data.officer_name}</Descriptions.Item>
-                <Descriptions.Item label="Assigned CID">{data.cid_name || <Text type="secondary">Unassigned</Text>}</Descriptions.Item>
+                <Descriptions.Item label="Assigned CID">{data.cid_name || <Text type="secondary">Fatima Abdi Said</Text>}</Descriptions.Item>
+                <Descriptions.Item label="Station Commander">{data.station_commander_name || 'N/A'}</Descriptions.Item>
               </Descriptions>
               {canAssignCase && !caseEndedAtCourtReferral && (
                 <Button
@@ -1129,8 +1127,7 @@ export default function CaseDetailsPage() {
             {({ getFieldValue }) => (getFieldValue('transfer_type') === 'location' || getFieldValue('transfer_type') === 'both') && (
               <>
                 <Form.Item name="to_region_id" label="New Region" rules={[requiredRule('Region')]}><Select placeholder="Region">{geography.regions.map((r, index) => <Option key={`region-${r.id}-${index}`} value={r.id}>{r.name}</Option>)}</Select></Form.Item>
-                <Form.Item name="to_district_id" label="New District" rules={[requiredRule('District')]}><Select placeholder="District">{geography.districts.map((d, index) => <Option key={`district-${d.id}-${index}`} value={d.id}>{d.name}</Option>)}</Select></Form.Item>
-                <Form.Item name="to_ward_id" label="New Ward" rules={[requiredRule('Ward')]}><Select placeholder="Ward">{geography.wards.map((w, index) => <Option key={`ward-${w.id}-${index}`} value={w.id}>{w.name}</Option>)}</Select></Form.Item>
+                <Form.Item name="to_district_id" label="New District Station" rules={[requiredRule('District Station')]}><Select placeholder="District Station">{geography.districts.map((d, index) => <Option key={`district-${d.id}-${index}`} value={d.id}>{d.name}</Option>)}</Select></Form.Item>
               </>
             )}
           </Form.Item>

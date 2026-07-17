@@ -21,7 +21,7 @@ export default function EvidenceBrowserPage() {
   const [search, setSearch] = useState('');
   const [previewRecord, setPreviewRecord] = useState(null);
 
-  const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+  const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
   const canReadCases = user && caseReadRoles.includes(user.role);
 
   const fetchEvidence = useCallback(async () => {
@@ -73,7 +73,7 @@ export default function EvidenceBrowserPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'neighborhood_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <Breadcrumb items={[{ title: 'Home' }, { title: 'Evidence Records' }]} />
         

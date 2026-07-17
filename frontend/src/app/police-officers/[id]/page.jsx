@@ -26,7 +26,6 @@ export default function OfficerDetailsPage({ params }) {
   const [regions, setRegions] = useState([]);
   const [cities, setCities] = useState([]);
   const [districts, setDistricts] = useState([]);
-  const [neighborhoods, setNeighborhoods] = useState([]);
 
   const assignmentType = Form.useWatch('to_assignment_type', transferForm);
   const selectedState = Form.useWatch('state_id', transferForm);
@@ -43,30 +42,23 @@ export default function OfficerDetailsPage({ params }) {
   useEffect(() => {
     if (selectedState) {
        api.get(`/regions?state_administration_id=${selectedState}`).then(res => setRegions(res.data.data)).catch(console.error);
-       transferForm.setFieldsValue({ region_id: undefined, city_id: undefined, district_id: undefined, neighborhood_id: undefined });
+       transferForm.setFieldsValue({ region_id: undefined, city_id: undefined, district_id: undefined });
     }
   }, [selectedState, transferForm]);
 
   useEffect(() => {
     if (selectedRegion) {
        api.get(`/cities?region_id=${selectedRegion}`).then(res => setCities(res.data.data)).catch(console.error);
-       transferForm.setFieldsValue({ city_id: undefined, district_id: undefined, neighborhood_id: undefined });
+       transferForm.setFieldsValue({ city_id: undefined, district_id: undefined });
     }
   }, [selectedRegion, transferForm]);
 
   useEffect(() => {
     if (selectedCity) {
        api.get(`/districts?city_id=${selectedCity}`).then(res => setDistricts(res.data.data)).catch(console.error);
-       transferForm.setFieldsValue({ district_id: undefined, neighborhood_id: undefined });
+       transferForm.setFieldsValue({ district_id: undefined });
     }
   }, [selectedCity, transferForm]);
-
-  useEffect(() => {
-    if (selectedDistrict) {
-       api.get(`/neighborhoods?district_id=${selectedDistrict}`).then(res => setNeighborhoods(res.data.data)).catch(console.error);
-       transferForm.setFieldsValue({ neighborhood_id: undefined });
-    }
-  }, [selectedDistrict, transferForm]);
 
 
   const fetchOfficerDetails = useCallback(async () => {
@@ -96,7 +88,7 @@ export default function OfficerDetailsPage({ params }) {
       if (values.to_assignment_type === 'Region') targetId = values.region_id;
       if (values.to_assignment_type === 'City') targetId = values.city_id;
       if (values.to_assignment_type === 'District') targetId = values.district_id;
-      if (values.to_assignment_type === 'Neighborhood') targetId = values.neighborhood_id;
+      if (values.to_assignment_type === 'District Station') targetId = values.district_id;
 
       if (!targetId) {
         return message.error("Please complete the unit selection dropdowns.");
@@ -227,14 +219,14 @@ export default function OfficerDetailsPage({ params }) {
         >
            <Form form={transferForm} layout="vertical">
               <Form.Item name="to_assignment_type" label="Target Level" rules={[requiredRule('Target level')]}>
-                 <Select placeholder="e.g. City" onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, city_id: undefined, district_id: undefined, neighborhood_id: undefined })}>
-                    <Option value="State Administration">State Administration</Option>
-                    <Option value="Region">Region</Option>
-                    <Option value="City">City</Option>
-                    <Option value="District">District</Option>
-                    <Option value="Neighborhood">Neighborhood</Option>
-                 </Select>
-              </Form.Item>
+                  <Select placeholder="e.g. City" onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, city_id: undefined, district_id: undefined })}>
+                      <Option value="State Administration">State Administration</Option>
+                      <Option value="Region">Region</Option>
+                      <Option value="City">City</Option>
+                      <Option value="District">District</Option>
+                      <Option value="District Station">District Station</Option>
+                  </Select>
+               </Form.Item>
               
               {assignmentType && (
                 <Form.Item name="state_id" label="State Administration" rules={[requiredRule('State administration')]}>
@@ -244,37 +236,29 @@ export default function OfficerDetailsPage({ params }) {
                 </Form.Item>
               )}
 
-              {assignmentType && ['Region', 'City', 'District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="region_id" label="Region" rules={[requiredRule('Region')]}>
-                  <Select placeholder="Select Region" showSearch optionFilterProp="children" disabled={!selectedState}>
-                    {regions.map(r => <Option key={r.id} value={r.id}>{r.region_name}</Option>)}
-                  </Select>
-                </Form.Item>
-              )}
-
-              {assignmentType && ['City', 'District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
-                  <Select placeholder="Select City" showSearch optionFilterProp="children" disabled={!selectedRegion}>
-                    {cities.map(c => <Option key={c.id} value={c.id}>{c.city_name}</Option>)}
-                  </Select>
-                </Form.Item>
-              )}
-
-              {assignmentType && ['District', 'Neighborhood'].includes(assignmentType) && (
-                <Form.Item name="district_id" label="District" rules={[requiredRule('District')]}>
-                  <Select placeholder="Select District" showSearch optionFilterProp="children" disabled={!selectedCity}>
-                    {districts.map(d => <Option key={d.id} value={d.id}>{d.district_name}</Option>)}
-                  </Select>
-                </Form.Item>
-              )}
-
-              {assignmentType === 'Neighborhood' && (
-                <Form.Item name="neighborhood_id" label="Neighborhood / Station" rules={[requiredRule('Neighborhood / station')]}>
-                  <Select placeholder="Select Neighborhood" showSearch optionFilterProp="children" disabled={!selectedDistrict}>
-                    {neighborhoods.map(n => <Option key={n.id} value={n.id}>{n.neighborhood_name}</Option>)}
-                  </Select>
-                </Form.Item>
-              )}
+               {assignmentType && ['Region', 'City', 'District', 'District Station'].includes(assignmentType) && (
+                 <Form.Item name="region_id" label="Region" rules={[requiredRule('Region')]}>
+                   <Select placeholder="Select Region" showSearch optionFilterProp="children" disabled={!selectedState}>
+                     {regions.map(r => <Option key={r.id} value={r.id}>{r.region_name}</Option>)}
+                   </Select>
+                 </Form.Item>
+               )}
+ 
+               {assignmentType && ['City', 'District', 'District Station'].includes(assignmentType) && (
+                 <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
+                   <Select placeholder="Select City" showSearch optionFilterProp="children" disabled={!selectedRegion}>
+                     {cities.map(c => <Option key={c.id} value={c.id}>{c.city_name}</Option>)}
+                   </Select>
+                 </Form.Item>
+               )}
+ 
+               {assignmentType && ['District', 'District Station'].includes(assignmentType) && (
+                 <Form.Item name="district_id" label="District Station" rules={[requiredRule('District Station')]}>
+                   <Select placeholder="Select District Station" showSearch optionFilterProp="children" disabled={!selectedCity}>
+                     {districts.map(d => <Option key={d.id} value={d.id}>{d.district_name}</Option>)}
+                   </Select>
+                 </Form.Item>
+               )}
 
               <Form.Item name="transfer_reason" label="Reason for Transfer" rules={[requiredRule('Transfer reason'), textLengthRule('Transfer reason', 5, 1000)]}>
                 <Input.TextArea rows={2} />

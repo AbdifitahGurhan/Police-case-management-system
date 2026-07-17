@@ -46,7 +46,7 @@ export default function CaseListPage() {
   }, [filters]);
 
   useEffect(() => {
-    const allowedRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+    const allowedRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
     if (!authLoading && user && allowedRoles.includes(user.role)) {
       fetchCases();
     }
@@ -111,7 +111,7 @@ export default function CaseListPage() {
     },
   ];
   return (
-    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander']}>
+    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <Breadcrumb items={[{ title: 'Home' }, { title: 'Cases' }]} />
         

@@ -2,7 +2,7 @@
 
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
-const { ensureCidCaseForPoliceCase } = require('../services/cidService');
+const { ensureCidCaseForPoliceCase, syncAllCidCases } = require('../services/cidService');
 
 const actor = (req) => req.user?.username || String(req.user?.id || 'system');
 const role = (req) => String(req.user?.role || '').toLowerCase();
@@ -20,6 +20,7 @@ const auditMeta = (req) => ({ ipAddress: req.ip, userAgent: req.get?.('user-agen
 
 const getCidDashboard = async (req, res, next) => {
   try {
+    await syncAllCidCases(actor(req));
     const params = [];
     const visibility = addVisibilityFilter(req, params, 'cid');
     const [[stats]] = await db.query(`
@@ -59,6 +60,7 @@ const getCidDashboard = async (req, res, next) => {
 
 const getCidCases = async (req, res, next) => {
   try {
+    await syncAllCidCases(actor(req));
     const { status, priority, search, officer, from_date, to_date, page = 1, limit = 30 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
     const params = [];

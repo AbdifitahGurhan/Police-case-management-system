@@ -14,6 +14,7 @@ exports.getAll = async (req, res, next) => {
               WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'District Station' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
               ELSE NULL
             END
             FROM officer_assignments a
@@ -71,6 +72,7 @@ exports.getById = async (req, res, next) => {
           WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
+          WHEN a.assignment_type = 'District Station' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
           ELSE 'Unknown'
         END as assignment_name
       FROM officer_assignments a 

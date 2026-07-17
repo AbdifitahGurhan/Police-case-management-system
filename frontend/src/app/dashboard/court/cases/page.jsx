@@ -327,7 +327,7 @@ export default function CourtCasesPage() {
           title="Faahfaahinta Kiiska Maxkamadda (Court Case Profile)"
           open={detailOpen}
           onClose={() => setDetailOpen(false)}
-          width="100vw"
+          size="large"
           placement="right"
           styles={{
             header: {

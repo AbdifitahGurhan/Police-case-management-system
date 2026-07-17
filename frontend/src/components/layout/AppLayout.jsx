@@ -5,8 +5,9 @@ import React, { useState } from 'react';
 import { Layout, ConfigProvider, App } from 'antd';
 import Sidebar from './Sidebar';
 import TopNavbar from './TopNavbar';
-import policeTheme from '@/theme/theme';
+import { lightTheme, darkTheme } from '@/theme/theme';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { usePathname } from 'next/navigation';
 
 const { Content } = Layout;
@@ -14,14 +15,17 @@ const { Content } = Layout;
 const AppLayout = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const { user, loading } = useAuth();
+  const { theme } = useTheme();
   const pathname = usePathname();
 
   // Pages that don't use the sidebar layout (like login)
   const isAuthPage = pathname === '/login' || pathname === '/';
 
+  const currentTheme = theme === 'dark' ? darkTheme : lightTheme;
+
   if (isAuthPage) {
     return (
-      <ConfigProvider theme={policeTheme}>
+      <ConfigProvider theme={currentTheme}>
         <App>
           {children}
         </App>
@@ -30,7 +34,7 @@ const AppLayout = ({ children }) => {
   }
 
   return (
-    <ConfigProvider theme={policeTheme}>
+    <ConfigProvider theme={currentTheme}>
       <App>
         <Layout className="app-shell">
           <Sidebar collapsed={collapsed} />

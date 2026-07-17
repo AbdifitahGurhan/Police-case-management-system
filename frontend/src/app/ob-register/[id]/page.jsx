@@ -11,7 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const { Title, Text, Paragraph } = Typography;
 
-const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander', 'waax_commander'];
+const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
 
 export default function ObDetailPage() {
   const { id } = useParams();
@@ -22,7 +22,7 @@ export default function ObDetailPage() {
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
 
-  const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'ward_commander', 'police_station_commander', 'waax_commander'];
+  const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
   const canReadCases = user && caseReadRoles.includes(user.role);
 
   const loadOb = useCallback(async () => {
@@ -71,7 +71,7 @@ export default function ObDetailPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'neighborhood_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]}>
+    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <Space orientation="vertical">
@@ -115,7 +115,7 @@ export default function ObDetailPage() {
               <Descriptions.Item label="State">{ob.state_name}</Descriptions.Item>
               <Descriptions.Item label="Region">{ob.region_name}</Descriptions.Item>
               <Descriptions.Item label="District / Police Station">{ob.district_police_station_name}</Descriptions.Item>
-              <Descriptions.Item label="Waax">{ob.waax_name}</Descriptions.Item>
+
               <Descriptions.Item label="Short Description" span={2}>
                 <Paragraph style={{ marginBottom: 0 }}>{ob.description || 'No description recorded.'}</Paragraph>
               </Descriptions.Item>

@@ -8,6 +8,8 @@ const statusMap = {
   pending_commander_review: { color: 'processing', label: 'PENDING REVIEW' },
   returned_for_correction: { color: 'warning', label: 'NEEDS REVISION' },
   confirmed_by_ward_commander: { color: 'success', label: 'APPROVED' },
+  confirmed_by_commander: { color: 'success', label: 'APPROVED' },
+  CONFIRMED_BY_COMMANDER: { color: 'success', label: 'APPROVED' },
   under_investigation: { color: 'orange', label: 'UNDER INVESTIGATION' },
   referred_cid: { color: 'purple', label: 'REFERRED TO CID' },
   referred_to_cid: { color: 'purple', label: 'REFERRED TO CID' },

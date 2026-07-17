@@ -86,7 +86,7 @@ const getStationById = async (req, res, next) => {
        FROM officer_assignments oa
        JOIN police_officers po ON oa.officer_id = po.id
        LEFT JOIN ranks rk ON po.rank_id = rk.id
-       WHERE oa.assignment_type = 'District'
+       WHERE oa.assignment_type IN ('District', 'District Station')
          AND oa.assignment_id = ?
          AND oa.is_current = 1`,
       [req.params.id]
@@ -161,7 +161,7 @@ const deleteStation = async (req, res, next) => {
     const [[dependencies]] = await db.query(
       `SELECT
          (SELECT COUNT(*) FROM cases WHERE district_id = ?) AS cases_count,
-         (SELECT COUNT(*) FROM officer_assignments WHERE assignment_type = 'District' AND assignment_id = ? AND is_current = 1) AS officer_count`,
+         (SELECT COUNT(*) FROM officer_assignments WHERE assignment_type IN ('District', 'District Station') AND assignment_id = ? AND is_current = 1) AS officer_count`,
       [stationId, stationId]
     );
 
@@ -193,13 +193,11 @@ const getGeography = async (req, res, next) => {
     let regionWhere = '1=1';
     let cityWhere = '1=1';
     let districtWhere = '1=1';
-    let wardWhere = '1=1';
 
     if (req.user.scopeType === 'region') {
       regionWhere = 'id = ?';
       cityWhere = 'region_id = ?';
       districtWhere = 'city_id IN (SELECT id FROM cities WHERE region_id = ?)';
-      wardWhere = 'district_id IN (SELECT d.id FROM districts d JOIN cities c ON d.city_id = c.id WHERE c.region_id = ?)';
       params.push(req.user.scopeId);
     }
 

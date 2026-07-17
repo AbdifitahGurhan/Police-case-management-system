@@ -8,6 +8,7 @@ require('dotenv').config();
 
 const { testConnection } = require('./config/database');
 const { connectMongoDB } = require('./config/mongodb');
+const { syncAllCidCases } = require('./services/cidService');
 const errorHandler = require('./middleware/errorHandler');
 
 // Route imports
@@ -17,7 +18,6 @@ const stateAdministrationRoutes = require('./routes/stateAdministrationRoutes');
 const regionRoutes = require('./routes/regionRoutes');
 const cityRoutes = require('./routes/cityRoutes');
 const districtRoutes = require('./routes/districtRoutes');
-const neighborhoodRoutes = require('./routes/neighborhoodRoutes');
 const rankRoutes = require('./routes/rankRoutes');
 const policeOfficerRoutes = require('./routes/policeOfficerRoutes');
 const caseRoutes = require('./routes/caseRoutes');
@@ -58,7 +58,6 @@ app.use('/api/state-administrations', stateAdministrationRoutes);
 app.use('/api/regions', regionRoutes);
 app.use('/api/cities', cityRoutes);
 app.use('/api/districts', districtRoutes);
-app.use('/api/neighborhoods', neighborhoodRoutes);
 app.use('/api/ranks', rankRoutes);
 app.use('/api/police-officers', policeOfficerRoutes);
 app.use('/api/cases', caseRoutes);
@@ -98,6 +97,13 @@ const start = async () => {
   try {
     await testConnection();
     await connectMongoDB();
+    try {
+      console.log('🔄 Running initial CID dashboard cases synchronization...');
+      const syncCount = await syncAllCidCases('system');
+      console.log(`✅ CID cases synchronized successfully: ${syncCount} cases populated.`);
+    } catch (syncErr) {
+      console.error('⚠️ CID dashboard case synchronization failed:', syncErr.message);
+    }
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });

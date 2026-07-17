@@ -15,6 +15,8 @@ const CASE_STATUS_FLOW = {
   CASE_REGISTERED: ['under_investigation'],
   pending_commander_review: ['registered'],
   confirmed_by_ward_commander: ['under_investigation'],
+  confirmed_by_commander: ['under_investigation'],
+  CONFIRMED_BY_COMMANDER: ['under_investigation'],
   under_investigation: ['referred_to_cid', 'ready_for_court', 'forwarded_to_court'],
   referred_to_cid: ['under_investigation', 'ready_for_court', 'forwarded_to_court', 'approved_for_court'],
   referred_cid: ['under_investigation', 'ready_for_court', 'forwarded_to_court', 'approved_for_court'],
@@ -38,6 +40,8 @@ const mapLegacyStatus = (status) => {
   const legacy = {
     CASE_REGISTERED: 'registered',
     confirmed_by_ward_commander: 'registered',
+    confirmed_by_commander: 'registered',
+    CONFIRMED_BY_COMMANDER: 'registered',
     referred_cid: 'referred_to_cid',
     assigned_to_cid: 'referred_to_cid',
     Assigned_To_CID: 'referred_to_cid',
@@ -84,13 +88,13 @@ const buildAssignableOfficerScope = (user) => {
   if (!scopeType || !scopeId) return { clause: '1=0', params };
 
   if (scopeType === 'district') {
-    params.push('District', scopeId);
+    params.push('District', 'District Station', scopeId);
     return {
       clause: `EXISTS (
         SELECT 1 FROM officer_assignments oa
         WHERE oa.officer_id = po.id
           AND oa.is_current = 1
-          AND oa.assignment_type = ?
+          AND oa.assignment_type IN (?, ?)
           AND oa.assignment_id = ?
       )`,
       params,
@@ -213,7 +217,8 @@ const getCaseById = async (req, res, next) => {
               r.region_name,
               ci.city_name,
               d.district_name,
-              d.district_name AS station_name
+              d.district_name AS station_name,
+              dc.full_name AS station_commander_name
        FROM cases c
        LEFT JOIN police_officers o ON c.assigned_officer_id = o.id
        LEFT JOIN ob_entries ob ON c.ob_entry_id = ob.id
@@ -221,6 +226,7 @@ const getCaseById = async (req, res, next) => {
        LEFT JOIN regions r ON c.region_id = r.id
        LEFT JOIN cities ci ON c.city_id = ci.id
        LEFT JOIN districts d ON c.district_id = d.id
+       LEFT JOIN police_officers dc ON d.commander_officer_id = dc.id
        WHERE c.id = ?
          AND (
            ${scope.clause}
@@ -638,8 +644,8 @@ const getCaseStats = async (req, res, next) => {
       `SELECT COUNT(*) AS \`total\`,
               SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) AS \`draft\`,
               SUM(CASE WHEN status='pending_commander_review' THEN 1 ELSE 0 END) AS \`pending_review\`,
-              SUM(CASE WHEN status='confirmed_by_ward_commander' THEN 1 ELSE 0 END) AS \`confirmed\`,
-              SUM(CASE WHEN status IN ('confirmed_by_ward_commander', 'under_investigation', 'referred_cid', 'transferred', 'reassigned') THEN 1 ELSE 0 END) AS \`active\`,
+              SUM(CASE WHEN status IN ('confirmed_by_ward_commander', 'confirmed_by_commander', 'CONFIRMED_BY_COMMANDER') THEN 1 ELSE 0 END) AS \`confirmed\`,
+              SUM(CASE WHEN status IN ('confirmed_by_ward_commander', 'confirmed_by_commander', 'CONFIRMED_BY_COMMANDER', 'under_investigation', 'referred_cid', 'transferred', 'reassigned') THEN 1 ELSE 0 END) AS \`active\`,
               SUM(CASE WHEN status='under_investigation' THEN 1 ELSE 0 END) AS \`under_investigation\`,
               SUM(CASE WHEN status='referred_cid' THEN 1 ELSE 0 END) AS \`referred_cid\`,
               SUM(CASE WHEN status='referred_to_court' THEN 1 ELSE 0 END) AS \`referred_to_court\`,

@@ -104,7 +104,7 @@ export default function StationManagementPage() {
           <Button icon={<EditOutlined />} onClick={() => handleOpenModal(record)} disabled={!canEditStations} />
           <Popconfirm
             title="Delete station?"
-            description="Only stations without cases, Waax stations, or assigned officers can be deleted."
+            description="Only stations without active cases or assigned officers can be deleted."
             okText="Delete"
             okButtonProps={{ danger: true }}
             onConfirm={() => handleDelete(record)}

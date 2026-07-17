@@ -20,12 +20,10 @@ export default function DashboardIndexPage() {
     const roleRedirects = {
       admin: '/dashboard/admin',
       officer: '/dashboard/officer',
-      ward_commander: '/dashboard/ward_commander',
       state_admin: '/dashboard/unit',
       region_admin: '/dashboard/unit',
       city_admin: '/dashboard/unit',
       district_admin: '/dashboard/unit',
-      neighborhood_admin: '/dashboard/unit',
       cid: '/dashboard/cid',
       cid_director: '/dashboard/cid',
       cid_supervisor: '/dashboard/cid',

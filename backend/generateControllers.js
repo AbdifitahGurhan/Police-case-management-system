@@ -1,8 +1,7 @@
 const fs = require('fs');
 const tiers = [
   { name: 'City', table: 'cities', fk: 'region_id', fkTable: 'regions', scopeName: 'city', parentScope: 'region' },
-  { name: 'District', table: 'districts', fk: 'city_id', fkTable: 'cities', scopeName: 'district', parentScope: 'city' },
-  { name: 'Neighborhood', table: 'neighborhoods', fk: 'district_id', fkTable: 'districts', scopeName: 'neighborhood', parentScope: 'district' }
+  { name: 'District', table: 'districts', fk: 'city_id', fkTable: 'cities', scopeName: 'district', parentScope: 'city' }
 ];
 
 tiers.forEach(t => {

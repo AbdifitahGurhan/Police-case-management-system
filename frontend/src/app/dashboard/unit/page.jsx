@@ -283,16 +283,15 @@ function GenericUnitDashboard({ user }) {
       case 'state_admin': return 'State Administration';
       case 'city_admin': return 'City Command';
       case 'district_admin': return 'District Command';
-      case 'neighborhood_admin': return 'Neighborhood Sub-Station';
       default: return 'Administrative Unit';
     }
   };
 
-  const hasChildren = user?.role !== 'neighborhood_admin';
+  const hasChildren = user?.role !== 'district_admin';
 
   return (
     <StandardDashboard
-      allowedRoles={['state_admin', 'city_admin', 'district_admin', 'neighborhood_admin']}
+      allowedRoles={['state_admin', 'city_admin', 'district_admin']}
       eyebrow={formatUnitType(user?.role)}
       title={`${user?.fullName || 'Unit'} Dashboard`}
       subtitle="Scope management, supervision, and operational visibility for your jurisdiction."
@@ -338,7 +337,7 @@ export default function UnitDashboardPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={['state_admin', 'city_admin', 'district_admin', 'neighborhood_admin', 'region_admin']}>
+    <ProtectedRoute allowedRoles={['state_admin', 'city_admin', 'district_admin', 'region_admin']}>
       <GenericUnitDashboard user={user} />
     </ProtectedRoute>
   );

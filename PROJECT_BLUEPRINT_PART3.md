@@ -22,6 +22,9 @@ The React frontend uses Next.js App Router for nested directory structures:
 * `src/app/police-officers/page.jsx`: Roster of police officers.
 * `src/app/reports/page.jsx`: Statistics, audits, and reports overview.
 
+#### 4.1.1. Offender/Suspect Photo Rendering Rule
+* Offender/suspect records with no photo (`photo_url`, `offender_photo`, or `face_capture_image` all `NULL`) must render a generic fallback avatar (icon or initials-based) in every view — Offenders list, suspect cards, and case details. No stock or downloaded images are ever used as photo placeholders.
+
 ---
 
 ### 4.2. Context Mappings (Context API)

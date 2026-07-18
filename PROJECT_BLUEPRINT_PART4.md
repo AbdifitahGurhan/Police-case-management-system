@@ -125,15 +125,22 @@ Coordinates medical logs, booking notes, visitors, and releases.
 
 Coordinates scheduling hearings, court actions, and sentencing entries.
 
-| Method | Path | Controller Method | Middleware | Auth Required | Roles Allowed | Description |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **GET** | `/cases` | `getCourtCases` | `authMiddleware`, `allowRoles` | Yes | `admin`, `court`, `judge`, `prosecutor` | Lists all court-referred cases. |
-| **GET** | `/cases/:id` | `getCourtCaseById` | `authMiddleware`, `allowRoles` | Yes | Same as GET `/cases` | Fetches details of a court case. |
-| **POST** | `/cases` | `registerCourtCase` | `authMiddleware`, `allowRoles` | Yes | `admin`, `court`, `prosecutor` | Files a case with the court. |
-| **POST** | `/hearings` | `scheduleHearing` | `authMiddleware`, `allowRoles` | Yes | `admin`, `court` | Schedules a new hearing. |
-| **POST** | `/proceedings` | `recordProceeding` | `authMiddleware`, `allowRoles` | Yes | `admin`, `court`, `judge` | Logs court proceedings and judge remarks. |
-| **POST** | `/judgments` | `recordJudgment` | `authMiddleware`, `allowRoles` | Yes | `admin`, `judge` | Records the final judgment of the court. |
-| **POST** | `/sentences` | `recordSentence` | `authMiddleware`, `allowRoles` | Yes | `admin`, `judge` | Records sentences (fines/imprisonment). |
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| **GET** | `/api/court/cases` | Lists all court-referred cases |
+| **GET** | `/api/court/cases/:id` | Court case detail |
+| **GET** | `/api/court/dashboard` | Court dashboard metrics/status counts |
+| **GET** | `/api/court/notifications` | Court notifications |
+| **GET** | `/api/court/calendar` | Hearings calendar (supports date_range, court_room, case_status filters) |
+| **GET** | `/api/court/personnel` | Court personnel list (judges etc.) |
+| **POST** | `/api/court/cases` | Files a case with the court |
+| **POST** | `/api/court/cases/:id/hearings` | Schedules a hearing for a case |
+| **POST** | `/api/court/hearings/:hearingId/proceedings` | Logs proceedings/judge remarks for a hearing |
+| **POST** | `/api/court/cases/:id/judgments` | Records the judgment |
+| **POST** | `/api/court/cases/:id/sentences` | Records the sentence |
+| **POST** | `/api/court/cases/:id/appeals` | Files an appeal |
+| **PATCH** | `/api/court/cases/:id/assign` | Assigns court personnel to a case |
+| **PATCH** | `/api/court/cases/:id/close` | Closes a court case |
 
 ---
 

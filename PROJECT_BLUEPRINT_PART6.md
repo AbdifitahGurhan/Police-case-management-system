@@ -36,15 +36,15 @@ The entry point of information. Digitizes local complaints, converts them into f
 * **Occurrence Book (OB) Entry Conversion**:
   * Status starts at `OB_REGISTERED`.
   * Converting an OB entry creates a matching entry in the `cases` table and updates `ob_entries.status` to `CONVERTED_TO_CASE`.
+  * Converting an OB entry to a case automatically marks the case as referred to CID (creates the `cid_cases` row via `ensureCidCaseForPoliceCase`) at the same time it is set to `under_investigation` — there is no separate manual "refer to CID" step anymore.
 * **Case Status Validation**:
   * Status checks follow `CASE_STATUS_FLOW`:
-    * `draft` -> `registered`
-    * `registered` -> `under_investigation`
-    * `under_investigation` -> `referred_to_cid` OR `ready_for_court` OR `forwarded_to_court`
-    * `referred_to_cid` -> `under_investigation` OR `ready_for_court` OR `forwarded_to_court` OR `approved_for_court`
-    * `ready_for_court` -> `forwarded_to_court` OR `approved_for_court`
-    * `forwarded_to_court` -> `court_decided`
-    * `court_decided` -> `closed` -> `archived`
+    * `draft` → `registered` → `referred_to_cid` → `under_investigation` → `ready_for_court` → `forwarded_to_court` → `court_decided` → `closed`
+  * Allowed Transitions:
+    * `registered` → `referred_to_cid` | `under_investigation`
+    * `referred_to_cid` → `under_investigation`
+    * `under_investigation` → `ready_for_court` | `forwarded_to_court` | `referred_to_cid`
+  * The assigned CID officer must still acknowledge the case before updating investigation notes — that gate is unchanged.
 * **Date validation**: Incident time must be at least one hour in the past (`validateIncidentDate`).
 
 ---
@@ -97,6 +97,14 @@ Coordinates prisoner bookings, facility transfers, visitor logs, medical histori
     4. `prison_confirmed`: Confirmed by the prison supervisor.
     5. `certificate_generated`: The system generates a certificate number: `REL-[YEAR]-[APPROVAL_ID_PADDED]`.
     6. `released`: Prisoner record is closed.
+* **Arrest Status Derivation**:
+  * `criminals.is_arrested` and `criminals.arrest_status` are derived from the criminal's most recent/active `arrests.sentence_status` record, and must always be kept in sync automatically whenever an arrest is recorded or updated — never edited independently:
+    | `arrests.sentence_status` | `is_arrested` | `arrest_status` |
+    |---|---|---|
+    | `awaiting_trial`, `sentenced`, `serving`, `release_review` | 1 | `arrested` |
+    | `wanted`, `escaped` | 1 | `wanted` |
+    | `released`, `completed`, `acquitted`, `dismissed` | 0 | `released` |
+    | (no arrest record) | 0 | `not_arrested` |
 
 ---
 

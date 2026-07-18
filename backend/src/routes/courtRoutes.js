@@ -36,8 +36,8 @@ router.patch('/cases/:id/assign', allowRoles(...COURT_ADMIN_ROLES), assignCourtC
 router.post('/cases/:id/hearings', allowRoles(...COURT_WRITE_ROLES), scheduleHearing);
 router.patch('/hearings/:hearingId', allowRoles(...COURT_WRITE_ROLES), updateHearing);
 router.post('/hearings/:hearingId/proceedings', allowRoles(...COURT_WRITE_ROLES), addProceeding);
-router.post('/cases/:id/judgments', allowRoles(...COURT_ADMIN_ROLES), saveJudgment);
-router.post('/cases/:id/sentences', allowRoles(...COURT_ADMIN_ROLES), issueSentence);
+router.post('/cases/:id/judgments', allowRoles(...COURT_ADMIN_ROLES, 'judge'), saveJudgment);
+router.post('/cases/:id/sentences', allowRoles(...COURT_ADMIN_ROLES, 'judge'), issueSentence);
 router.post('/cases/:id/appeals', allowRoles(...COURT_WRITE_ROLES), registerAppeal);
 router.patch('/cases/:id/close', allowRoles(...COURT_ADMIN_ROLES), closeCourtCase);
 

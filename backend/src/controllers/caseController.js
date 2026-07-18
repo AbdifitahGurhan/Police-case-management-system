@@ -11,15 +11,15 @@ const { ensureCidCaseForPoliceCase } = require('../services/cidService');
 
 const CASE_STATUS_FLOW = {
   draft: ['registered'],
-  registered: ['under_investigation'],
-  CASE_REGISTERED: ['under_investigation'],
+  registered: ['referred_to_cid', 'under_investigation'],
+  CASE_REGISTERED: ['referred_to_cid', 'under_investigation'],
   pending_commander_review: ['registered'],
   confirmed_by_ward_commander: ['under_investigation'],
   confirmed_by_commander: ['under_investigation'],
   CONFIRMED_BY_COMMANDER: ['under_investigation'],
-  under_investigation: ['referred_to_cid', 'ready_for_court', 'forwarded_to_court'],
   referred_to_cid: ['under_investigation', 'ready_for_court', 'forwarded_to_court', 'approved_for_court'],
   referred_cid: ['under_investigation', 'ready_for_court', 'forwarded_to_court', 'approved_for_court'],
+  under_investigation: ['referred_to_cid', 'ready_for_court', 'forwarded_to_court'],
   ready_for_court: ['forwarded_to_court', 'approved_for_court'],
   forwarded_to_court: ['approved_for_court', 'court_decided'],
   approved_for_court: ['court_decided'],
@@ -163,8 +163,9 @@ const buildLinkedObScopeExists = (user) => {
 /** GET /api/cases — List cases */
 const getCases = async (req, res, next) => {
   try {
-    const { status, priority, search, page = 1, limit = 20 } = req.query;
+    const { status, priority, search, district_id, station_id, page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
+    const stationFilter = district_id || station_id;
 
     const scope = buildScopeWhere(req.user, 'c');
     let whereClause = scope.clause;
@@ -172,17 +173,21 @@ const getCases = async (req, res, next) => {
 
     if (status) { whereClause += ' AND c.status = ?'; params.push(status); }
     if (priority) { whereClause += ' AND c.priority = ?'; params.push(priority); }
+    if (stationFilter) { whereClause += ' AND c.district_id = ?'; params.push(stationFilter); }
     if (search) {
-      whereClause += ' AND (c.ob_number LIKE ? OR c.title LIKE ? OR c.incident_location LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      whereClause += ' AND (c.ob_number LIKE ? OR c.case_number LIKE ? OR COALESCE(c.title, c.case_title) LIKE ? OR c.incident_location LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     const [rows] = await db.query(
-      `SELECT c.id, c.case_number, c.ob_number, c.title, c.status, c.priority,
-              c.incident_date, c.incident_location, c.created_at,
-              c.original_ob_staff_name, p.full_name AS officer_name
+      `SELECT c.id, c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
+              c.case_type, c.incident_type, c.status, c.priority,
+              c.incident_date, c.incident_location, c.created_at, c.district_id,
+              c.original_ob_staff_name, p.full_name AS officer_name,
+              d.district_name AS station_name
        FROM cases c
        LEFT JOIN police_officers p ON c.assigned_officer_id = p.id
+       LEFT JOIN districts d ON c.district_id = d.id
        WHERE ${whereClause}
        ORDER BY c.created_at DESC
        LIMIT ? OFFSET ?`,
@@ -193,7 +198,16 @@ const getCases = async (req, res, next) => {
       `SELECT COUNT(*) AS total FROM cases c WHERE ${whereClause}`, params
     );
 
-    res.json({ success: true, data: rows, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } });
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit)),
+      },
+    });
   } catch (err) { next(err); }
 };
 
@@ -625,12 +639,79 @@ const exportCasePackage = async (req, res, next) => {
   }
 };
 
-/** POST /api/cases/:id/court-decision - Court outcomes are handled outside this police system */
-const recordCourtDecision = async (req, res) => {
-  return res.status(410).json({
-    success: false,
-    message: 'Court judgment, sentencing, prison transfer, and appeal processes are not managed here. Use Court Referral only.',
-  });
+/** POST /api/cases/:id/court-decision - Record judicial trial outcomes */
+const recordCourtDecision = async (req, res, next) => {
+  try {
+    const caseId = req.params.id;
+    const { decision, notes } = req.body;
+
+    if (!decision) {
+      return res.status(400).json({ success: false, message: 'Decision is required.' });
+    }
+
+    const [[existing]] = await db.query('SELECT * FROM cases WHERE id = ?', [caseId]);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Case not found.' });
+    }
+
+    const nextStatus = `court_${decision}`;
+
+    // Update case status
+    await db.query('UPDATE cases SET status = ? WHERE id = ?', [nextStatus, caseId]);
+
+    // Insert case action log
+    await db.query(
+      `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        caseId,
+        req.user.username,
+        'COURT_DECISION',
+        notes || `Court decision recorded: ${decision}.`,
+        nextStatus
+      ]
+    );
+
+    // Update arrest table if exists
+    const [arrests] = await db.query('SELECT * FROM arrests WHERE case_id = ?', [caseId]);
+    if (arrests.length > 0) {
+      await db.query(
+        `UPDATE arrests 
+         SET court_decision = ?, court_decision_notes = ?, sentence_status = ? 
+         WHERE case_id = ?`,
+        [
+          decision,
+          notes || null,
+          decision === 'convicted' ? 'sentenced' : (decision === 'acquitted' ? 'acquitted' : 'dismissed'),
+          caseId
+        ]
+      );
+    }
+
+    const [[updatedCase]] = await db.query('SELECT * FROM cases WHERE id = ?', [caseId]);
+
+    // Write audit log
+    await writeAuditLog({
+      userId: req.user.username,
+      userEmail: req.user.email,
+      action: 'RECORD_COURT_DECISION',
+      entityType: 'cases',
+      entityId: Number(caseId),
+      oldData: existing,
+      newData: updatedCase,
+      ipAddress: req.ip,
+      userAgent: req.get?.('user-agent') || null,
+    });
+
+    res.json({
+      success: true,
+      message: 'Court decision recorded successfully.',
+      status: nextStatus,
+      case: updatedCase
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 /** GET /api/cases/stats — Dashboard stats */

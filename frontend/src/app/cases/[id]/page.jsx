@@ -5,16 +5,17 @@ import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
   Row, Col, Card, Typography, Space, Tag, Button, Tabs, Descriptions,
   Timeline, Table, Modal, Form, Input, Select, Upload, Divider, App,
-  DatePicker, Alert
+  DatePicker, Alert, Avatar
 } from 'antd';
 import {
   ArrowLeftOutlined, EditOutlined, ShareAltOutlined, PlusOutlined,
   UserAddOutlined, SolutionOutlined, FileAddOutlined, HistoryOutlined,
-  EnvironmentOutlined, DownloadOutlined, TeamOutlined
+  EnvironmentOutlined, DownloadOutlined, TeamOutlined, UserOutlined
 } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import CaseStatusTag from '@/components/shared/CaseStatusTag';
+import CaseStatusStepper from '@/components/shared/CaseStatusStepper';
 import HashVerifier from '@/components/shared/HashVerifier';
 import dayjs from 'dayjs';
 import Link from 'next/link';
@@ -114,12 +115,16 @@ export default function CaseDetailsPage() {
   };
 
   useEffect(() => {
-    const allowedRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
+    const allowedRoles = [
+      'admin', 'staff', 'officer', 'district_admin',
+      'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
+      'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
+      'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',
+    ];
     if (id && !authLoading && user && allowedRoles.includes(user.role)) {
       fetchCaseDetails();
       fetchTransferHistory();
       fetchGeography();
-      // Only fetch assignable officers if user has the right role
       const assignRoles = ['admin', 'district_commander', 'police_station_commander', 'district_admin'];
       if (assignRoles.includes(user.role)) {
         fetchAssignableOfficers();
@@ -525,32 +530,86 @@ export default function CaseDetailsPage() {
   const canAddWitness = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
   const caseEndedAtCourtReferral = data.status === 'referred_to_court';
 
-  const referralTab = (
-    <Space orientation="vertical" style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4}>Case Referrals</Title>
-        {canReferCase && !caseEndedAtCourtReferral && (
-          <Button
-            type="primary"
-            icon={<ShareAltOutlined />}
-            onClick={() => setIsReferralModalOpen(true)}
-          >
-            Refer Case
+  const transfersTab = (
+    <Space orientation="vertical" style={{ width: '100%' }} size="large">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Title level={4} style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Transfers</Title>
+        {canTransferCase && !caseEndedAtCourtReferral && (
+          <Button icon={<EnvironmentOutlined />} onClick={() => setIsTransferModalOpen(true)}>
+            Transfer case
           </Button>
         )}
       </div>
-      <Table
-        dataSource={data.referrals}
-        rowKey={(record) => `referral-${record.id || `${record.referred_to_role}-${record.referred_at}`}`}
-        scroll={{ x: 'max-content' }}
-        columns={[
-          { title: 'Date', dataIndex: 'referred_at', render: d => dayjs(d).format('DD MMM YYYY') },
-          { title: 'To', dataIndex: 'referred_to_role', render: r => <Tag color="purple">{r.toUpperCase()}</Tag> },
-          { title: 'By', dataIndex: 'referred_by_name' },
-          { title: 'Status', dataIndex: 'status', render: s => <Tag color={s === 'pending' ? 'orange' : 'green'}>{s.toUpperCase()}</Tag> },
-          { title: 'Reason', dataIndex: 'reason' },
-        ]}
-      />
+      {transferHistory.length === 0 ? (
+        <Text type="secondary">No transfer history.</Text>
+      ) : (
+        <Timeline
+          items={transferHistory.map((t, index) => ({
+            key: `transfer-${t.id || index}`,
+            content: (
+              <>
+                <Text strong>{String(t.transfer_type || '').replaceAll('_', ' ')} transfer</Text>
+                {' '}to {t.to_region_name || t.to_district_name || 'new location'}
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  By {t.transferred_by_name} on {dayjs(t.transferred_at).format('DD MMM YYYY HH:mm')}
+                </Text>
+                <br />
+                <Text italic style={{ display: 'block', marginTop: 4 }}>Reason: {t.transfer_reason}</Text>
+              </>
+            ),
+          }))}
+        />
+      )}
+    </Space>
+  );
+
+  const courtStatusTab = (
+    <Space orientation="vertical" style={{ width: '100%' }} size="large">
+      <Title level={4} style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Court status</Title>
+      <CaseStatusStepper status={data.status} />
+      <Descriptions bordered column={1} size="small">
+        <Descriptions.Item label="Current status">
+          <CaseStatusTag status={data.status} />
+        </Descriptions.Item>
+        <Descriptions.Item label="Court-ready">
+          {['ready_for_court', 'approved_for_court', 'forwarded_to_court', 'referred_to_court', 'court_decided'].includes(data.status)
+            ? 'Yes'
+            : 'Not yet'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Allowed next steps">
+          {(data.allowed_next_statuses || []).length
+            ? data.allowed_next_statuses.map((s) => (
+              <Tag key={s} className="status-tag status-tag--neutral" style={{ marginBottom: 4 }}>
+                {String(s).replaceAll('_', ' ')}
+              </Tag>
+            ))
+            : 'No further transitions'}
+        </Descriptions.Item>
+      </Descriptions>
+      <Card size="small" title="Court referrals" className="standard-panel">
+        <Table
+          size="small"
+          pagination={false}
+          rowKey={(r) => `court-ref-${r.id}`}
+          dataSource={(data.referrals || []).filter((r) => String(r.referred_to_role || '').toLowerCase().includes('court'))}
+          locale={{ emptyText: 'No court referrals yet' }}
+          columns={[
+            { title: 'Date', dataIndex: 'referred_at', render: (d) => dayjs(d).format('DD MMM YYYY') },
+            { title: 'By', dataIndex: 'referred_by_name' },
+            { title: 'Status', dataIndex: 'status', render: (s) => <Tag className="status-tag status-tag--pending">{s}</Tag> },
+            { title: 'Reason', dataIndex: 'reason', ellipsis: true },
+          ]}
+        />
+      </Card>
+      {canReferCase && !caseEndedAtCourtReferral && (
+        <Button type="primary" icon={<ShareAltOutlined />} onClick={() => {
+          referralForm.setFieldsValue({ referred_to_role: 'court' });
+          setIsReferralModalOpen(true);
+        }}>
+          Refer to court
+        </Button>
+      )}
     </Space>
   );
 
@@ -636,7 +695,9 @@ export default function CaseDetailsPage() {
             render: (src, record) => src ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={`${src}`.startsWith('/uploads') ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5001'}${src}` : src} alt={record.full_name} style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 6 }} />
-            ) : <Tag>Not Captured</Tag>
+            ) : (
+              <Avatar size={52} icon={<UserOutlined />} />
+            )
           },
           { title: 'Full Name', dataIndex: 'full_name', render: (t, r) => <Typography.Text strong>{t} {r.alias && `(${r.alias})`}</Typography.Text> },
           { title: 'Gender', dataIndex: 'gender' },
@@ -669,49 +730,40 @@ export default function CaseDetailsPage() {
     </Space>
   );
 
-  const timelineTab = (
-    <div style={{ padding: '20px 0' }}>
-      <Timeline
-        mode="start"
-        items={data.actions.map((action, index) => ({
-          key: `action-${action.id || index}`,
-          title: dayjs(action.created_at).format('DD MMM YYYY HH:mm'),
-          content: (
-            <Space orientation="vertical">
-              <Typography.Text strong>{action.action_type.replace('_', ' ')}</Typography.Text>
-              <Typography.Text type="secondary">{action.description}</Typography.Text>
-              <Typography.Text size="small">By: {action.performed_by_name}</Typography.Text>
-            </Space>
-          ),
-          color: action.action_type === 'CASE_CREATED' ? 'green' : 'blue'
-        }))}
-      />
-    </div>
-  );
-
   return (
-    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander']}>
+    <ProtectedRoute allowedRoles={[
+      'admin', 'staff', 'officer', 'district_admin',
+      'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
+      'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
+      'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',
+    ]}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <Space orientation="vertical">
             <Link href="/cases">
-              <Button type="text" icon={<ArrowLeftOutlined />}>Return to Case Inventory</Button>
+              <Button type="text" icon={<ArrowLeftOutlined />}>Back to cases</Button>
             </Link>
-            <Space align="center">
-              <Title level={2} style={{ margin: 0 }}>Case Profile: {data.ob_number}</Title>
+            <Space align="center" wrap>
+              <Title level={2} style={{ margin: 0, fontSize: 20, fontWeight: 500 }}>
+                {data.case_number || data.ob_number}
+              </Title>
               <CaseStatusTag status={data.status} />
             </Space>
-            <Text type="secondary">Registered by {data.officer_name} ({data.officer_badge}) at {data.station_name}</Text>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              {data.title || 'Untitled case'}
+              {data.station_name ? ` · ${data.station_name}` : ''}
+              {data.officer_name ? ` · ${data.officer_name}` : ''}
+            </Text>
           </Space>
 
-          <Space>
+          <Space wrap>
             {canSubmitForReview && data.status === 'draft' && (
-              <Button type="primary" onClick={submitForReview}>Submit for Review</Button>
+              <Button type="primary" onClick={submitForReview}>Submit for review</Button>
             )}
 
             {canReviewCase && data.status === 'pending_commander_review' && (
               <Space>
-                <Button type="primary" color="success" variant="solid" onClick={() => handleConfirmation('confirmed', 'Verified.')}>Confirm Case</Button>
+                <Button type="primary" onClick={() => handleConfirmation('confirmed', 'Verified.')}>Confirm case</Button>
                 <Button onClick={() => handleConfirmation('returned', 'Correction needed.')}>Return</Button>
                 <Button danger onClick={() => handleConfirmation('rejected', 'Rejected.')}>Reject</Button>
               </Space>
@@ -726,7 +778,7 @@ export default function CaseDetailsPage() {
                   setIsAssignmentModalOpen(true);
                 }}
               >
-                Assign Officer
+                Assign officer
               </Button>
             )}
             {canUpdateStatus && !caseEndedAtCourtReferral && (
@@ -737,109 +789,107 @@ export default function CaseDetailsPage() {
                   setIsStatusModalOpen(true);
                 }}
               >
-                Update Status
+                Update status
               </Button>
             )}
-            <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('case-package')}>Export Package</Button>
-            {canReferCase && !caseEndedAtCourtReferral && <Button type="primary" icon={<ShareAltOutlined />} onClick={() => setIsReferralModalOpen(true)}>Refer Case</Button>}
+            <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('case-package')}>Export package</Button>
+            {canReferCase && !caseEndedAtCourtReferral && <Button type="primary" icon={<ShareAltOutlined />} onClick={() => setIsReferralModalOpen(true)}>Refer case</Button>}
           </Space>
         </div>
 
+        <Card variant="none" className="standard-panel" style={{ marginBottom: 0 }}>
+          <CaseStatusStepper status={data.status} />
+        </Card>
+
         <Row gutter={[24, 24]}>
           <Col xs={24} lg={16}>
-            <Card variant="none">
+            <Card variant="none" className="standard-panel">
               <Tabs
-                defaultActiveKey="details"
+                defaultActiveKey="overview"
                 items={[
                   {
-                    key: 'details', label: 'Overview', children: (
+                    key: 'overview',
+                    label: 'Overview',
+                    children: (
                       <Space orientation="vertical" style={{ width: '100%' }} size="large">
-                        <Descriptions title="Incident Particulars" bordered column={1}>
-                          <Descriptions.Item label="Case Number">{data.case_number || data.id}</Descriptions.Item>
-                          <Descriptions.Item label="Subject / Nature">{data.title}</Descriptions.Item>
-                          <Descriptions.Item label="Category">{data.case_type}</Descriptions.Item>
-                          <Descriptions.Item label="Incident Type">{data.incident_type || data.title}</Descriptions.Item>
-                          <Descriptions.Item label="Priority"><Tag>{data.priority?.toUpperCase()}</Tag></Descriptions.Item>
-                          <Descriptions.Item label="Incident Date">{dayjs(data.incident_date).format('DD MMM YYYY')}</Descriptions.Item>
-                          <Descriptions.Item label="Location">{data.incident_location}</Descriptions.Item>
-                          <Descriptions.Item label="Occurrence Details">
-                            <Paragraph>{data.description}</Paragraph>
+                        <Descriptions title="Incident particulars" bordered column={1} size="small">
+                          <Descriptions.Item label="Case number">{data.case_number || data.id}</Descriptions.Item>
+                          <Descriptions.Item label="Subject">{data.title}</Descriptions.Item>
+                          <Descriptions.Item label="Category">{data.case_type || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Incident type">{data.incident_type || data.title}</Descriptions.Item>
+                          <Descriptions.Item label="Priority">
+                            <Tag className={`status-tag status-tag--${data.priority === 'critical' ? 'critical' : data.priority === 'high' ? 'warning' : 'neutral'}`}>
+                              {data.priority || '—'}
+                            </Tag>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Incident date">
+                            {data.incident_date ? dayjs(data.incident_date).format('DD MMM YYYY HH:mm') : '—'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Location">{data.incident_location || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Occurrence details">
+                            <Paragraph style={{ marginBottom: 0 }}>{data.description || '—'}</Paragraph>
                           </Descriptions.Item>
                         </Descriptions>
 
-                        <Descriptions title="Linked OB Information" bordered column={1}>
-                          <Descriptions.Item label="Linked OB Number">{data.ob_number}</Descriptions.Item>
-                          <Descriptions.Item label="Original OB Staff">{data.ob_registered_by_name || data.original_ob_staff_name || 'N/A'}</Descriptions.Item>
-                          <Descriptions.Item label="OB Registration Date">
-                            {data.ob_registration_date ? `${dayjs(data.ob_registration_date).format('DD MMM YYYY')} ${data.ob_registration_time || ''}` : 'N/A'}
+                        <Descriptions title="Linked OB" bordered column={1} size="small">
+                          <Descriptions.Item label="OB number">{data.ob_number || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Original OB staff">{data.ob_registered_by_name || data.original_ob_staff_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="OB registration date">
+                            {data.ob_registration_date ? `${dayjs(data.ob_registration_date).format('DD MMM YYYY')} ${data.ob_registration_time || ''}` : '—'}
                           </Descriptions.Item>
-                          <Descriptions.Item label="State">{data.state_name || 'N/A'}</Descriptions.Item>
-                          <Descriptions.Item label="Region">{data.region_name || 'N/A'}</Descriptions.Item>
-                          <Descriptions.Item label="District Police Station">{data.district_name || 'N/A'}</Descriptions.Item>
+                          <Descriptions.Item label="State">{data.state_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Region">{data.region_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="District station">{data.district_name || '—'}</Descriptions.Item>
                         </Descriptions>
 
-                        <Descriptions title="Complainant Snapshot" bordered column={2}>
-                          <Descriptions.Item label="Full Name">{data.complainant_name}</Descriptions.Item>
-                          <Descriptions.Item label="Phone">{data.complainant_phone}</Descriptions.Item>
+                        <Descriptions title="Complainant" bordered column={2} size="small">
+                          <Descriptions.Item label="Full name">{data.complainant_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Phone">{data.complainant_phone || '—'}</Descriptions.Item>
                         </Descriptions>
 
-                        <div style={{ padding: '16px', border: '1px solid #f0f0f0', borderRadius: '8px', background: '#fafafa' }}>
+                        <div style={{ padding: 16, border: '0.5px solid #2B2B2B', borderRadius: 12, background: '#171717' }}>
                           <HashVerifier entityType="case" entityId={data.id} />
                         </div>
 
-                        <Card title="Transfer & Proof History" size="small">
-                          <Tabs items={[
-                            {
-                              key: 'transfers', label: 'Transfers', children: (
-                                transferHistory.length === 0 ? <Text type="secondary">No transfer history.</Text> : (
-                                  <Timeline items={transferHistory.map((t, index) => ({
-                                    key: `transfer-${t.id || index}`,
-                                    content: (
-                                      <>
-                                        <Text strong>{t.transfer_type.toUpperCase()} Transfer</Text> to {t.to_region_name || 'New Ward'}<br />
-                                        <Text type="secondary" style={{ fontSize: '11px' }}>By {t.transferred_by_name} on {dayjs(t.transferred_at).format('DD MMM YYYY HH:mm')}</Text><br />
-                                        <Text italic style={{ display: 'block', marginTop: 4 }}>Reason: {t.transfer_reason}</Text>
-                                      </>
-                                    )
-                                  }))} />
-                                )
-                              )
-                            },
-                            {
-                              key: 'proofs', label: 'Blockchain Proofs', children: (
-                                <Timeline items={data.actions.filter(a => a.action_type === 'CONFIRMED_BY_COMMANDER' || a.action_type.includes('TRANSFER')).map((a, index) => ({
-                                  key: `proof-${a.id || index}`,
-                                  content: (
-                                    <>
-                                      <Text strong>Integrity Proof Generated</Text><br />
-                                      <Text type="secondary" style={{ fontSize: '11px' }}>Version recorded at {dayjs(a.created_at).format('DD MMM YYYY HH:mm')}</Text>
-                                    </>
-                                  )
-                                }))} />
-                              )
-                            }
-                          ]} />
+                        <Card size="small" title="Activity timeline" className="standard-panel">
+                          <Timeline
+                            items={(data.actions || []).map((action, index) => ({
+                              key: `action-${action.id || index}`,
+                              content: (
+                                <Space orientation="vertical" size={0}>
+                                  <Text strong style={{ fontSize: 13 }}>
+                                    {String(action.action_type || '').replaceAll('_', ' ')}
+                                  </Text>
+                                  <Text type="secondary" style={{ fontSize: 12 }}>{action.description}</Text>
+                                  <Text type="secondary" style={{ fontSize: 11 }}>
+                                    {dayjs(action.created_at).format('DD MMM YYYY HH:mm')}
+                                    {action.performed_by ? ` · ${action.performed_by}` : ''}
+                                  </Text>
+                                </Space>
+                              ),
+                            }))}
+                          />
                         </Card>
                       </Space>
-                    )
+                    ),
                   },
-                  { key: 'suspects', label: `Suspects (${data.suspects.length})`, children: suspectsTab },
-                  { key: 'evidence', label: `Evidence (${data.evidence.length})`, children: evidenceTab },
-                  { key: 'referrals', label: `Referrals (${data.referrals.length})`, children: referralTab },
-                  { key: 'timeline', label: 'History / Audit Log', children: timelineTab },
+                  { key: 'suspects', label: `Suspects (${data.suspects?.length || 0})`, children: suspectsTab },
+                  { key: 'evidence', label: `Evidence (${data.evidence?.length || 0})`, children: evidenceTab },
+                  { key: 'transfers', label: `Transfers (${transferHistory.length})`, children: transfersTab },
+                  { key: 'court', label: 'Court status', children: courtStatusTab },
                 ]}
               />
             </Card>
           </Col>
 
           <Col xs={24} lg={8}>
-            <Card title="Case Assignment" variant="none" style={{ marginBottom: 24 }}>
+            <Card title="Case assignment" variant="none" className="standard-panel" style={{ marginBottom: 24 }}>
               <Descriptions column={1} size="small">
-                <Descriptions.Item label="Region">{data.region_name || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="District">{data.district_name || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Station">{data.station_name}</Descriptions.Item>
-                <Descriptions.Item label="Assigned CID">{data.cid_name || <Text type="secondary">Fatima Abdi Said</Text>}</Descriptions.Item>
-                <Descriptions.Item label="Station Commander">{data.station_commander_name || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Region">{data.region_name || '—'}</Descriptions.Item>
+                <Descriptions.Item label="District">{data.district_name || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Station">{data.station_name || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Assigned officer">{data.officer_name || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Station commander">{data.station_commander_name || '—'}</Descriptions.Item>
               </Descriptions>
               {canAssignCase && !caseEndedAtCourtReferral && (
                 <Button
@@ -851,36 +901,36 @@ export default function CaseDetailsPage() {
                   }}
                   block
                 >
-                  Assign / Reassign Officer
+                  Assign / reassign officer
                 </Button>
               )}
             </Card>
-            <Card title="Documents" variant="none" style={{ marginBottom: 24 }}>
+            <Card title="Documents" variant="none" className="standard-panel" style={{ marginBottom: 24 }}>
               <Space orientation="vertical" style={{ width: '100%' }}>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('case-summary')} block>Case Summary</Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('arrest-warrant')} block>Arrest Warrant</Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('court-referral')} block>Court Referral</Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('release-certificate')} block>Release Certificate</Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('evidence-receipt')} block>Evidence Receipt</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('case-summary')} block>Case summary</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('arrest-warrant')} block>Arrest warrant</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('court-referral')} block>Court referral</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('release-certificate')} block>Release certificate</Button>
+                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('evidence-receipt')} block>Evidence receipt</Button>
               </Space>
             </Card>
 
-            <Card title="Victims & Witnesses" variant="none">
+            <Card title="Victims & witnesses" variant="none" className="standard-panel">
               <Space orientation="vertical" style={{ width: '100%' }}>
-                <Text strong>Victims ({data.victims.length})</Text>
-                {data.victims.length === 0 ? <Text type="secondary" size="small">No victims recorded</Text> :
-                  data.victims.map((v, index) => <Tag key={`victim-${v.id}-${index}`}>{v.full_name}</Tag>)}
+                <Text strong>Victims ({data.victims?.length || 0})</Text>
+                {(data.victims?.length || 0) === 0 ? <Text type="secondary" style={{ fontSize: 12 }}>No victims recorded</Text> :
+                  data.victims.map((v, index) => <Tag key={`victim-${v.id}-${index}`} className="status-tag status-tag--neutral">{v.full_name}</Tag>)}
 
                 <Divider style={{ margin: '12px 0' }} />
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <Text strong>Witness Statements ({data.witnesses.length})</Text>
-                  {canAddWitness && !caseEndedAtCourtReferral && <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => setIsWitnessModalOpen(true)}>Add Statement</Button>}
+                  <Text strong>Witness statements ({data.witnesses?.length || 0})</Text>
+                  {canAddWitness && !caseEndedAtCourtReferral && <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => setIsWitnessModalOpen(true)}>Add statement</Button>}
                 </div>
-                {data.witnesses.length === 0 ? <Text type="secondary" size="small">No statements taken</Text> :
+                {(data.witnesses?.length || 0) === 0 ? <Text type="secondary" style={{ fontSize: 12 }}>No statements taken</Text> :
                   data.witnesses.map((w, index) => (
                     <div key={`witness-${w.id}-${index}`} style={{ marginBottom: 8 }}>
-                      <Text strong style={{ fontSize: '13px' }}>{w.full_name}</Text>
+                      <Text strong style={{ fontSize: 13 }}>{w.full_name}</Text>
                       <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ marginBottom: 0 }}>{w.statement}</Paragraph>
                     </div>
                   ))}

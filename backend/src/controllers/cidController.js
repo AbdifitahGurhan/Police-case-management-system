@@ -194,7 +194,17 @@ const acknowledgeCidCase = async (req, res, next) => {
 const updateInvestigation = async (req, res, next) => {
   try {
     const { investigation_status, findings, recommendations, progress_note } = req.body;
-    const [[oldCase]] = await db.query('SELECT investigation_status, findings, recommendations FROM cid_cases WHERE id = ?', [req.params.id]);
+    const [[oldCase]] = await db.query(
+      'SELECT investigation_status, findings, recommendations, assignment_status FROM cid_cases WHERE id = ?',
+      [req.params.id]
+    );
+    if (!oldCase) return res.status(404).json({ success: false, message: 'CID case not found.' });
+    if (oldCase.assignment_status === 'assigned') {
+      return res.status(400).json({
+        success: false,
+        message: 'Acknowledge the case before updating investigation notes.',
+      });
+    }
     await db.query(
       `UPDATE cid_cases
        SET investigation_status = COALESCE(?, investigation_status),
@@ -222,6 +232,14 @@ const addCrimeScene = async (req, res, next) => {
   try {
     const { location, date_visited, observations, scene_photos, collected_evidence } = req.body;
     if (!location) return res.status(400).json({ success: false, message: 'location is required.' });
+    const [[cidCase]] = await db.query('SELECT assignment_status FROM cid_cases WHERE id = ?', [req.params.id]);
+    if (!cidCase) return res.status(404).json({ success: false, message: 'CID case not found.' });
+    if (cidCase.assignment_status === 'assigned') {
+      return res.status(400).json({
+        success: false,
+        message: 'Acknowledge the case before logging a crime scene.',
+      });
+    }
     const [result] = await db.query(
       `INSERT INTO cid_crime_scenes (cid_case_id, location, date_visited, officer, observations, scene_photos, collected_evidence, created_by)
        VALUES (?, ?, COALESCE(?, CURDATE()), ?, ?, ?, ?, ?)`,

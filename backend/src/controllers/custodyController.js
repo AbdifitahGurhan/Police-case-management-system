@@ -44,7 +44,13 @@ const fileHash = (file) => {
 const getCustodyProfile = async (req, res, next) => {
   try {
     const suspectId = req.params.id;
-    const suspect = await ensureSuspect(suspectId);
+    const [[suspect]] = await db.query(
+      `SELECT s.*,
+              (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count
+       FROM criminals s
+       WHERE s.id = ?`,
+      [suspectId]
+    );
     if (!suspect) return res.status(404).json({ success: false, message: 'Suspect not found.' });
 
     const [biometrics] = await db.query('SELECT * FROM biometric_identifiers WHERE suspect_id = ? ORDER BY captured_at DESC', [suspectId]);
@@ -53,8 +59,23 @@ const getCustodyProfile = async (req, res, next) => {
     const [medical] = await db.query('SELECT * FROM prisoner_medical_records WHERE suspect_id = ? ORDER BY record_date DESC', [suspectId]);
     const [visitors] = await db.query('SELECT * FROM prisoner_visitor_logs WHERE suspect_id = ? ORDER BY visit_date DESC', [suspectId]);
     const [releaseApprovals] = await db.query('SELECT * FROM release_approvals WHERE suspect_id = ? ORDER BY requested_at DESC', [suspectId]);
+    const [arrests] = await db.query(
+      `SELECT a.*,
+              c.ob_number,
+              COALESCE(c.title, c.case_title) AS case_title,
+              d.district_name AS station_name
+       FROM arrests a
+       LEFT JOIN cases c ON c.id = a.case_id
+       LEFT JOIN districts d ON d.id = COALESCE(a.police_station_id, c.district_id)
+       WHERE a.suspect_id = ?
+       ORDER BY a.arrest_date DESC`,
+      [suspectId]
+    );
 
-    res.json({ success: true, data: { suspect, biometrics, documents, transfers, medical, visitors, releaseApprovals } });
+    res.json({
+      success: true,
+      data: { suspect, biometrics, documents, transfers, medical, visitors, releaseApprovals, arrests },
+    });
   } catch (err) { next(err); }
 };
 
@@ -222,21 +243,44 @@ const adminReviewReleaseApproval = async (req, res, next) => {
 
 const prisonConfirmReleaseApproval = async (req, res, next) => {
   try {
-    const { notes } = req.body;
+    const { decision = 'approved', notes } = req.body;
+    if (!['approved', 'rejected'].includes(decision)) {
+      return res.status(400).json({ success: false, message: 'decision must be approved or rejected.' });
+    }
     const approval = await ensureApproval(req.params.id);
     if (!approval) return res.status(404).json({ success: false, message: 'Release request not found.' });
-    if (approval.status !== 'admin_reviewed') return res.status(409).json({ success: false, message: `Prison confirmation requires admin_reviewed status. Current status: ${approval.status}.` });
+    if (approval.status !== 'admin_reviewed') {
+      return res.status(409).json({
+        success: false,
+        message: `Prison confirmation requires admin_reviewed status. Current status: ${approval.status}.`,
+      });
+    }
 
+    const nextStatus = decision === 'approved' ? 'prison_confirmed' : 'rejected';
     await db.query(
       `UPDATE release_approvals
-       SET status = 'prison_confirmed', prison_confirmed_by = ?, prison_confirmed_at = NOW(), prison_confirmation_notes = ?,
+       SET status = ?, prison_confirmed_by = ?, prison_confirmed_at = NOW(), prison_confirmation_notes = ?,
            reviewed_by = ?, reviewed_at = NOW(), review_notes = ?
        WHERE id = ?`,
-      [actor(req), normalizeOptional(notes), actor(req), normalizeOptional(notes), req.params.id]
+      [nextStatus, actor(req), normalizeOptional(notes), actor(req), normalizeOptional(notes), req.params.id]
     );
 
-    await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'PRISON_CONFIRM_RELEASE', entityType: 'release_approvals', entityId: Number(req.params.id), oldData: approval, newData: { notes } });
-    res.json({ success: true, message: 'Prison officer confirmed release readiness. Waiting for court/authority approval.', status: 'prison_confirmed' });
+    await writeAuditLog({
+      userId: actor(req),
+      userEmail: req.user.email || req.user.username,
+      action: decision === 'approved' ? 'PRISON_CONFIRM_RELEASE' : 'PRISON_REJECT_RELEASE',
+      entityType: 'release_approvals',
+      entityId: Number(req.params.id),
+      oldData: approval,
+      newData: { decision, notes },
+    });
+    res.json({
+      success: true,
+      message: decision === 'approved'
+        ? 'Prison officer confirmed release readiness. Waiting for court/authority approval.'
+        : 'Release request rejected by prison officer.',
+      status: nextStatus,
+    });
   } catch (err) { next(err); }
 };
 
@@ -267,42 +311,91 @@ const generateReleaseCertificate = async (req, res, next) => {
     const { notes } = req.body;
     const approval = await ensureApproval(req.params.id);
     if (!approval) return res.status(404).json({ success: false, message: 'Release request not found.' });
-    if (!['court_approved', 'certificate_generated'].includes(approval.status)) {
-      return res.status(409).json({ success: false, message: `Certificate generation requires court_approved status. Current status: ${approval.status}.` });
+
+    // Step 5: court_approved → certificate_generated (issue number, do not release yet)
+    if (approval.status === 'court_approved') {
+      const certificateNumber = generateCertificateNumber(req.params.id);
+      await db.query(
+        `UPDATE release_approvals
+         SET status = 'certificate_generated',
+             certificate_number = ?,
+             certificate_issued_by = ?,
+             certificate_issued_at = NOW(),
+             certificate_notes = ?,
+             reviewed_by = ?, reviewed_at = NOW(), review_notes = COALESCE(?, review_notes)
+         WHERE id = ?`,
+        [certificateNumber, actor(req), normalizeOptional(notes), actor(req), normalizeOptional(notes), req.params.id]
+      );
+      await writeAuditLog({
+        userId: actor(req),
+        userEmail: req.user.email || req.user.username,
+        action: 'GENERATE_RELEASE_CERTIFICATE',
+        entityType: 'release_approvals',
+        entityId: Number(req.params.id),
+        oldData: approval,
+        newData: { certificateNumber, status: 'certificate_generated', notes },
+      });
+      return res.json({
+        success: true,
+        message: 'Release certificate generated. Confirm release to finalize.',
+        status: 'certificate_generated',
+        certificate: {
+          certificate_number: certificateNumber,
+          suspect_name: approval.suspect_name,
+          ob_number: approval.ob_number,
+          case_title: approval.case_title,
+          issued_by: actor(req),
+          issued_at: new Date().toISOString(),
+          notes: notes || null,
+        },
+      });
     }
 
-    const certificateNumber = approval.certificate_number || generateCertificateNumber(req.params.id);
-    await db.query(
-      `UPDATE release_approvals
-       SET status = 'released',
-           certificate_number = ?,
-           certificate_issued_by = COALESCE(certificate_issued_by, ?),
-           certificate_issued_at = COALESCE(certificate_issued_at, NOW()),
-           certificate_notes = COALESCE(?, certificate_notes),
-           reviewed_by = ?, reviewed_at = NOW(), review_notes = COALESCE(?, review_notes)
-       WHERE id = ?`,
-      [certificateNumber, actor(req), normalizeOptional(notes), actor(req), normalizeOptional(notes), req.params.id]
-    );
-    await db.query(
-      "UPDATE arrests SET sentence_status = 'released', actual_release_date = COALESCE(actual_release_date, CURDATE()), final_status = COALESCE(?, final_status) WHERE id = ?",
-      [`Released with certificate ${certificateNumber}`, approval.arrest_id]
-    );
-    await db.query('UPDATE criminals SET is_arrested = 0 WHERE id = ?', [approval.suspect_id]);
+    // Step 6: certificate_generated → released
+    if (approval.status === 'certificate_generated') {
+      const certificateNumber = approval.certificate_number || generateCertificateNumber(req.params.id);
+      await db.query(
+        `UPDATE release_approvals
+         SET status = 'released',
+             certificate_number = COALESCE(certificate_number, ?),
+             reviewed_by = ?, reviewed_at = NOW(), review_notes = COALESCE(?, review_notes)
+         WHERE id = ?`,
+        [certificateNumber, actor(req), normalizeOptional(notes), req.params.id]
+      );
+      await db.query(
+        "UPDATE arrests SET sentence_status = 'released', actual_release_date = COALESCE(actual_release_date, CURDATE()), final_status = COALESCE(?, final_status) WHERE id = ?",
+        [`Released with certificate ${certificateNumber}`, approval.arrest_id]
+      );
+      await db.query("UPDATE criminals SET is_arrested = 0, arrest_status = 'released' WHERE id = ?", [approval.suspect_id]);
 
-    await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'GENERATE_RELEASE_CERTIFICATE', entityType: 'release_approvals', entityId: Number(req.params.id), oldData: approval, newData: { certificateNumber, notes } });
-    res.json({
-      success: true,
-      message: 'Release certificate generated. Final status: Released.',
-      status: 'released',
-      certificate: {
-        certificate_number: certificateNumber,
-        suspect_name: approval.suspect_name,
-        ob_number: approval.ob_number,
-        case_title: approval.case_title,
-        issued_by: actor(req),
-        issued_at: new Date().toISOString(),
-        notes: notes || null,
-      },
+      await writeAuditLog({
+        userId: actor(req),
+        userEmail: req.user.email || req.user.username,
+        action: 'FINALIZE_RELEASE',
+        entityType: 'release_approvals',
+        entityId: Number(req.params.id),
+        oldData: approval,
+        newData: { certificateNumber, status: 'released', notes },
+      });
+      return res.json({
+        success: true,
+        message: 'Prisoner released. Final status: Released.',
+        status: 'released',
+        certificate: {
+          certificate_number: certificateNumber,
+          suspect_name: approval.suspect_name,
+          ob_number: approval.ob_number,
+          case_title: approval.case_title,
+          issued_by: approval.certificate_issued_by || actor(req),
+          issued_at: approval.certificate_issued_at || new Date().toISOString(),
+          notes: notes || approval.certificate_notes || null,
+        },
+      });
+    }
+
+    return res.status(409).json({
+      success: false,
+      message: `Certificate/release requires court_approved or certificate_generated status. Current status: ${approval.status}.`,
     });
   } catch (err) { next(err); }
 };

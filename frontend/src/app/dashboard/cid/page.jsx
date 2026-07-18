@@ -36,6 +36,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import CaseStatusStepper from '@/components/shared/CaseStatusStepper';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 
@@ -47,19 +48,31 @@ const cidRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer
 const supervisorRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison'];
 
 const statusMeta = {
-  open: { label: 'Open', color: 'blue' },
-  under_investigation: { label: 'Under Investigation', color: 'processing' },
-  evidence_collection: { label: 'Evidence Collection', color: 'purple' },
-  witness_interviews: { label: 'Witness Interviews', color: 'cyan' },
-  suspect_tracking: { label: 'Suspect Tracking', color: 'gold' },
-  arrest_made: { label: 'Arrest Made', color: 'volcano' },
-  investigation_completed: { label: 'Investigation Completed', color: 'green' },
-  supervisor_review: { label: 'Supervisor Review', color: 'magenta' },
-  approved: { label: 'Approved', color: 'green' },
-  rejected: { label: 'Rejected', color: 'red' },
-  sent_to_prosecutor: { label: 'Sent to Prosecutor', color: 'geekblue' },
-  sent_to_court: { label: 'Sent to Court', color: 'green' },
+  open: { label: 'Open', tone: 'open' },
+  under_investigation: { label: 'Under investigation', tone: 'pending' },
+  evidence_collection: { label: 'Evidence collection', tone: 'open' },
+  witness_interviews: { label: 'Witness interviews', tone: 'pending' },
+  suspect_tracking: { label: 'Suspect tracking', tone: 'warning' },
+  arrest_made: { label: 'Arrest made', tone: 'critical' },
+  investigation_completed: { label: 'Investigation completed', tone: 'open' },
+  supervisor_review: { label: 'Supervisor review', tone: 'pending' },
+  approved: { label: 'Approved', tone: 'open' },
+  rejected: { label: 'Rejected', tone: 'critical' },
+  sent_to_prosecutor: { label: 'Sent to prosecutor', tone: 'open' },
+  sent_to_court: { label: 'Sent to court', tone: 'open' },
 };
+
+const CID_STATUS_OPTIONS = [
+  'open',
+  'under_investigation',
+  'evidence_collection',
+  'witness_interviews',
+  'suspect_tracking',
+  'arrest_made',
+  'investigation_completed',
+  'supervisor_review',
+  'approved',
+];
 
 const assignmentMeta = {
   assigned: 'Assigned',
@@ -68,8 +81,12 @@ const assignmentMeta = {
   rejected: 'Rejected',
 };
 
-const safe = (value) => value || 'N/A';
-const statusTag = (value) => <Tag color={statusMeta[value]?.color || 'default'}>{statusMeta[value]?.label || safe(value)}</Tag>;
+const safe = (value) => value || '—';
+const statusTag = (value) => (
+  <Tag className={`status-tag status-tag--${statusMeta[value]?.tone || 'neutral'}`}>
+    {statusMeta[value]?.label || safe(value)}
+  </Tag>
+);
 
 export default function CIDDashboard() {
   const { message } = App.useApp();
@@ -110,14 +127,7 @@ export default function CIDDashboard() {
     setDetailLoading(true);
     try {
       const response = await api.get(`/cid/cases/${cidCaseId}`);
-      const detail = response.data.data;
-      if (detail?.cidCase?.assignment_status === 'assigned') {
-        await api.patch(`/cid/cases/${cidCaseId}/acknowledge`);
-        detail.cidCase.assignment_status = 'accepted';
-        setAlerts((current) => current.filter((item) => item.cid_case_id !== cidCaseId));
-        setCases((current) => current.map((item) => item.id === cidCaseId ? { ...item, assignment_status: 'accepted' } : item));
-      }
-      setSelected(detail);
+      setSelected(response.data.data);
       setDrawerOpen(true);
     } catch (error) {
       message.error(error.response?.data?.message || 'Failed to load CID case.');
@@ -125,6 +135,23 @@ export default function CIDDashboard() {
       setDetailLoading(false);
     }
   }, [message]);
+
+  const acknowledgeCase = async () => {
+    const id = selected?.cidCase?.id;
+    if (!id) return;
+    try {
+      await api.patch(`/cid/cases/${id}/acknowledge`);
+      message.success('Case acknowledged.');
+      setAlerts((current) => current.filter((item) => item.cid_case_id !== id));
+      setCases((current) => current.map((item) => (
+        item.id === id ? { ...item, assignment_status: 'accepted' } : item
+      )));
+      await loadDetail(id);
+      await loadDashboard(filters);
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Acknowledge failed.');
+    }
+  };
 
   const openAlertCase = async (item) => {
     await loadDashboard(filters);
@@ -190,20 +217,20 @@ export default function CIDDashboard() {
 
   const stats = dashboard?.stats || {};
   const metrics = [
-    { title: 'Total CID Cases', value: stats.total_cid_cases, icon: <FileSearchOutlined /> },
-    { title: 'Active Investigations', value: stats.active_investigations, icon: <AuditOutlined /> },
-    { title: 'Pending Review', value: stats.pending_investigations, icon: <WarningOutlined /> },
+    { title: 'Total CID cases', value: stats.total_cid_cases, icon: <FileSearchOutlined /> },
+    { title: 'Active investigations', value: stats.active_investigations, icon: <AuditOutlined /> },
+    { title: 'Pending review', value: stats.pending_investigations, icon: <WarningOutlined /> },
     { title: 'Completed', value: stats.completed_investigations, icon: <CheckCircleOutlined /> },
-    { title: 'Evidence Collected', value: stats.evidence_collected, icon: <FileProtectOutlined /> },
-    { title: 'criminals Identified', value: stats.criminals_identified, icon: <TeamOutlined /> },
-    { title: 'Arrested criminals', value: stats.arrested_criminals, icon: <UserSwitchOutlined /> },
-    { title: 'Sent to Prosecutor', value: stats.cases_sent_to_prosecutor, icon: <SendOutlined /> },
+    { title: 'Evidence collected', value: stats.evidence_collected, icon: <FileProtectOutlined /> },
+    { title: 'Suspects identified', value: stats.criminals_identified, icon: <TeamOutlined /> },
+    { title: 'Arrested suspects', value: stats.arrested_criminals, icon: <UserSwitchOutlined /> },
+    { title: 'Sent to prosecutor', value: stats.cases_sent_to_prosecutor, icon: <SendOutlined /> },
   ];
 
   const chartRows = useMemo(() => [
-    { title: 'Investigation Status Distribution', rows: dashboard?.byStatus || [] },
-    { title: 'Cases by Crime Type', rows: dashboard?.byCrime || [] },
-    { title: 'Officer Performance', rows: dashboard?.officers || [] },
+    { title: 'Investigation status', rows: dashboard?.byStatus || [] },
+    { title: 'Cases by crime type', rows: dashboard?.byCrime || [] },
+    { title: 'Officer performance', rows: dashboard?.officers || [] },
   ], [dashboard]);
 
   const columns = [
@@ -211,14 +238,58 @@ export default function CIDDashboard() {
     { title: 'OB #', dataIndex: 'ob_number' },
     { title: 'Title', dataIndex: 'case_title', ellipsis: true },
     { title: 'Crime', dataIndex: 'crime_category' },
-    { title: 'Priority', dataIndex: 'priority', render: (v) => <Tag>{safe(v).toUpperCase()}</Tag> },
+    {
+      title: 'Priority',
+      dataIndex: 'priority',
+      render: (v) => (
+        <Tag className={`status-tag status-tag--${v === 'critical' ? 'critical' : v === 'high' ? 'warning' : 'neutral'}`}>
+          {safe(v)}
+        </Tag>
+      ),
+    },
     { title: 'Officer', dataIndex: 'assigned_officer', render: safe },
-    { title: 'Assignment', dataIndex: 'assignment_status', render: (v) => <Tag>{assignmentMeta[v] || safe(v)}</Tag> },
+    {
+      title: 'Assignment',
+      dataIndex: 'assignment_status',
+      render: (v) => (
+        <Tag className={`status-tag status-tag--${v === 'assigned' ? 'pending' : 'open'}`}>
+          {assignmentMeta[v] || safe(v)}
+        </Tag>
+      ),
+    },
     { title: 'Investigation', dataIndex: 'investigation_status', render: statusTag },
-    { title: 'Assigned', dataIndex: 'assigned_date', render: (v) => v ? dayjs(v).format('YYYY-MM-DD') : 'N/A' },
+    { title: 'Assigned', dataIndex: 'assigned_date', render: (v) => (v ? dayjs(v).format('YYYY-MM-DD') : '—') },
+    {
+      title: 'Action',
+      key: 'action',
+      render: (_, row) => (
+        <Space>
+          <Button size="small" onClick={() => loadDetail(row.id)}>Open</Button>
+          {row.assignment_status === 'assigned' && (
+            <Button
+              size="small"
+              type="primary"
+              onClick={async () => {
+                try {
+                  await api.patch(`/cid/cases/${row.id}/acknowledge`);
+                  message.success('Case acknowledged.');
+                  await loadDashboard(filters);
+                } catch (error) {
+                  message.error(error.response?.data?.message || 'Acknowledge failed.');
+                }
+              }}
+            >
+              Acknowledge
+            </Button>
+          )}
+        </Space>
+      ),
+    },
   ];
 
   const cidCase = selected?.cidCase;
+  const needsAcknowledge = cidCase?.assignment_status === 'assigned';
+  const crimeScenes = selected?.crimeScenes || [];
 
   return (
     <ProtectedRoute allowedRoles={cidRoles}>
@@ -226,10 +297,14 @@ export default function CIDDashboard() {
         <div className="standard-dashboard-hero">
           <div>
             <Text className="dashboard-eyebrow">Criminal Investigation Department</Text>
-            <Title level={2}>CID Investigation Dashboard</Title>
-            <Text type="secondary">Only cases assigned or referred to CID appear here.</Text>
+            <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
+              CID dashboard
+            </Title>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              Investigation queue, crime-scene logs, and acknowledge-before-update workflow.
+            </Text>
           </div>
-          <Button type="primary" onClick={() => loadDashboard(filters)}>Refresh CID Queue</Button>
+          <Button type="primary" onClick={() => loadDashboard(filters)}>Refresh queue</Button>
         </div>
 
         <Row gutter={[16, 16]}>
@@ -256,14 +331,14 @@ export default function CIDDashboard() {
           ))}
         </Row>
 
-        <Card variant="none" className="standard-panel" title="CID Search & Filters">
+        <Card variant="none" className="standard-panel" title="CID search & filters">
           <Form form={filterForm} layout="vertical" onFinish={applyFilters}>
             <Row gutter={12}>
-              <Col xs={24} md={6}><Form.Item name="search" label="Case / OB / Complainant"><Input /></Form.Item></Col>
-              <Col xs={24} md={6}><Form.Item name="officer" label="Assigned Officer"><Input /></Form.Item></Col>
-              <Col xs={24} md={6}><Form.Item name="priority" label="Priority"><Select allowClear options={['low','medium','high','critical'].map((value) => ({ value, label: value.toUpperCase() }))} /></Form.Item></Col>
-              <Col xs={24} md={6}><Form.Item name="status" label="Investigation Status"><Select allowClear options={Object.entries(statusMeta).map(([value, meta]) => ({ value, label: meta.label }))} /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="date_range" label="Assigned Date Range"><RangePicker style={{ width: '100%' }} /></Form.Item></Col>
+              <Col xs={24} md={6}><Form.Item name="search" label="Case / OB / complainant"><Input /></Form.Item></Col>
+              <Col xs={24} md={6}><Form.Item name="officer" label="Assigned officer"><Input /></Form.Item></Col>
+              <Col xs={24} md={6}><Form.Item name="priority" label="Priority"><Select allowClear options={['low','medium','high','critical'].map((value) => ({ value, label: value }))} /></Form.Item></Col>
+              <Col xs={24} md={6}><Form.Item name="status" label="Investigation status"><Select allowClear options={CID_STATUS_OPTIONS.map((value) => ({ value, label: statusMeta[value].label }))} /></Form.Item></Col>
+              <Col xs={24} md={8}><Form.Item name="date_range" label="Assigned date range"><RangePicker style={{ width: '100%' }} /></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item label=" "><Space><Button type="primary" htmlType="submit">Search</Button><Button onClick={() => { filterForm.resetFields(); setFilters({}); loadDashboard({}); }}>Reset</Button></Space></Form.Item></Col>
             </Row>
           </Form>
@@ -286,171 +361,283 @@ export default function CIDDashboard() {
           ))}
         </Row>
 
-        <Card variant="none" className="standard-panel" title="CID Case Queue">
-          <Table columns={columns} dataSource={cases} rowKey="id" loading={loading || detailLoading} scroll={{ x: 1200 }} />
+        <Card variant="none" className="standard-panel" title="CID case queue">
+          <Table columns={columns} dataSource={cases} rowKey="id" loading={loading || detailLoading} scroll={{ x: 1300 }} />
         </Card>
 
         <Drawer
-          title={cidCase ? `${cidCase.case_number} - ${cidCase.case_title}` : 'CID Case'}
+          title={cidCase ? `${cidCase.case_number} — ${cidCase.case_title}` : 'CID case'}
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           size="large"
           extra={cidCase && (
             <Space wrap>
-              {canSupervise && <Button onClick={() => openModal('assign', { assigned_officer: cidCase.assigned_officer, supervisor: cidCase.supervisor })}>Assign</Button>}
-              <Button type="primary" onClick={() => openModal('investigation')}>Update Investigation</Button>
-              <Button onClick={() => openModal('scene')}>Crime Scene</Button>
-              <Button onClick={() => openModal('report')}>Submit Report</Button>
-              {canSupervise && <Button onClick={() => openModal('review')}>Supervisor Review</Button>}
-              {canSupervise && <Button icon={<SendOutlined />} onClick={() => openModal('prosecutor')}>Forward Prosecutor</Button>}
+              {needsAcknowledge && (
+                <Button type="primary" onClick={acknowledgeCase}>
+                  Acknowledge case
+                </Button>
+              )}
+              {canSupervise && (
+                <Button
+                  disabled={needsAcknowledge}
+                  onClick={() => openModal('assign', { assigned_officer: cidCase.assigned_officer, supervisor: cidCase.supervisor })}
+                >
+                  Assign
+                </Button>
+              )}
+              <Button
+                type="primary"
+                disabled={needsAcknowledge}
+                onClick={() => openModal('investigation', { investigation_status: cidCase.investigation_status })}
+              >
+                Update investigation
+              </Button>
+              <Button disabled={needsAcknowledge} onClick={() => openModal('scene')}>Log crime scene</Button>
+              <Button disabled={needsAcknowledge} onClick={() => openModal('report')}>Submit report</Button>
+              {canSupervise && <Button disabled={needsAcknowledge} onClick={() => openModal('review')}>Supervisor review</Button>}
+              {canSupervise && <Button disabled={needsAcknowledge} icon={<SendOutlined />} onClick={() => openModal('prosecutor')}>Forward prosecutor</Button>}
             </Space>
           )}
         >
           {cidCase ? (
-            <Tabs
-              items={[
-                {
-                  key: 'overview',
-                  label: 'Overview',
-                  children: <Descriptions bordered column={2}>
-                    <Descriptions.Item label="Case Number">{cidCase.case_number}</Descriptions.Item>
-                    <Descriptions.Item label="OB Number">{cidCase.ob_number}</Descriptions.Item>
-                    <Descriptions.Item label="Crime Category">{cidCase.crime_category}</Descriptions.Item>
-                    <Descriptions.Item label="Priority">{safe(cidCase.priority).toUpperCase()}</Descriptions.Item>
-                    <Descriptions.Item label="Assigned Officer">{safe(cidCase.assigned_officer)}</Descriptions.Item>
-                    <Descriptions.Item label="Supervisor">{safe(cidCase.supervisor)}</Descriptions.Item>
-                    <Descriptions.Item label="Assignment">{assignmentMeta[cidCase.assignment_status] || safe(cidCase.assignment_status)}</Descriptions.Item>
-                    <Descriptions.Item label="Investigation">{statusTag(cidCase.investigation_status)}</Descriptions.Item>
-                    <Descriptions.Item label="Complainant">{safe(cidCase.complainant_name)}</Descriptions.Item>
-                    <Descriptions.Item label="Phone">{safe(cidCase.complainant_phone)}</Descriptions.Item>
-                    <Descriptions.Item label="Incident Location" span={2}>{safe(cidCase.incident_location)}</Descriptions.Item>
-                    <Descriptions.Item label="Description" span={2}>{safe(cidCase.description)}</Descriptions.Item>
-                  </Descriptions>,
-                },
-                {
-                  key: 'timeline',
-                  label: `Progress (${selected.progress.length})`,
-                  children: selected.progress.length ? <Timeline items={selected.progress.map((item) => ({
-                    children: <Space direction="vertical" size={2}><Text strong>{statusMeta[item.status]?.label || item.status || 'Progress'}</Text><Text>{item.note}</Text><Text type="secondary">{safe(item.created_by)} - {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}</Text></Space>,
-                  }))} /> : <Empty description="No progress notes yet" />,
-                },
-                {
-                  key: 'evidence',
-                  label: `Evidence (${selected.evidence.length})`,
-                  children: <Table rowKey="id" dataSource={selected.evidence} columns={[
-                    { title: 'Evidence #', dataIndex: 'evidence_number' },
-                    { title: 'Title', dataIndex: 'title' },
-                    { title: 'Type', dataIndex: 'type' },
-                    { title: 'Collected By', dataIndex: 'collected_by', render: safe },
-                    { title: 'Status', dataIndex: 'status', render: (v) => <Tag>{safe(v)}</Tag> },
-                    { title: 'File', dataIndex: 'file_url', render: (url) => url ? <Button size="small" href={`http://localhost:5001${url}`} target="_blank">Download</Button> : 'N/A' },
-                  ]} />,
-                },
-                {
-                  key: 'custody',
-                  label: `Custody (${selected.custody.length})`,
-                  children: <Table rowKey="id" dataSource={selected.custody} columns={[
-                    { title: 'Evidence', dataIndex: 'evidence_number' },
-                    { title: 'From', dataIndex: 'transferred_from', render: safe },
-                    { title: 'To', dataIndex: 'transferred_to' },
-                    { title: 'Location', dataIndex: 'location', render: safe },
-                    { title: 'Date', dataIndex: 'transfer_date', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm') },
-                    { title: 'Reason', dataIndex: 'reason', ellipsis: true },
-                  ]} />,
-                },
-                {
-                  key: 'people',
-                  label: 'Witnesses & criminals',
-                  children: <Row gutter={[16, 16]}>
-                    <Col xs={24} lg={12}><Card title="Witnesses" variant="none"><Table rowKey="id" dataSource={selected.witnesses} pagination={false} columns={[{ title: 'Name', dataIndex: 'full_name' }, { title: 'Phone', dataIndex: 'phone', render: safe }, { title: 'Statement', dataIndex: 'statement', ellipsis: true }]} /></Card></Col>
-                    <Col xs={24} lg={12}><Card title="criminals" variant="none"><Table rowKey="id" dataSource={selected.criminals} pagination={false} columns={[{ title: 'Name', dataIndex: 'full_name' }, { title: 'Phone', dataIndex: 'phone', render: safe }, { title: 'Status', dataIndex: 'case_status', render: (v) => <Tag>{safe(v)}</Tag> }]} /></Card></Col>
-                  </Row>,
-                },
-                {
-                  key: 'arrests',
-                  label: `Arrests (${selected.arrests.length})`,
-                  children: <Table rowKey="id" dataSource={selected.arrests} columns={[
-                    { title: 'Suspect', dataIndex: 'suspect_name' },
-                    { title: 'Date', dataIndex: 'arrest_date', render: (v) => v ? dayjs(v).format('YYYY-MM-DD') : 'N/A' },
-                    { title: 'Location', dataIndex: 'arrest_location', render: safe },
-                    { title: 'Officer', dataIndex: 'arrested_by', render: safe },
-                    { title: 'Status', dataIndex: 'sentence_status', render: (v) => <Tag>{safe(v)}</Tag> },
-                  ]} />,
-                },
-                {
-                  key: 'scenes',
-                  label: `Crime Scenes (${selected.crimeScenes.length})`,
-                  children: <Table rowKey="id" dataSource={selected.crimeScenes} columns={[
-                    { title: 'Location', dataIndex: 'location' },
-                    { title: 'Date Visited', dataIndex: 'date_visited' },
-                    { title: 'Officer', dataIndex: 'officer', render: safe },
-                    { title: 'Observations', dataIndex: 'observations', ellipsis: true },
-                    { title: 'Evidence', dataIndex: 'collected_evidence', ellipsis: true },
-                  ]} />,
-                },
-                {
-                  key: 'reports',
-                  label: `Reports (${selected.reports.length})`,
-                  children: <Table rowKey="id" dataSource={selected.reports} columns={[
-                    { title: 'Title', dataIndex: 'report_title' },
-                    { title: 'Submitted By', dataIndex: 'submitted_by' },
-                    { title: 'Submitted', dataIndex: 'submitted_at', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm') },
-                    { title: 'Findings', dataIndex: 'findings', ellipsis: true },
-                    { title: 'Recommendations', dataIndex: 'recommendations', ellipsis: true },
-                  ]} />,
-                },
-                {
-                  key: 'audit',
-                  label: `Audit (${selected.auditTrail.length})`,
-                  children: <Table rowKey={(row) => `${row.entity_type}-${row.entity_id}-${row.created_at}-${row.action}`} dataSource={selected.auditTrail} columns={[
-                    { title: 'User', dataIndex: 'performed_by', render: safe },
-                    { title: 'Action', dataIndex: 'action', render: (v) => v?.replaceAll('_', ' ') },
-                    { title: 'Date/Time', dataIndex: 'created_at', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm') },
-                    { title: 'Previous', dataIndex: 'previous_value', ellipsis: true, render: (v) => v ? JSON.stringify(v) : 'N/A' },
-                    { title: 'New', dataIndex: 'new_value', ellipsis: true, render: (v) => v ? JSON.stringify(v) : 'N/A' },
-                  ]} />,
-                },
-              ]}
-            />
+            <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+              {needsAcknowledge && (
+                <Alert
+                  showIcon
+                  type="warning"
+                  title="Acknowledge required"
+                  description="You must acknowledge this assigned case before updating investigation notes or logging crime scenes."
+                  action={<Button type="primary" size="small" onClick={acknowledgeCase}>Acknowledge case</Button>}
+                />
+              )}
+
+              <Card size="small" className="standard-panel" title="Investigation progress">
+                <CaseStatusStepper status={cidCase.investigation_status} flow="cid" />
+                <Space wrap style={{ marginTop: 8 }}>
+                  {statusTag(cidCase.investigation_status)}
+                  <Tag className={`status-tag status-tag--${needsAcknowledge ? 'pending' : 'open'}`}>
+                    {assignmentMeta[cidCase.assignment_status] || safe(cidCase.assignment_status)}
+                  </Tag>
+                </Space>
+              </Card>
+
+              <Card
+                size="small"
+                className="standard-panel"
+                title={`Crime-scene log (${crimeScenes.length})`}
+                extra={!needsAcknowledge && (
+                  <Button type="link" size="small" onClick={() => openModal('scene')}>Add scene</Button>
+                )}
+              >
+                {crimeScenes.length === 0 ? (
+                  <Empty description="No crime scenes logged yet" />
+                ) : (
+                  <Table
+                    size="small"
+                    rowKey="id"
+                    pagination={false}
+                    dataSource={crimeScenes}
+                    columns={[
+                      { title: 'Location', dataIndex: 'location' },
+                      { title: 'Date visited', dataIndex: 'date_visited', render: (v) => (v ? dayjs(v).format('DD MMM YYYY') : '—') },
+                      { title: 'Officer', dataIndex: 'officer', render: safe },
+                      { title: 'Observations', dataIndex: 'observations', ellipsis: true },
+                      { title: 'Evidence', dataIndex: 'collected_evidence', ellipsis: true },
+                    ]}
+                  />
+                )}
+              </Card>
+
+              <Tabs
+                items={[
+                  {
+                    key: 'overview',
+                    label: 'Overview',
+                    children: (
+                      <Descriptions bordered column={2} size="small">
+                        <Descriptions.Item label="Case number">{cidCase.case_number}</Descriptions.Item>
+                        <Descriptions.Item label="OB number">{cidCase.ob_number}</Descriptions.Item>
+                        <Descriptions.Item label="Crime category">{cidCase.crime_category}</Descriptions.Item>
+                        <Descriptions.Item label="Priority">{safe(cidCase.priority)}</Descriptions.Item>
+                        <Descriptions.Item label="Assigned officer">{safe(cidCase.assigned_officer)}</Descriptions.Item>
+                        <Descriptions.Item label="Supervisor">{safe(cidCase.supervisor)}</Descriptions.Item>
+                        <Descriptions.Item label="Complainant">{safe(cidCase.complainant_name)}</Descriptions.Item>
+                        <Descriptions.Item label="Phone">{safe(cidCase.complainant_phone)}</Descriptions.Item>
+                        <Descriptions.Item label="Incident location" span={2}>{safe(cidCase.incident_location)}</Descriptions.Item>
+                        <Descriptions.Item label="Description" span={2}>{safe(cidCase.description)}</Descriptions.Item>
+                      </Descriptions>
+                    ),
+                  },
+                  {
+                    key: 'timeline',
+                    label: `Progress (${selected.progress?.length || 0})`,
+                    children: selected.progress?.length ? (
+                      <Timeline items={selected.progress.map((item) => ({
+                        content: (
+                          <Space orientation="vertical" size={2}>
+                            <Text strong>{statusMeta[item.status]?.label || item.status || 'Progress'}</Text>
+                            <Text>{item.note}</Text>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {safe(item.created_by)} · {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}
+                            </Text>
+                          </Space>
+                        ),
+                      }))} />
+                    ) : <Empty description="No progress notes yet" />,
+                  },
+                  {
+                    key: 'evidence',
+                    label: `Evidence (${selected.evidence?.length || 0})`,
+                    children: (
+                      <Table
+                        rowKey="id"
+                        dataSource={selected.evidence}
+                        columns={[
+                          { title: 'Evidence #', dataIndex: 'evidence_number' },
+                          { title: 'Title', dataIndex: 'title' },
+                          { title: 'Type', dataIndex: 'type' },
+                          { title: 'Collected by', dataIndex: 'collected_by', render: safe },
+                          { title: 'Status', dataIndex: 'status', render: (v) => <Tag className="status-tag status-tag--neutral">{safe(v)}</Tag> },
+                        ]}
+                      />
+                    ),
+                  },
+                  {
+                    key: 'people',
+                    label: 'Witnesses & suspects',
+                    children: (
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24} lg={12}>
+                          <Card title="Witnesses" variant="none" className="standard-panel">
+                            <Table
+                              rowKey="id"
+                              dataSource={selected.witnesses}
+                              pagination={false}
+                              columns={[
+                                { title: 'Name', dataIndex: 'full_name' },
+                                { title: 'Phone', dataIndex: 'phone', render: safe },
+                                { title: 'Statement', dataIndex: 'statement', ellipsis: true },
+                              ]}
+                            />
+                          </Card>
+                        </Col>
+                        <Col xs={24} lg={12}>
+                          <Card title="Suspects" variant="none" className="standard-panel">
+                            <Table
+                              rowKey="id"
+                              dataSource={selected.criminals}
+                              pagination={false}
+                              columns={[
+                                { title: 'Name', dataIndex: 'full_name' },
+                                { title: 'Phone', dataIndex: 'phone', render: safe },
+                                { title: 'Status', dataIndex: 'case_status', render: (v) => <Tag className="status-tag status-tag--neutral">{safe(v)}</Tag> },
+                              ]}
+                            />
+                          </Card>
+                        </Col>
+                      </Row>
+                    ),
+                  },
+                  {
+                    key: 'arrests',
+                    label: `Arrests (${selected.arrests?.length || 0})`,
+                    children: (
+                      <Table
+                        rowKey="id"
+                        dataSource={selected.arrests}
+                        columns={[
+                          { title: 'Suspect', dataIndex: 'suspect_name' },
+                          { title: 'Date', dataIndex: 'arrest_date', render: (v) => (v ? dayjs(v).format('YYYY-MM-DD') : '—') },
+                          { title: 'Location', dataIndex: 'arrest_location', render: safe },
+                          { title: 'Officer', dataIndex: 'arrested_by', render: safe },
+                          { title: 'Status', dataIndex: 'sentence_status', render: (v) => <Tag className="status-tag status-tag--neutral">{safe(v)}</Tag> },
+                        ]}
+                      />
+                    ),
+                  },
+                  {
+                    key: 'reports',
+                    label: `Reports (${selected.reports?.length || 0})`,
+                    children: (
+                      <Table
+                        rowKey="id"
+                        dataSource={selected.reports}
+                        columns={[
+                          { title: 'Title', dataIndex: 'report_title' },
+                          { title: 'Submitted by', dataIndex: 'submitted_by' },
+                          { title: 'Submitted', dataIndex: 'submitted_at', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm') },
+                          { title: 'Findings', dataIndex: 'findings', ellipsis: true },
+                        ]}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </Space>
           ) : <Empty />}
         </Drawer>
 
-        <Modal title={modalType?.replaceAll('_', ' ').toUpperCase() || 'CID Action'} open={Boolean(modalType)} onCancel={closeModal} onOk={() => form.submit()} destroyOnHidden forceRender width={760}>
+        <Modal
+          title={modalType ? String(modalType).replaceAll('_', ' ') : 'CID action'}
+          open={Boolean(modalType)}
+          onCancel={closeModal}
+          onOk={() => form.submit()}
+          destroyOnHidden
+          forceRender
+          width={760}
+        >
           <Form form={form} layout="vertical" onFinish={submitModal}>
-            {modalType === 'assign' && <Row gutter={16}><Col span={12}><Form.Item name="assigned_officer" label="Assigned Officer"><Input /></Form.Item></Col><Col span={12}><Form.Item name="supervisor" label="Supervisor"><Input /></Form.Item></Col></Row>}
-            {modalType === 'investigation' && <>
-              <Form.Item name="investigation_status" label="Investigation Status"><Select options={Object.entries(statusMeta).map(([value, meta]) => ({ value, label: meta.label }))} /></Form.Item>
-              <Form.Item name="progress_note" label="Progress Note"><TextArea rows={3} /></Form.Item>
-              <Form.Item name="findings" label="Findings"><TextArea rows={3} /></Form.Item>
-              <Form.Item name="recommendations" label="Recommendations"><TextArea rows={3} /></Form.Item>
-            </>}
-            {modalType === 'scene' && <>
-              <Form.Item name="location" label="Crime Scene Location" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="date_visited" label="Date Visited"><DatePicker style={{ width: '100%' }} /></Form.Item>
-              <Form.Item name="observations" label="Observations"><TextArea rows={3} /></Form.Item>
-              <Form.Item name="scene_photos" label="Scene Photos / File Notes"><TextArea rows={2} /></Form.Item>
-              <Form.Item name="collected_evidence" label="Collected Evidence"><TextArea rows={2} /></Form.Item>
-            </>}
-            {modalType === 'report' && <>
-              <Form.Item name="report_title" label="Report Title" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="case_summary" label="Case Summary"><TextArea rows={2} /></Form.Item>
-              <Form.Item name="activities" label="Investigation Activities"><TextArea rows={2} /></Form.Item>
-              <Form.Item name="evidence_summary" label="Evidence Summary"><TextArea rows={2} /></Form.Item>
-              <Form.Item name="witness_summary" label="Witness Summary"><TextArea rows={2} /></Form.Item>
-              <Form.Item name="suspect_analysis" label="Suspect Analysis"><TextArea rows={2} /></Form.Item>
-              <Form.Item name="findings" label="Findings" rules={[{ required: true }]}><TextArea rows={3} /></Form.Item>
-              <Form.Item name="recommendations" label="Recommendations"><TextArea rows={3} /></Form.Item>
-            </>}
-            {modalType === 'review' && <>
-              <Form.Item name="decision" label="Decision" rules={[{ required: true }]}><Select options={[
-                { value: 'approved', label: 'Approve Investigation' },
-                { value: 'rejected', label: 'Reject Investigation' },
-                { value: 'additional_investigation', label: 'Additional Investigation Required' },
-                { value: 'returned', label: 'Return to Officer' },
-              ]} /></Form.Item>
-              <Form.Item name="notes" label="Supervisor Notes"><TextArea rows={4} /></Form.Item>
-            </>}
-            {modalType === 'prosecutor' && <Form.Item name="notes" label="Forwarding Notes"><TextArea rows={4} /></Form.Item>}
+            {modalType === 'assign' && (
+              <Row gutter={16}>
+                <Col span={12}><Form.Item name="assigned_officer" label="Assigned officer"><Input /></Form.Item></Col>
+                <Col span={12}><Form.Item name="supervisor" label="Supervisor"><Input /></Form.Item></Col>
+              </Row>
+            )}
+            {modalType === 'investigation' && (
+              <>
+                <Form.Item name="investigation_status" label="Investigation status">
+                  <Select options={CID_STATUS_OPTIONS.map((value) => ({ value, label: statusMeta[value].label }))} />
+                </Form.Item>
+                <Form.Item name="progress_note" label="Progress note"><TextArea rows={3} /></Form.Item>
+                <Form.Item name="findings" label="Findings"><TextArea rows={3} /></Form.Item>
+                <Form.Item name="recommendations" label="Recommendations"><TextArea rows={3} /></Form.Item>
+              </>
+            )}
+            {modalType === 'scene' && (
+              <>
+                <Form.Item name="location" label="Crime scene location" rules={[{ required: true, message: 'Location is required.' }]}><Input /></Form.Item>
+                <Form.Item name="date_visited" label="Date visited"><DatePicker style={{ width: '100%' }} /></Form.Item>
+                <Form.Item name="observations" label="Observations"><TextArea rows={3} /></Form.Item>
+                <Form.Item name="scene_photos" label="Scene photos / file notes"><TextArea rows={2} /></Form.Item>
+                <Form.Item name="collected_evidence" label="Collected evidence"><TextArea rows={2} /></Form.Item>
+              </>
+            )}
+            {modalType === 'report' && (
+              <>
+                <Form.Item name="report_title" label="Report title" rules={[{ required: true }]}><Input /></Form.Item>
+                <Form.Item name="case_summary" label="Case summary"><TextArea rows={2} /></Form.Item>
+                <Form.Item name="activities" label="Investigation activities"><TextArea rows={2} /></Form.Item>
+                <Form.Item name="evidence_summary" label="Evidence summary"><TextArea rows={2} /></Form.Item>
+                <Form.Item name="witness_summary" label="Witness summary"><TextArea rows={2} /></Form.Item>
+                <Form.Item name="suspect_analysis" label="Suspect analysis"><TextArea rows={2} /></Form.Item>
+                <Form.Item name="findings" label="Findings" rules={[{ required: true }]}><TextArea rows={3} /></Form.Item>
+                <Form.Item name="recommendations" label="Recommendations"><TextArea rows={3} /></Form.Item>
+              </>
+            )}
+            {modalType === 'review' && (
+              <>
+                <Form.Item name="decision" label="Decision" rules={[{ required: true }]}>
+                  <Select options={[
+                    { value: 'approved', label: 'Approve investigation' },
+                    { value: 'rejected', label: 'Reject investigation' },
+                    { value: 'additional_investigation', label: 'Additional investigation required' },
+                    { value: 'returned', label: 'Return to officer' },
+                  ]} />
+                </Form.Item>
+                <Form.Item name="notes" label="Supervisor notes"><TextArea rows={4} /></Form.Item>
+              </>
+            )}
+            {modalType === 'prosecutor' && <Form.Item name="notes" label="Forwarding notes"><TextArea rows={4} /></Form.Item>}
           </Form>
         </Modal>
       </Space>

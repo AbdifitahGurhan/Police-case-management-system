@@ -204,20 +204,30 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     .join('')
     .toUpperCase();
 
-  const roleColors = {
-    admin: 'magenta',
-    officer: 'blue',
-    cid: 'purple',
-    cid_director: 'purple',
-    cid_supervisor: 'purple',
-    cid_officer: 'purple',
-    court: 'cyan',
-    court_admin: 'cyan',
-    judge: 'geekblue',
-    prosecutor: 'gold',
-    prosecutor_liaison: 'gold',
-    court_clerk: 'lime',
-    jail: 'volcano'
+  const roleLabels = {
+    admin: 'Administrator',
+    officer: 'Officer',
+    cid: 'CID',
+    cid_director: 'CID director',
+    cid_supervisor: 'CID supervisor',
+    cid_officer: 'CID officer',
+    court: 'Court',
+    court_admin: 'Court administrator',
+    judge: 'Judge',
+    prosecutor: 'Prosecutor',
+    prosecutor_liaison: 'Prosecutor liaison',
+    court_clerk: 'Court clerk',
+    jail: 'Jail',
+    state_admin: 'State admin',
+    region_admin: 'Region admin',
+    city_admin: 'City admin',
+    district_admin: 'District admin',
+    state_commander: 'State commander',
+    region_commander: 'Region commander',
+    district_commander: 'District commander',
+    police_station_commander: 'Police station commander',
+    ob_staff: 'OB staff',
+    staff: 'Staff',
   };
 
   const menuItems = [
@@ -360,8 +370,8 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
           <Space className="topbar-user">
             <div className="topbar-user-copy">
               <Text strong>{displayName}</Text>
-              <Tag color={roleColors[user.role] || 'default'}>
-                {user.role?.toUpperCase()}
+              <Tag className="status-tag status-tag--open">
+                {roleLabels[user.role] || user.role || 'User'}
               </Tag>
             </div>
             <Avatar className="topbar-avatar" src={profileImageUrl} icon={!profileImageUrl && <UserOutlined />}>

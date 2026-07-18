@@ -1,67 +1,157 @@
 // src/app/cases/page.jsx
 'use client';
 
-import React, { useCallback, useState, useEffect } from 'react';
-import { Table, Card, Typography, Space, Input, Select, Tag, Button, Breadcrumb } from 'antd';
-import { SearchOutlined, EyeOutlined, AuditOutlined } from '@ant-design/icons';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import api from '@/services/api';
-import CaseStatusTag from '@/components/shared/CaseStatusTag';
-import dayjs from 'dayjs';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Breadcrumb,
+  Button,
+  Card,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from 'antd';
+import { EyeOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import Link from 'next/link';
+import dayjs from 'dayjs';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import CaseStatusTag from '@/components/shared/CaseStatusTag';
 import { useAuth } from '@/contexts/AuthContext';
+import api from '@/services/api';
 
-const { Title } = Typography;
-const { Option } = Select;
+const { Title, Text } = Typography;
+
+const CASE_READ_ROLES = [
+  'admin', 'staff', 'officer', 'district_admin',
+  'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
+  'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
+  'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',
+];
+
+const CASE_WRITE_ROLES = [
+  'admin', 'officer', 'district_admin',
+  'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
+];
+
+const STATUS_OPTIONS = [
+  { value: 'draft', label: 'Draft' },
+  { value: 'registered', label: 'Registered' },
+  { value: 'CASE_REGISTERED', label: 'Case registered' },
+  { value: 'under_investigation', label: 'Under investigation' },
+  { value: 'referred_to_cid', label: 'Referred to CID' },
+  { value: 'ready_for_court', label: 'Ready for court' },
+  { value: 'forwarded_to_court', label: 'Forwarded to court' },
+  { value: 'court_decided', label: 'Court decided' },
+  { value: 'closed', label: 'Closed' },
+  { value: 'archived', label: 'Archived' },
+];
+
+const PRIORITY_OPTIONS = [
+  { value: 'critical', label: 'Critical' },
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+];
+
+const priorityTone = {
+  critical: 'critical',
+  high: 'warning',
+  medium: 'pending',
+  low: 'neutral',
+};
 
 export default function CaseListPage() {
   const { user, loading: authLoading } = useAuth();
   const [cases, setCases] = useState([]);
+  const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 15, total: 0 });
-  const [filters, setFilters] = useState({ search: '', status: '', priority: '' });
+  const [searchInput, setSearchInput] = useState('');
+  const [filters, setFilters] = useState({
+    search: '',
+    status: undefined,
+    priority: undefined,
+    district_id: undefined,
+  });
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: 20,
+    total: 0,
+    pages: 0,
+  });
 
-  const fetchCases = useCallback(async (page = 1, size = 15) => {
+  const canCreate = user && CASE_WRITE_ROLES.includes(user.role);
+
+  const fetchCases = useCallback(async (page = 1, pageSize = 20, activeFilters = filters) => {
     setLoading(true);
     try {
       const params = {
         page,
-        limit: size,
-        search: filters.search,
-        status: filters.status,
-        priority: filters.priority
+        limit: pageSize,
       };
+      if (activeFilters.search) params.search = activeFilters.search;
+      if (activeFilters.status) params.status = activeFilters.status;
+      if (activeFilters.priority) params.priority = activeFilters.priority;
+      if (activeFilters.district_id) params.district_id = activeFilters.district_id;
+
       const res = await api.get('/cases', { params });
-      setCases(res.data.data);
-      setPagination((current) => ({
-        ...current,
-        current: page,
-        total: res.data.pagination.total
-      }));
+      const meta = res.data.pagination || {};
+      setCases(res.data.data || []);
+      setPagination({
+        current: meta.page || page,
+        pageSize: meta.limit || pageSize,
+        total: meta.total || 0,
+        pages: meta.pages || 0,
+      });
     } catch (err) {
       console.error(err);
+      setCases([]);
     } finally {
       setLoading(false);
     }
   }, [filters]);
 
   useEffect(() => {
-    const allowedRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
-    if (!authLoading && user && allowedRoles.includes(user.role)) {
-      fetchCases();
+    if (!authLoading && user && CASE_READ_ROLES.includes(user.role)) {
+      fetchCases(1, pagination.pageSize, filters);
     }
-  }, [fetchCases, user, authLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, filters]);
 
-  const handleTableChange = (pagination) => {
-    fetchCases(pagination.current, pagination.pageSize);
+  useEffect(() => {
+    const loadStations = async () => {
+      try {
+        const res = await api.get('/stations');
+        setStations(res.data.data || []);
+      } catch {
+        setStations([]);
+      }
+    };
+    if (user) loadStations();
+  }, [user]);
+
+  const handleTableChange = (pager) => {
+    fetchCases(pager.current, pager.pageSize, filters);
+  };
+
+  const applySearch = () => {
+    setFilters((prev) => ({ ...prev, search: searchInput.trim() }));
   };
 
   const columns = [
     {
-      title: 'OB Number',
+      title: 'Case number',
+      dataIndex: 'case_number',
+      key: 'case_number',
+      render: (text, record) => (
+        <Typography.Text strong>{text || record.ob_number || '—'}</Typography.Text>
+      ),
+    },
+    {
+      title: 'OB number',
       dataIndex: 'ob_number',
       key: 'ob_number',
-      render: (text) => <Typography.Text strong>{text}</Typography.Text>,
     },
     {
       title: 'Title',
@@ -71,13 +161,15 @@ export default function CaseListPage() {
     },
     {
       title: 'Type',
-      dataIndex: 'case_type',
-      key: 'case_type',
+      dataIndex: 'incident_type',
+      key: 'incident_type',
+      render: (text, record) => text || record.case_type || '—',
     },
     {
       title: 'Station',
       dataIndex: 'station_name',
       key: 'station_name',
+      render: (text) => text || '—',
     },
     {
       title: 'Status',
@@ -89,68 +181,100 @@ export default function CaseListPage() {
       title: 'Priority',
       dataIndex: 'priority',
       key: 'priority',
-      render: (p) => {
-        const colors = { critical: 'red', high: 'volcano', medium: 'gold', low: 'blue' };
-        return <Tag color={colors[p]}>{p.toUpperCase()}</Tag>;
-      },
+      render: (p) => (
+        <Tag className={`status-tag status-tag--${priorityTone[p] || 'neutral'}`}>
+          {p || '—'}
+        </Tag>
+      ),
     },
     {
       title: 'Date',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (date) => dayjs(date).format('DD/MM/YYYY'),
+      render: (date) => (date ? dayjs(date).format('DD/MM/YYYY') : '—'),
     },
     {
       title: 'Action',
       key: 'action',
       render: (_, record) => (
         <Link href={`/cases/${record.id}`}>
-          <Button type="link" icon={<EyeOutlined />}>View</Button>
+          <Button type="link" icon={<EyeOutlined />}>
+            View
+          </Button>
         </Link>
       ),
     },
   ];
+
   return (
-    <ProtectedRoute allowedRoles={['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander']}>
+    <ProtectedRoute allowedRoles={CASE_READ_ROLES}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <Breadcrumb items={[{ title: 'Home' }, { title: 'Cases' }]} />
-        
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-          <Title level={2} style={{ margin: 0 }}>Case Register</Title>
-          <Link href="/ob-register">
-            <Button type="primary" icon={<AuditOutlined />}>Go to OB Registration</Button>
-          </Link>
+
+        <div className="standard-dashboard-hero" style={{ marginBottom: 0 }}>
+          <div>
+            <Text className="dashboard-eyebrow">Case management</Text>
+            <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
+              Cases
+            </Title>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              Search, filter, and open investigation records in your jurisdiction.
+            </Text>
+          </div>
+          {canCreate && (
+            <Link href="/cases/new">
+              <Button type="primary" icon={<PlusOutlined />}>
+                New case
+              </Button>
+            </Link>
+          )}
         </div>
 
-        <Card variant="none">
+        <Card variant="none" className="standard-panel">
           <Space style={{ marginBottom: 16 }} wrap>
             <Input
-              placeholder="Search OB, address, or location..."
+              placeholder="Search case, OB, or location..."
               prefix={<SearchOutlined />}
-              style={{ width: 250 }}
-              onPressEnter={(e) => setFilters({ ...filters, search: e.target.value })}
+              style={{ width: 260 }}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onPressEnter={applySearch}
+              allowClear
+              onClear={() => {
+                setSearchInput('');
+                setFilters((prev) => ({ ...prev, search: '' }));
+              }}
             />
+            <Button onClick={applySearch}>Search</Button>
             <Select
               placeholder="Status"
-              style={{ width: 150 }}
+              style={{ width: 180 }}
               allowClear
-              onChange={(v) => setFilters({ ...filters, status: v })}
-            >
-              <Option value="open">Open</Option>
-              <Option value="under_investigation">Under Investigation</Option>
-              <Option value="referred_cid">Referred to CID</Option>
-              <Option value="closed">Closed</Option>
-            </Select>
+              options={STATUS_OPTIONS}
+              value={filters.status}
+              onChange={(v) => setFilters((prev) => ({ ...prev, status: v }))}
+            />
             <Select
               placeholder="Priority"
-              style={{ width: 150 }}
+              style={{ width: 140 }}
               allowClear
-              onChange={(v) => setFilters({ ...filters, priority: v })}
-            >
-              <Option value="high">High</Option>
-              <Option value="medium">Medium</Option>
-              <Option value="low">Low</Option>
-            </Select>
+              options={PRIORITY_OPTIONS}
+              value={filters.priority}
+              onChange={(v) => setFilters((prev) => ({ ...prev, priority: v }))}
+            />
+            <Select
+              placeholder="Station"
+              style={{ width: 200 }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={filters.district_id}
+              onChange={(v) => setFilters((prev) => ({ ...prev, district_id: v }))}
+              options={stations.map((s) => ({
+                value: s.id,
+                label: s.name || s.district_name || s.station_name,
+              }))}
+            />
           </Space>
 
           <Table
@@ -158,9 +282,17 @@ export default function CaseListPage() {
             dataSource={cases}
             rowKey="id"
             loading={loading}
-            pagination={pagination}
-            onChange={handleTableChange}
             scroll={{ x: 'max-content' }}
+            pagination={{
+              current: pagination.current,
+              pageSize: pagination.pageSize,
+              total: pagination.total,
+              showSizeChanger: true,
+              pageSizeOptions: ['10', '20', '50'],
+              showTotal: (total, range) =>
+                `${range[0]}–${range[1]} of ${total} (page ${pagination.current}/${pagination.pages || 1})`,
+            }}
+            onChange={handleTableChange}
           />
         </Card>
       </Space>

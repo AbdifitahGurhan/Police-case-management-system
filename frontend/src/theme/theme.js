@@ -6,10 +6,12 @@ export const lightTheme = {
   token: {
     colorPrimary: '#2563EB',
     colorInfo: '#3B82F6',
-    colorSuccess: '#20b26b',
-    colorWarning: '#F59E0B',
-    colorError: '#EF4444',
-    borderRadius: 10,
+    colorSuccess: '#A8FF4D',
+    colorWarning: '#EF9F27',
+    colorError: '#F0997B',
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeightStrong: 500,
     colorBgBase: '#F3F8FF',
     colorBgLayout: '#DDEBFF',
     colorBgContainer: '#FFFFFF',
@@ -18,9 +20,10 @@ export const lightTheme = {
     colorText: '#0F172A',
     colorTextSecondary: '#475569',
     colorTextTertiary: '#64748B',
+    colorTextPlaceholder: '#707070',
     colorBorder: '#D7E3F5',
     colorBorderSecondary: '#E6EEF9',
-    boxShadow: '0 14px 34px rgba(15, 36, 69, 0.10)',
+    boxShadow: 'none',
     fontFamily: 'var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
   },
   components: {
@@ -28,6 +31,7 @@ export const lightTheme = {
       headerBg: 'transparent',
       bodyBg: '#DDEBFF',
       siderBg: '#0B1E45',
+      headerHeight: 52,
     },
     Menu: {
       darkItemBg: '#0B1E45',
@@ -36,12 +40,12 @@ export const lightTheme = {
       darkItemHoverColor: '#FFFFFF',
     },
     Button: {
-      borderRadius: 10,
-      controlHeight: 38,
-      primaryShadow: '0 12px 28px rgba(37, 99, 235, 0.34)',
+      borderRadius: 8,
+      controlHeight: 36,
+      primaryShadow: 'none',
     },
     Card: {
-      borderRadiusLG: 10,
+      borderRadiusLG: 12,
       headerFontSize: 14,
       colorBgContainer: '#FFFFFF',
     },
@@ -52,13 +56,16 @@ export const lightTheme = {
       borderColor: '#E6EEF9',
     },
     Input: {
-      borderRadius: 10,
+      borderRadius: 8,
       colorBgContainer: '#FFFFFF',
     },
     Select: {
-      borderRadius: 10,
+      borderRadius: 8,
       colorBgContainer: '#FFFFFF',
-    }
+    },
+    Tag: {
+      borderRadiusSM: 999,
+    },
   },
 };
 
@@ -68,9 +75,11 @@ export const darkTheme = {
     colorPrimary: '#A8FF4D',
     colorInfo: '#A8FF4D',
     colorSuccess: '#A8FF4D',
-    colorWarning: '#F59E0B',
-    colorError: '#EF4444',
-    borderRadius: 10,
+    colorWarning: '#EF9F27',
+    colorError: '#F0997B',
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeightStrong: 500,
     colorBgBase: '#0E0E0E',
     colorBgLayout: '#171717',
     colorBgContainer: '#1C1C1C',
@@ -79,16 +88,18 @@ export const darkTheme = {
     colorText: '#FFFFFF',
     colorTextSecondary: '#A5A5A5',
     colorTextTertiary: '#707070',
+    colorTextPlaceholder: '#707070',
     colorBorder: '#2B2B2B',
     colorBorderSecondary: '#2B2B2B',
-    boxShadow: '0 14px 34px rgba(0, 0, 0, 0.65)',
+    boxShadow: 'none',
     fontFamily: 'var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
   },
   components: {
     Layout: {
-      headerBg: 'transparent',
-      bodyBg: '#171717',
+      headerBg: '#171717',
+      bodyBg: '#0E0E0E',
       siderBg: '#171717',
+      headerHeight: 52,
     },
     Menu: {
       darkItemBg: '#171717',
@@ -99,34 +110,42 @@ export const darkTheme = {
       itemActiveBg: 'rgba(168, 255, 77, 0.08)',
     },
     Button: {
-      borderRadius: 10,
-      controlHeight: 38,
-      primaryShadow: '0 12px 28px rgba(168, 255, 77, 0.15)',
+      borderRadius: 8,
+      controlHeight: 36,
+      primaryShadow: 'none',
       colorPrimary: '#A8FF4D',
       colorPrimaryHover: '#b8ff66',
       colorPrimaryActive: '#98ef3c',
       colorTextLightSolid: '#0E0E0E',
     },
     Card: {
-      borderRadiusLG: 10,
+      borderRadiusLG: 12,
       headerFontSize: 14,
       colorBgContainer: '#1C1C1C',
     },
     Table: {
-      headerBg: '#171717',
+      headerBg: '#1C1C1C',
       headerColor: '#A5A5A5',
-      rowHoverBg: '#1C1C1C',
+      rowHoverBg: '#171717',
       borderColor: '#2B2B2B',
+      colorBgContainer: '#1C1C1C',
     },
     Input: {
-      borderRadius: 10,
-      colorBgContainer: '#1C1C1C',
+      borderRadius: 8,
+      colorBgContainer: '#171717',
+      activeBorderColor: '#A8FF4D',
+      hoverBorderColor: '#707070',
     },
     Select: {
-      borderRadius: 10,
-      colorBgContainer: '#1C1C1C',
-    }
+      borderRadius: 8,
+      colorBgContainer: '#171717',
+    },
+    Tag: {
+      borderRadiusSM: 999,
+      defaultBg: '#2B2B2B',
+      defaultColor: '#A5A5A5',
+    },
   },
 };
 
-export default lightTheme;
+export default darkTheme;

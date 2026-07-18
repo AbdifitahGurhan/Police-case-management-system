@@ -72,6 +72,12 @@ async function ensureCompatibilityColumns() {
   await addColumnIfMissing('arrests', 'actual_release_date', 'DATE NULL AFTER expected_release_date');
   await addColumnIfMissing('arrests', 'sentence_status', "ENUM('awaiting_trial','sentenced','serving','release_review','completed','released','wanted','escaped','acquitted','dismissed') DEFAULT 'awaiting_trial' AFTER actual_release_date");
   await addColumnIfMissing('arrests', 'final_status', 'VARCHAR(100) NULL AFTER sentence_status');
+  await addColumnIfMissing('court_sentences', 'suspect_id', 'INT NULL AFTER court_case_id');
+  try {
+    await db.query('ALTER TABLE court_sentences ADD CONSTRAINT fk_sent_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE SET NULL');
+  } catch (err) {
+    // Ignore if constraint already exists
+  }
   await db.query(`
     ALTER TABLE release_approvals
     MODIFY status ENUM('pending','approved','pending_admin_review','admin_reviewed','prison_confirmed','court_approved','certificate_generated','released','rejected') DEFAULT 'pending_admin_review'
@@ -179,79 +185,347 @@ async function repairCaseSampleData() {
   `);
 }
 
-async function seedCourtData() {
-  console.log('Seeding court module sample data...');
-  // 1. Get all cases that are court ready (or referred/approved for court)
-  const [cases] = await db.query(`
-    SELECT id, case_title, case_number, ob_number
-    FROM cases
-    WHERE status IN ('ready_for_court', 'forwarded_to_court', 'approved_for_court', 'referred_to_court')
-  `);
+function formatDate(date) {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
-  for (const c of cases) {
-    // Sync into court_cases
-    const result = await ensureCourtCaseForPoliceCase(c.id, 'system');
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+async function seedCourtData() {
+  console.log('Starting Step 0: Deletion of old test data...');
+  const tablesToCount = [
+    'court_cases',
+    'court_hearings',
+    'court_proceedings',
+    'court_judgments',
+    'court_sentences',
+    'court_appeals',
+    'cases',
+    'ob_entries',
+    'evidence',
+    'arrests',
+    'cid_cases',
+    'case_criminals'
+  ];
+
+  const beforeCounts = {};
+  for (const table of tablesToCount) {
+    const [[{ count }]] = await db.query(`SELECT COUNT(*) AS count FROM ${table}`);
+    beforeCounts[table] = count;
+  }
+  console.log('Row counts before deletion:', beforeCounts);
+
+  await db.query('START TRANSACTION');
+  try {
+    await db.query('SET FOREIGN_KEY_CHECKS = 0');
+
+    // 1. Delete court-related tables for old court cases and previous seeded cases
+    const oldCourtCaseNums = ['CRT-2026-00001', 'CRT-2026-00002', 'CRT-2026-00003', 'CRT-2026-00004'];
+    await db.query(`DELETE FROM court_proceedings WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number IN (${oldCourtCaseNums.map(() => '?').join(',')}))`, oldCourtCaseNums);
+    await db.query(`DELETE FROM court_hearings WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number IN (${oldCourtCaseNums.map(() => '?').join(',')}))`, oldCourtCaseNums);
+    await db.query(`DELETE FROM court_judgments WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number IN (${oldCourtCaseNums.map(() => '?').join(',')}))`, oldCourtCaseNums);
+    await db.query(`DELETE FROM court_sentences WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number IN (${oldCourtCaseNums.map(() => '?').join(',')}))`, oldCourtCaseNums);
+    await db.query(`DELETE FROM court_appeals WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number IN (${oldCourtCaseNums.map(() => '?').join(',')}))`, oldCourtCaseNums);
+    await db.query(`DELETE FROM court_cases WHERE court_case_number IN (${oldCourtCaseNums.map(() => '?').join(',')})`, oldCourtCaseNums);
+
+    // Also delete for previously seeded court cases
+    await db.query(`DELETE FROM court_proceedings WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number LIKE 'CRT-2026-00%')`);
+    await db.query(`DELETE FROM court_hearings WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number LIKE 'CRT-2026-00%')`);
+    await db.query(`DELETE FROM court_judgments WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number LIKE 'CRT-2026-00%')`);
+    await db.query(`DELETE FROM court_sentences WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number LIKE 'CRT-2026-00%')`);
+    await db.query(`DELETE FROM court_appeals WHERE court_case_id IN (SELECT id FROM court_cases WHERE court_case_number LIKE 'CRT-2026-00%')`);
+    await db.query(`DELETE FROM court_cases WHERE court_case_number LIKE 'CRT-2026-00%'`);
+
+    // 2. Delete test-only and previously seeded police cases
+    await db.query(`DELETE FROM cid_cases WHERE police_case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM case_criminals WHERE case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM evidence WHERE case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM arrests WHERE case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM case_actions WHERE case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM case_transfers WHERE case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM referrals WHERE case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM witness_statements WHERE case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM case_victims WHERE case_id NOT IN (1, 2, 3, 4, 5, 6)`);
+    await db.query(`DELETE FROM cases WHERE id NOT IN (1, 2, 3, 4, 5, 6)`);
+
+    // 3. Delete test-only and previously seeded OB entries
+    await db.query(`DELETE FROM ob_entries WHERE ob_number NOT IN ('OB-2026-00001', 'OB-HDN-2026-001', 'OB-HDN-2026-002', 'OB-HDN-2026-003')`);
+
+    // 4. Delete test-only and previously seeded criminals
+    await db.query(`DELETE FROM release_approvals WHERE suspect_id > 6 OR suspect_id IS NULL`);
+    await db.query(`DELETE FROM prisoner_visitor_logs WHERE suspect_id > 6 OR suspect_id IS NULL`);
+    await db.query(`DELETE FROM prisoner_medical_records WHERE suspect_id > 6 OR suspect_id IS NULL`);
+    await db.query(`DELETE FROM prison_transfers WHERE suspect_id > 6 OR suspect_id IS NULL`);
+    await db.query(`DELETE FROM criminals WHERE id > 6`);
+
+    await db.query('COMMIT');
+    console.log('Transaction committed successfully. Old test and previously seeded data removed.');
+  } catch (err) {
+    await db.query('ROLLBACK');
+    console.error('Failed to clean up old test data inside transaction:', err);
+    throw err;
+  } finally {
+    await db.query('SET FOREIGN_KEY_CHECKS = 1');
+  }
+
+  const afterCounts = {};
+  for (const table of tablesToCount) {
+    const [[{ count }]] = await db.query(`SELECT COUNT(*) AS count FROM ${table}`);
+    afterCounts[table] = count;
+  }
+  console.log('Row counts after deletion:', afterCounts);
+
+  console.log('Step 1: Seeding 18 realistic court module case chains...');
+
+  const stateId = await getId('SELECT id FROM state_administrations LIMIT 1');
+  const regionId = await getId('SELECT id FROM regions LIMIT 1');
+  const cityId = await getId('SELECT id FROM cities LIMIT 1');
+  const hodanDistrictId = await getId('SELECT id FROM districts WHERE district_code = ?', ['hodan_district']);
+  const waaberiDistrictId = await getId('SELECT id FROM districts WHERE district_code = ?', ['waaberi_district']);
+
+  const sergeantOfficerId = await getId("SELECT id FROM police_officers WHERE force_number = 'NP-SGT-0992'");
+  const inspectorOfficerId = await getId("SELECT id FROM police_officers WHERE force_number = 'NP-ISP-1102'");
+
+  const districts = [hodanDistrictId, waaberiDistrictId];
+  const officers = [sergeantOfficerId, inspectorOfficerId];
+  
+  const crimeCategories = ['Robbery', 'Narcotics', 'Assault', 'Theft', 'Fraud', 'Homicide', 'Burglary'];
+  const judges = ['Judge Hassan Ali', 'Judge Farhiya Yusuf', 'Judge Abdi Nuur', 'Judge Asha Omar'];
+  const rooms = ['Room 1', 'Room 2', 'Room 3', 'Room 4', 'Room 5'];
+
+  const casesData = [
+    // 3 cases in "registered" status
+    { targetStatus: 'registered', title: 'Suuqa Bakaaraha Theft', crime: 'Theft', district: 0, officer: 0, suspectName: 'Axmed Maxamed Cilmi', age: 24, gender: 'male' },
+    { targetStatus: 'registered', title: 'Hodan District Assault', crime: 'Assault', district: 0, officer: 1, suspectName: 'Faduma Cali Geedi', age: 28, gender: 'female' },
+    { targetStatus: 'registered', title: 'Waaberi Drug Dealing', crime: 'Narcotics', district: 1, officer: 0, suspectName: 'Yusuf Barre Rooble', age: 31, gender: 'male' },
+    
+    // 3 cases in "awaiting_hearing" status
+    { targetStatus: 'awaiting_hearing', title: 'Waberi Mobile Snatching', crime: 'Theft', district: 1, officer: 1, suspectName: 'Salma Abdi Cumar', age: 22, gender: 'female' },
+    { targetStatus: 'awaiting_hearing', title: 'Bakaro Store Break-in', crime: 'Burglary', district: 0, officer: 0, suspectName: 'Warsame Farah Diiriye', age: 35, gender: 'male' },
+    { targetStatus: 'awaiting_hearing', title: 'Hodan Road Robbery', crime: 'Robbery', district: 0, officer: 1, suspectName: 'Khader Cali Yusuf', age: 27, gender: 'male' },
+
+    // 3 cases in "hearing_scheduled" status
+    { targetStatus: 'hearing_scheduled', title: 'Waaberi Shoplifting', crime: 'Theft', district: 1, officer: 0, suspectName: 'Hibo Ibrahim Nuur', age: 25, gender: 'female' },
+    { targetStatus: 'hearing_scheduled', title: 'Hodan Financial Fraud', crime: 'Fraud', district: 0, officer: 1, suspectName: 'Cabdiraxmaan Cilmi Maxamed', age: 40, gender: 'male' },
+    { targetStatus: 'hearing_scheduled', title: 'Suuqa Bakaaraha Homicide', crime: 'Homicide', district: 0, officer: 0, suspectName: 'Muuse Maxamuud Geelle', age: 29, gender: 'male' },
+
+    // 3 cases in "in_trial" status
+    { targetStatus: 'in_trial', title: 'Waaberi Car Theft', crime: 'Theft', district: 1, officer: 1, suspectName: 'Nasra Cali Warsame', age: 26, gender: 'female' },
+    { targetStatus: 'in_trial', title: 'Hodan Pickpocketing', crime: 'Theft', district: 0, officer: 0, suspectName: 'Maxamed Cumar Sheekh', age: 21, gender: 'male' },
+    { targetStatus: 'in_trial', title: 'Suuqa Bakaaraha Drug Seizure', crime: 'Narcotics', district: 0, officer: 1, suspectName: 'Nimco Barre Cali', age: 30, gender: 'female' },
+
+    // 2 cases in "judgment_issued" status
+    { targetStatus: 'judgment_issued', decision: 'convicted', title: 'Waaberi Commercial Burglary', crime: 'Burglary', district: 1, officer: 0, suspectName: 'Cali Maxamed Dheere', age: 33, gender: 'male' },
+    { targetStatus: 'judgment_issued', decision: 'acquitted', title: 'Hodan Street Fight', crime: 'Assault', district: 0, officer: 1, suspectName: 'Fartun Maxamuud Cumar', age: 23, gender: 'female' },
+
+    // 2 cases in "sentenced" status
+    { targetStatus: 'sentenced', title: 'Suuqa Bakaaraha Robbery', crime: 'Robbery', district: 0, officer: 0, suspectName: 'Khadar Yusuf Barre', age: 29, gender: 'male' },
+    { targetStatus: 'sentenced', title: 'Waaberi Narcotics Possession', crime: 'Narcotics', district: 1, officer: 1, suspectName: 'Farhiya Cilmi Geedi', age: 27, gender: 'female' },
+
+    // 2 cases in "closed" status
+    { targetStatus: 'closed', decision: 'dismissed', title: 'Waaberi Defraud Case', crime: 'Fraud', district: 1, officer: 0, suspectName: 'Axmed Barre Rooble', age: 45, gender: 'male' },
+    { targetStatus: 'closed', decision: 'acquitted', title: 'Hodan Market Brawl', crime: 'Assault', district: 0, officer: 1, suspectName: 'Muna Cali Cilmi', age: 19, gender: 'female' },
+  ];
+
+  for (let i = 0; i < casesData.length; i++) {
+    const data = casesData[i];
+    const indexStr = String(i + 1).padStart(3, '0');
+    
+    // 1. Create OB entry
+    const obNumber = `OB-HDN-2026-5${indexStr}`;
+    const [obResult] = await db.query(`
+      INSERT INTO ob_entries (
+        ob_number, incident_type, incident_location, description, reported_by, reporter_phone,
+        registered_by_user_id, registered_by_name, registered_by_role, registered_by_rank,
+        state_administration_id, region_id, district_id, registration_date, registration_time, status
+      ) VALUES (
+        ?, ?, 'Mogadishu Road, Hodan', ?, 'Complainant Name', '+252-61-5100000',
+        1, 'admin', 'admin', 'Colonel',
+        ?, ?, ?, CURDATE(), '10:00:00', 'CONVERTED_TO_CASE'
+      )
+    `, [
+      obNumber,
+      data.crime,
+      `Detailed description for incident ${data.title} - ${obNumber}`,
+      stateId,
+      regionId,
+      districts[data.district]
+    ]);
+    const obEntryId = obResult.insertId;
+
+    // 2. Create Police Case
+    const caseNumber = `CASE-2026-9${indexStr.padStart(4, '0')}`;
+    const [caseResult] = await db.query(`
+      INSERT INTO cases (
+        case_number, ob_number, ob_entry_id, case_title, title, description, incident_date, incident_location,
+        case_type, status, priority, state_administration_id, region_id, city_id, district_id,
+        assigned_officer_id, created_by
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL 2 HOUR), 'Mogadishu Road, Hodan',
+        ?, 'forwarded_to_court', 'medium', ?, ?, ?, ?, ?, 'system'
+      )
+    `, [
+      caseNumber,
+      obNumber,
+      obEntryId,
+      data.title,
+      data.title,
+      `Detailed investigation dossier for case ${data.title} - ${caseNumber}`,
+      data.crime,
+      stateId,
+      regionId,
+      cityId,
+      districts[data.district],
+      officers[data.officer]
+    ]);
+    const caseId = caseResult.insertId;
+
+    // 3. Create Criminal (Suspect) - photos are left as NULL
+    const [criminalResult] = await db.query(`
+      INSERT INTO criminals (
+        full_name, mother_name, gender, age, nationality, id_type, id_number, phone, address, 
+        photo_url, offender_photo, face_capture_image, fingerprint_hash, arrest_status, is_arrested
+      ) VALUES (
+        ?, 'Amina Suspect Mother', ?, ?, 'Somali', 'National ID', ?, '+252-61-9999999', 'Hodan District',
+        NULL, NULL, NULL, ?, ?, ?
+      )
+    `, [
+      data.suspectName,
+      data.gender,
+      data.age,
+      `NID-98${indexStr}`,
+      `FPR-HASH-99${indexStr}`,
+      data.targetStatus === 'sentenced' ? 'arrested' : 'not_arrested',
+      data.targetStatus === 'sentenced' ? 1 : 0
+    ]);
+    const criminalId = criminalResult.insertId;
+
+    // 4. Link Suspect to Case
+    await db.query(`
+      INSERT INTO case_criminals (case_id, criminal_id, linked_by_user_id, role_in_case, status, added_by)
+      VALUES (?, ?, 'system', 'Suspect', 'active', 'system')
+    `, [caseId, criminalId]);
+
+    // 5. Create Evidence
+    await db.query(`
+      INSERT INTO evidence (case_id, evidence_number, type, title, description, collected_by, collection_date, location_found, status, hash_sha256)
+      VALUES (?, ?, 'physical', ?, 'Recovered physical item from scene.', 'system', CURDATE(), 'Scene of Crime', 'collected', ?)
+    `, [
+      caseId,
+      `EV-2026-9${indexStr}-01`,
+      `Physical Exhibit ${indexStr}`,
+      `EVID-HASH-99${indexStr}`
+    ]);
+
+    // 6. Create Case Actions
+    await db.query(`
+      INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)
+      VALUES (?, 'system', 'CASE_CREATED_FROM_OB', ?, 'draft', 'registered')
+    `, [caseId, `Case converted from OB entry ${obNumber}`]);
+
+    // 7. Sync into court_cases
+    const result = await ensureCourtCaseForPoliceCase(caseId, 'system');
     if (!result) continue;
     const courtCaseId = result.id;
 
-    // 2. Add sample hearings
-    const [hearingResult] = await db.query(`
-      INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, status, created_by)
-      VALUES (?, 'preliminary', DATE_ADD(CURDATE(), INTERVAL 2 DAY), '09:30:00', 'Room 3', 'Judge Ahmed', 'scheduled', 'system')
-    `, [courtCaseId]);
-
-    const [hearingCompletedResult] = await db.query(`
-      INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, status, created_by)
-      VALUES (?, 'evidence', DATE_SUB(CURDATE(), INTERVAL 3 DAY), '10:00:00', 'Room 1', 'Judge Ahmed', 'completed', 'system')
-    `, [courtCaseId]);
-
-    // 3. Add sample proceeding for completed hearing
+    // Update court case status based on targetStatus
     await db.query(`
-      INSERT INTO court_proceedings (court_case_id, hearing_id, proceeding_date, notes, judge_remarks, prosecutor_remarks, defense_remarks, created_by)
-      VALUES (?, ?, DATE_SUB(CURDATE(), INTERVAL 3 DAY), ?, ?, ?, ?, ?)
+      UPDATE court_cases 
+      SET status = ?, assigned_judge = ?, assigned_prosecutor = ?
+      WHERE id = ?
     `, [
-      courtCaseId,
-      hearingCompletedResult.insertId,
-      'Prosecution presented CCTV evidence and physical exhibits. Witnesses testified.',
-      'Evidence is admitted. Hearing set for final judgment.',
-      'Request conviction based on overwhelming evidence.',
-      "Requested mercy due to client's cooperation.",
-      'system'
+      data.targetStatus,
+      judges[i % judges.length],
+      'Prosecutor Yusuf',
+      courtCaseId
     ]);
 
-    // 4. Update status of the case to "in_trial" or "judgment_issued" if it has sentence/judgment in arrests table
-    // Let's check if there's an arrest with a court conviction
-    const [[arrest]] = await db.query(`
-      SELECT * FROM arrests WHERE case_id = ? AND court_decision IN ('convicted', 'acquitted', 'dismissed')
-    `, [c.id]);
+    // Update police case status to reflect post-court outcome
+    if (['judgment_issued', 'sentenced'].includes(data.targetStatus)) {
+      await db.query(`UPDATE cases SET status = 'court_decided' WHERE id = ?`, [caseId]);
+    } else if (data.targetStatus === 'closed') {
+      await db.query(`UPDATE cases SET status = 'closed' WHERE id = ?`, [caseId]);
+    }
 
-    if (arrest) {
-      // Add sample judgment matching the arrest decision
-      const [judgmentResult] = await db.query(`
-        INSERT INTO court_judgments (court_case_id, judge_name, decision_date, decision_type, judgment_summary, created_by)
-        VALUES (?, 'Judge Ahmed', DATE_SUB(CURDATE(), INTERVAL 1 DAY), ?, ?, 'system')
-      `, [courtCaseId, arrest.court_decision, arrest.court_decision_notes || 'judgment issued by regional court']);
+    // 8. Hearing seeding
+    if (['hearing_scheduled', 'in_trial', 'judgment_issued', 'sentenced', 'closed'].includes(data.targetStatus)) {
+      const hearingDatePast = formatDate(addDays(new Date(), -5));
+      const [pastHearingResult] = await db.query(`
+        INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, status, created_by)
+        VALUES (?, 'preliminary', ?, '09:30:00', ?, ?, 'completed', 'system')
+      `, [courtCaseId, hearingDatePast, rooms[i % rooms.length], judges[i % judges.length]]);
 
-      // Update court case status and outcome
+      // Proceeding
       await db.query(`
-        UPDATE court_cases
-        SET status = ?, final_outcome = ?
-        WHERE id = ?
-      `, [arrest.court_decision === 'convicted' ? 'sentenced' : 'closed', arrest.court_decision, courtCaseId]);
+        INSERT INTO court_proceedings (court_case_id, hearing_id, proceeding_date, notes, judge_remarks, prosecutor_remarks, defense_remarks, created_by)
+        VALUES (?, ?, ?, 'Prosecution presented physical evidence. Testimonies recorded.', 'Exhibits admitted.', 'Strong case for conviction.', 'Requesting dismissal.', 'system')
+      `, [courtCaseId, pastHearingResult.insertId, hearingDatePast]);
+    }
 
-      if (arrest.court_decision === 'convicted') {
-        // Add sample sentence matching the arrest sentence details
-        await db.query(`
-          INSERT INTO court_sentences (court_case_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
-          VALUES (?, (SELECT full_name FROM criminals WHERE id = ?), 'imprisonment', ?, 500.00, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'system')
-        `, [
-          courtCaseId,
-          arrest.suspect_id,
-          arrest.sentence_period_value ? `${arrest.sentence_period_value} ${arrest.sentence_period_unit}` : '2 years'
-        ]);
-      }
+    if (data.targetStatus === 'hearing_scheduled' || data.targetStatus === 'in_trial') {
+      const hearingDateFuture = formatDate(addDays(new Date(), i + 2));
+      await db.query(`
+        INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, status, created_by)
+        VALUES (?, 'trial', ?, '10:30:00', ?, ?, 'scheduled', 'system')
+      `, [courtCaseId, hearingDateFuture, rooms[(i + 1) % rooms.length], judges[i % judges.length]]);
+    }
+
+    // 9. Judgment seeding
+    if (['judgment_issued', 'sentenced', 'closed'].includes(data.targetStatus)) {
+      const decision = data.decision || (data.targetStatus === 'sentenced' ? 'convicted' : 'acquitted');
+      await db.query(`
+        INSERT INTO court_judgments (court_case_id, judge_name, decision_date, decision_type, judgment_summary, created_by)
+        VALUES (?, ?, DATE_SUB(CURDATE(), INTERVAL 1 DAY), ?, 'The court finds the accused guilty/not guilty after examining all evidence and statements.', 'system')
+      `, [courtCaseId, judges[i % judges.length], decision]);
+      
+      await db.query(`
+        UPDATE court_cases SET final_outcome = ? WHERE id = ?
+      `, [decision, courtCaseId]);
+    }
+
+    // 10. Sentence & Arrest seeding
+    if (data.targetStatus === 'sentenced') {
+      await db.query(`
+        INSERT INTO court_sentences (court_case_id, suspect_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
+        VALUES (?, ?, ?, 'imprisonment', '12 months', 400.00, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'system')
+      `, [courtCaseId, criminalId, data.suspectName]);
+
+      // Create matching arrest record
+      await db.query(`
+        INSERT INTO arrests (
+          case_id, suspect_id, police_station_id, arrested_by, arrest_date, arrest_location, charges, 
+          court_decision, court_decision_notes, sentence_period_value, sentence_period_unit, 
+          sentence_start_date, expected_release_date, sentence_status, bail_status, notes
+        ) VALUES (
+          ?, ?, ?, 'officer', DATE_SUB(NOW(), INTERVAL 5 DAY), 'Mogadishu Road', ?,
+          'convicted', 'Convicted by regional court.', 12, 'months',
+          DATE_SUB(CURDATE(), INTERVAL 1 DAY), DATE_ADD(CURDATE(), INTERVAL 12 MONTH), 'serving', 'no_bail', 'Conviction sentence serving.'
+        )
+      `, [caseId, criminalId, districts[data.district], data.crime]);
+    }
+
+    // 11. Appeal seeding
+    if (i === 11) { // Appealed status for Case 12
+      await db.query(`
+        UPDATE court_cases SET status = 'appealed' WHERE id = ?
+      `, [courtCaseId]);
+
+      await db.query(`
+        INSERT INTO court_appeals (court_case_id, filed_by, appeal_reason, filing_date, status, created_by)
+        VALUES (?, 'Defense Counsel', 'Severe errors in evidence admission during initial trials.', CURDATE(), 'pending', 'system')
+      `, [courtCaseId]);
     }
   }
+
+  console.log('Step 1 complete: Seeded 18 realistic case chains.');
 }
 
 async function seed() {
@@ -953,6 +1227,9 @@ async function seed() {
 
     await repairCaseSampleData();
     await seedCourtData();
+
+    const { runOneTimeArrestStatusRepair } = require('../src/utils/dataRepair');
+    await runOneTimeArrestStatusRepair(db);
 
     console.log('Database seeded successfully.');
     console.log('');

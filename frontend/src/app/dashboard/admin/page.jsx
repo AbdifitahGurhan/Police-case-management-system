@@ -52,7 +52,7 @@ export default function AdminDashboard() {
 
   const columns = [
     {
-      title: 'Station Name',
+      title: 'Station name',
       dataIndex: 'station_name',
       key: 'station_name',
     },
@@ -60,10 +60,10 @@ export default function AdminDashboard() {
       title: 'Code',
       dataIndex: 'code',
       key: 'code',
-      render: (text) => <Tag color="blue">{text}</Tag>
+      render: (text) => <Tag className="status-tag status-tag--open">{text}</Tag>,
     },
     {
-      title: 'Total Cases',
+      title: 'Total cases',
       dataIndex: 'total_cases',
       key: 'total_cases',
     },
@@ -71,20 +71,28 @@ export default function AdminDashboard() {
       title: 'Pending',
       dataIndex: 'pending_cases',
       key: 'pending_cases',
-      render: (val) => <Typography.Text type={val > 0 ? 'warning' : 'secondary'}>{val || 0}</Typography.Text>
+      render: (val) => (
+        <Typography.Text style={{ color: Number(val) > 0 ? '#EF9F27' : '#A5A5A5' }}>
+          {val || 0}
+        </Typography.Text>
+      ),
     },
     {
       title: 'Confirmed',
       dataIndex: 'confirmed_cases',
       key: 'confirmed_cases',
-      render: (val) => <Typography.Text style={{ color: '#1967d2' }}>{val || 0}</Typography.Text>
+      render: (val) => (
+        <Typography.Text style={{ color: '#A8FF4D' }}>{val || 0}</Typography.Text>
+      ),
     },
     {
-      title: 'Closed Cases',
+      title: 'Closed cases',
       dataIndex: 'closed_cases',
       key: 'closed_cases',
-      render: (val) => <Typography.Text type="success">{val || 0}</Typography.Text>
-    }
+      render: (val) => (
+        <Typography.Text style={{ color: '#A5A5A5' }}>{val || 0}</Typography.Text>
+      ),
+    },
   ];
 
   const renderMiniChart = (title, rows = []) => {
@@ -93,7 +101,9 @@ export default function AdminDashboard() {
       <Card variant="none" className="standard-panel dashboard-chart-card" title={title}>
         <div className="dashboard-chart-list">
           {rows.length === 0 ? (
-            <Typography.Text type="secondary">No data available</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              No data available
+            </Typography.Text>
           ) : rows.map((row) => (
             <div className="dashboard-chart-row" key={`${title}-${row.label}`}>
               <div className="dashboard-chart-label">
@@ -112,43 +122,44 @@ export default function AdminDashboard() {
 
   return (
     <>
-    <StandardDashboard
-      allowedRoles={['admin']}
-      eyebrow="Command Center"
-      title="Admin Dashboard"
-      subtitle="System-wide monitoring for cases, units, users, and evidence."
-      loading={loading}
-      metrics={[
-        { title: 'Total Cases', value: totalCases, icon: <FileSearchOutlined />, tone: 'blue', note: 'Registered records' },
-        { title: 'Critical Cases', value: criticalCases, icon: <AlertOutlined />, tone: 'red', note: 'Requires attention' },
-        { title: 'Open Cases', value: openCases, icon: <ClockCircleOutlined />, tone: 'amber', note: 'Active workflows' },
-        { title: 'Closed Cases', value: closedCases, icon: <CheckCircleOutlined />, tone: 'green', note: 'Completed workflow' },
-      ]}
-      sidePanel={{
-        title: 'System Snapshot',
-        content: ( 
-          <div className="standard-side-list">
-            <div><UserOutlined /><span>Active Users</span><strong>{activeUsers}</strong></div>
-            <div><EnvironmentOutlined /><span>Stations</span><strong>{stationsCount}</strong></div>
-            <div><DatabaseOutlined /><span>Evidence</span><strong>{evidenceCount}</strong></div>
-          </div>
-        ),
-      }}
-      tableTitle="Case Distribution by Station"
-      tableSubtitle="Operational performance across stations and units"
-      tableColumns={columns}
-      tableData={stationStats}
-      rowKey="station_name"
-      viewAllHref="/stations"
-    />
-    <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-      <Col xs={24} lg={12}>{renderMiniChart('Cases by Station', charts?.byStation)}</Col>
-      <Col xs={24} lg={12}>{renderMiniChart('Cases by Crime Type', charts?.byCrimeType)}</Col>
-      <Col xs={24} lg={12}>{renderMiniChart('Cases by Month', charts?.byMonth)}</Col>
-      <Col xs={24} lg={12}>{renderMiniChart('Open vs Closed', charts?.openClosed)}</Col>
-      <Col xs={24} lg={12}>{renderMiniChart('Critical Cases', charts?.criticalCases)}</Col>
-      <Col xs={24} lg={12}>{renderMiniChart('Court Outcomes', charts?.courtOutcomes)}</Col>
-    </Row>
+      <StandardDashboard
+        allowedRoles={['admin']}
+        eyebrow="Command center"
+        title="Admin dashboard"
+        subtitle="System-wide monitoring for cases, units, users, and evidence."
+        loading={loading}
+        metrics={[
+          { title: 'Total cases', value: totalCases, icon: <FileSearchOutlined />, tone: 'blue', note: 'Registered records' },
+          { title: 'Critical cases', value: criticalCases, icon: <AlertOutlined />, tone: 'red', note: 'Requires attention' },
+          { title: 'Open cases', value: openCases, icon: <ClockCircleOutlined />, tone: 'amber', note: 'Active workflows' },
+          { title: 'Closed cases', value: closedCases, icon: <CheckCircleOutlined />, tone: 'green', note: 'Completed workflow' },
+        ]}
+        sidePanel={{
+          title: 'System snapshot',
+          content: (
+            <div className="standard-side-list">
+              <div><UserOutlined /><span>Active users</span><strong>{activeUsers}</strong></div>
+              <div><EnvironmentOutlined /><span>Stations</span><strong>{stationsCount}</strong></div>
+              <div><DatabaseOutlined /><span>Evidence</span><strong>{evidenceCount}</strong></div>
+            </div>
+          ),
+        }}
+        tableTitle="Case distribution by station"
+        tableSubtitle="Operational performance across stations and units"
+        tableColumns={columns}
+        tableData={stationStats}
+        rowKey="station_name"
+        viewAllHref="/stations"
+        pagination={{ pageSize: 10, showSizeChanger: false }}
+      />
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} lg={12}>{renderMiniChart('Cases by station', charts?.byStation)}</Col>
+        <Col xs={24} lg={12}>{renderMiniChart('Cases by crime type', charts?.byCrimeType)}</Col>
+        <Col xs={24} lg={12}>{renderMiniChart('Cases by month', charts?.byMonth)}</Col>
+        <Col xs={24} lg={12}>{renderMiniChart('Open vs closed', charts?.openClosed)}</Col>
+        <Col xs={24} lg={12}>{renderMiniChart('Critical cases', charts?.criticalCases)}</Col>
+        <Col xs={24} lg={12}>{renderMiniChart('Court outcomes', charts?.courtOutcomes)}</Col>
+      </Row>
     </>
   );
 }

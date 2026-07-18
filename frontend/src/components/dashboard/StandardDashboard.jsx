@@ -22,7 +22,7 @@ export default function StandardDashboard({
   subtitle,
   loading,
   metrics = [],
-  tableTitle = 'Recent Records',
+  tableTitle = 'Recent records',
   tableSubtitle,
   tableColumns = [],
   tableData = [],
@@ -32,6 +32,7 @@ export default function StandardDashboard({
   viewAllHref,
   viewAllOnClick,
   viewAllLabel = 'View all records',
+  pagination = false,
 }) {
   return (
     <ProtectedRoute allowedRoles={allowedRoles}>
@@ -39,8 +40,14 @@ export default function StandardDashboard({
         <div className="standard-dashboard-hero">
           <div>
             <Text className="dashboard-eyebrow">{eyebrow}</Text>
-            <Title level={2}>{title}</Title>
-            {subtitle && <Text type="secondary">{subtitle}</Text>}
+            <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
+              {title}
+            </Title>
+            {subtitle && (
+              <Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>
+                {subtitle}
+              </Text>
+            )}
           </div>
           {actions.length > 0 && (
             <Space wrap>
@@ -65,7 +72,11 @@ export default function StandardDashboard({
               <Card variant="none" className={`standard-metric-card ${toneClass[metric.tone] || toneClass.blue}`}>
                 <div className="standard-metric-icon">{metric.icon}</div>
                 <Statistic title={metric.title} value={metric.value || 0} loading={loading} />
-                {metric.note && <Text type="secondary">{metric.note}</Text>}
+                {metric.note && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {metric.note}
+                  </Text>
+                )}
               </Card>
             </Col>
           ))}
@@ -85,22 +96,30 @@ export default function StandardDashboard({
               className="standard-panel"
               title={
                 <Space orientation="vertical" size={0}>
-                  <span>{tableTitle}</span>
-                  {tableSubtitle && <Text type="secondary">{tableSubtitle}</Text>}
+                  <span style={{ fontWeight: 500 }}>{tableTitle}</span>
+                  {tableSubtitle && (
+                    <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+                      {tableSubtitle}
+                    </Text>
+                  )}
                 </Space>
               }
-              extra={<Tag color="blue">{tableData.length} records</Tag>}
+              extra={
+                <Tag className="status-tag status-tag--neutral">
+                  {tableData.length} records
+                </Tag>
+              }
             >
               <Table
                 columns={tableColumns}
                 dataSource={tableData}
                 loading={loading}
                 rowKey={rowKey}
-                pagination={false}
+                pagination={pagination}
                 size="middle"
                 scroll={{ x: 'max-content' }}
               />
-              {tableData.length > 0 && (
+              {tableData.length > 0 && (viewAllHref || viewAllOnClick) && (
                 <div className="standard-table-footer">
                   <Button
                     type="text"

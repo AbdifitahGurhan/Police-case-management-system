@@ -787,6 +787,7 @@ CREATE TABLE IF NOT EXISTS court_judgments (
 CREATE TABLE IF NOT EXISTS court_sentences (
   id INT PRIMARY KEY AUTO_INCREMENT,
   court_case_id INT NOT NULL,
+  suspect_id INT NULL,
   defendant_name VARCHAR(150) NOT NULL,
   sentence_type VARCHAR(100) NOT NULL,
   duration VARCHAR(100),
@@ -794,7 +795,8 @@ CREATE TABLE IF NOT EXISTS court_sentences (
   sentence_date DATE NOT NULL,
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_sent_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE
+  CONSTRAINT fk_sent_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_sent_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS court_appeals (

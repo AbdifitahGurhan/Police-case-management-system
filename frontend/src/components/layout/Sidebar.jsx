@@ -94,10 +94,16 @@ const Sidebar = ({ collapsed }) => {
     const courtRoles = ['court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk'];
     const cidRoles = ['cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const isCourtRole = courtRoles.includes(role);
+    // Role visibility aligned to Part 5 permission matrix
     const canViewOffenders = ['admin', 'officer', ...cidRoles, 'jail', 'staff', ...commanderRoles, ...stationOperationRoles, 'ob_staff'].includes(role);
     const canViewReports = ['admin', 'region_admin', 'officer', ...cidRoles, 'jail', ...commanderRoles, ...stationOperationRoles].includes(role);
 
-    const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander'];
+    const caseReadRoles = [
+      'admin', 'officer', 'staff', 'district_admin',
+      'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
+      'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
+      'prosecutor', 'judge', 'court_clerk', 'jail',
+    ];
     const canViewCases = caseReadRoles.includes(role);
 
     const primaryItems = [
@@ -245,8 +251,8 @@ const Sidebar = ({ collapsed }) => {
       trigger={null}
       collapsible
       collapsed={collapsed}
-      collapsedWidth={80}
-      width={260}
+      collapsedWidth={64}
+      width={220}
     >
       <div className="police-sidebar-shell">
         <div className="police-sidebar-brand">
@@ -270,7 +276,7 @@ const Sidebar = ({ collapsed }) => {
         {!collapsed && (
           <div className="police-sidebar-role">
             <span>You are signed in as</span>
-            <Tag color="blue">{roleLabel}</Tag>
+            <Tag className="status-tag status-tag--open">{roleLabel}</Tag>
           </div>
         )}
 

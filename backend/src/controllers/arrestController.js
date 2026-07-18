@@ -199,7 +199,7 @@ const createArrest = async (req, res, next) => {
     );
 
     const arrestId = result.insertId;
-    await db.query('UPDATE criminals SET is_arrested = 1 WHERE id = ?', [suspect_id]);
+    await db.query("UPDATE criminals SET is_arrested = 1, arrest_status = 'arrested' WHERE id = ?", [suspect_id]);
     await db.query(
       `INSERT IGNORE INTO case_criminals (case_id, criminal_id, role_in_case, notes, added_by)
        VALUES (?, ?, ?, ?, ?)`,
@@ -298,6 +298,12 @@ const updateSentence = async (req, res, next) => {
       ]
     );
 
+    const stillInCustody = ['awaiting_trial', 'sentenced', 'serving', 'release_review', 'escaped', 'wanted'].includes(sentenceStatus) ? 1 : 0;
+    const arrestStatus = ['wanted', 'escaped'].includes(sentenceStatus)
+      ? 'wanted'
+      : (stillInCustody ? 'arrested' : 'released');
+    await db.query('UPDATE criminals SET is_arrested = ?, arrest_status = ? WHERE id = ?', [stillInCustody, arrestStatus, existing.suspect_id]);
+
     await db.query(
       `INSERT INTO case_actions (case_id, performed_by, action_type, description)
        VALUES (?, ?, ?, ?)`,
@@ -347,7 +353,10 @@ const updateArrestStatus = async (req, res, next) => {
     );
 
     const stillInCustody = ['awaiting_trial', 'sentenced', 'serving', 'release_review', 'escaped', 'wanted'].includes(sentence_status) ? 1 : 0;
-    await db.query('UPDATE criminals SET is_arrested = ? WHERE id = ?', [stillInCustody, existing.suspect_id]);
+    const arrestStatus = ['wanted', 'escaped'].includes(sentence_status)
+      ? 'wanted'
+      : (stillInCustody ? 'arrested' : 'released');
+    await db.query('UPDATE criminals SET is_arrested = ?, arrest_status = ? WHERE id = ?', [stillInCustody, arrestStatus, existing.suspect_id]);
 
     await db.query(
       `INSERT INTO case_actions (case_id, performed_by, action_type, description)

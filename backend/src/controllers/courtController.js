@@ -202,10 +202,10 @@ const getCourtCaseById = async (req, res, next) => {
 
     const policeCaseId = courtCase.police_case_id;
     const [criminals] = await db.query(`
-      SELECT s.*, cs.role_in_case
+      SELECT s.*, cs.role_in_case, cs.status AS case_criminal_status
       FROM criminals s
       JOIN case_criminals cs ON cs.criminal_id = s.id
-      WHERE cs.case_id = ?`,
+      WHERE cs.case_id = ? AND cs.status = 'active'`,
       [policeCaseId]
     );
     const [witnesses] = await db.query(`
@@ -467,14 +467,14 @@ const saveJudgment = async (req, res, next) => {
 
 const issueSentence = async (req, res, next) => {
   try {
-    const { defendant_name, sentence_type, duration, fine_amount, sentence_date } = req.body;
+    const { suspect_id, defendant_name, sentence_type, duration, fine_amount, sentence_date } = req.body;
     if (!defendant_name || !sentence_type) {
       return res.status(400).json({ success: false, message: 'defendant_name and sentence_type are required.' });
     }
     const [result] = await db.query(
-      `INSERT INTO court_sentences (court_case_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
-       VALUES (?, ?, ?, ?, ?, COALESCE(?, CURDATE()), ?)`,
-      [req.params.id, defendant_name, sentence_type, duration || null, fine_amount || null, sentence_date || null, actor(req)]
+      `INSERT INTO court_sentences (court_case_id, suspect_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURDATE()), ?)`,
+      [req.params.id, suspect_id || null, defendant_name, sentence_type, duration || null, fine_amount || null, sentence_date || null, actor(req)]
     );
     await db.query("UPDATE court_cases SET status = 'sentenced' WHERE id = ? AND status = 'judgment_issued'", [req.params.id]);
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: 'ISSUE_SENTENCE', entityType: 'court_sentences', entityId: result.insertId, newData: { court_case_id: Number(req.params.id), ...req.body }, ...auditRequestMeta(req) });

@@ -5,6 +5,7 @@ const { writeAuditLog } = require('../utils/auditLogger');
 const { generateOBNumber } = require('../utils/obNumberGenerator');
 const { generateCaseNumber } = require('../utils/caseNumberGenerator');
 const { buildScopeWhere, getUserLocation, normalizeRole } = require('../utils/locationScope');
+const { ensureCidCaseForPoliceCase } = require('../services/cidService');
 
 const getObEntries = async (req, res, next) => {
   try {
@@ -192,6 +193,7 @@ const convertObToCase = async (req, res, next) => {
 
     const { assigned_staff_id, priority, status } = req.body;
     const caseNumber = await generateCaseNumber();
+    const caseStatus = status || 'under_investigation';
     const [result] = await db.query(
       `INSERT INTO cases
         (case_number, case_title, title, ob_number, ob_entry_id, original_ob_staff_id, original_ob_staff_name,
@@ -209,7 +211,7 @@ const convertObToCase = async (req, res, next) => {
         ob.incident_type,
         ob.description,
         ob.incident_location,
-        status || 'CASE_REGISTERED',
+        caseStatus,
         priority || 'medium',
         ob.state_administration_id,
         ob.region_id,
@@ -220,11 +222,21 @@ const convertObToCase = async (req, res, next) => {
       ]
     );
 
+    // Insert automatic CID referral
+    await db.query(
+      `INSERT INTO referrals (case_id, referred_by, referred_to_role, reason, status)
+       VALUES (?, ?, 'cid', 'Automatic referral on OB conversion', 'accepted')`,
+      [result.insertId, req.user.username]
+    );
+
+    // Sync to CID cases
+    await ensureCidCaseForPoliceCase(result.insertId, req.user.username);
+
     await db.query('UPDATE ob_entries SET status = ? WHERE id = ?', ['CONVERTED_TO_CASE', ob.id]);
     await db.query(
       `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
        VALUES (?, ?, 'CASE_OPENED_FROM_OB', ?, ?)`,
-      [result.insertId, req.user.username, `Formal case opened from ${ob.ob_number}.`, status || 'CASE_REGISTERED']
+      [result.insertId, req.user.username, `Formal case opened from ${ob.ob_number} and automatically referred to CID.`, caseStatus]
     );
 
     await writeAuditLog({
@@ -233,7 +245,7 @@ const convertObToCase = async (req, res, next) => {
       action: 'CONVERT_OB_TO_CASE',
       entityType: 'cases',
       entityId: result.insertId,
-      newData: { caseNumber, obNumber: ob.ob_number, originalObStaffId: ob.registered_by_user_id },
+      newData: { caseNumber, obNumber: ob.ob_number, originalObStaffId: ob.registered_by_user_id, status: caseStatus },
     });
 
     res.status(201).json({ success: true, message: 'OB entry converted to case.', caseId: result.insertId, caseNumber, obNumber: ob.ob_number });

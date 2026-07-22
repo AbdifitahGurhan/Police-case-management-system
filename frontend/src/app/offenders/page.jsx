@@ -49,10 +49,21 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
-const UPLOAD_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '');
+const UPLOAD_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+
+const getRequestErrorMessage = (err, fallback) => {
+  if (err.code === 'ECONNABORTED') {
+    return 'The request timed out. Please make sure the backend API is running on port 5000.';
+  }
+  if (!err.response) {
+    return 'Cannot reach the backend API. Please make sure the backend server is running.';
+  }
+  return err.response?.data?.message || fallback;
+};
 
 export default function OffendersPage() {
   const { message } = App.useApp();
+  const messageRef = useRef(message);
   const { user } = useAuth();
   const [form] = Form.useForm();
   const [releaseForm] = Form.useForm();
@@ -60,6 +71,7 @@ export default function OffendersPage() {
   const [custodyForm] = Form.useForm();
   const [offenders, setOffenders] = useState([]);
   const [sentenceAlerts, setSentenceAlerts] = useState([]);
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -86,19 +98,26 @@ export default function OffendersPage() {
   const videoRef = useRef(null);
   const [duplicateAlert, setDuplicateAlert] = useState(null);
 
+  useEffect(() => {
+    messageRef.current = message;
+  }, [message]);
+
   const fetchOffenders = useCallback(async () => {
     setLoading(true);
     try {
       const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined && value !== ''));
       const res = await api.get('/criminals', { params });
       setOffenders(res.data.data || []);
+      setLoadError('');
     } catch (err) {
       console.error(err);
-      message.error('Failed to load offenders.');
+      const errorMessage = getRequestErrorMessage(err, 'Failed to load offenders.');
+      setLoadError(errorMessage);
+      messageRef.current.error(errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [filters, message]);
+  }, [filters]);
 
   const fetchSentenceAlerts = useCallback(async () => {
     if (!['admin', 'jail'].includes(user?.role)) return;
@@ -107,6 +126,7 @@ export default function OffendersPage() {
       setSentenceAlerts(res.data.data || []);
     } catch (err) {
       console.error(err);
+      messageRef.current.warning(getRequestErrorMessage(err, 'Failed to load sentence alerts.'));
     }
   }, [user?.role]);
 
@@ -138,7 +158,7 @@ export default function OffendersPage() {
     if (!modalOpen) stopCamera();
   }, [modalOpen]);
 
-  const startCamera = async () => {
+  const startCamera = async (retryOnSystemLock = true) => {
     setCameraError('');
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera not available in this browser.');
@@ -153,6 +173,14 @@ export default function OffendersPage() {
       setIsCameraActive(true);
     } catch (err) {
       console.error('Camera error', err);
+      // Chrome/Windows can briefly report "Permission denied by system" right after a previous
+      // stream's tracks are stopped, because the OS hasn't released the device yet. Retry once
+      // rather than surfacing this as a real permission denial (which uses a different message).
+      const isTransientSystemLock = err.name === 'NotAllowedError' && /system/i.test(err.message || '');
+      if (isTransientSystemLock && retryOnSystemLock) {
+        setTimeout(() => startCamera(false), 400);
+        return;
+      }
       setCameraError('Camera access denied or unavailable.');
     }
   };
@@ -668,6 +696,16 @@ export default function OffendersPage() {
   return (
     <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'ob_staff']}>
       <div className="offenders-page">
+        {loadError && (
+          <Alert
+            style={{ marginBottom: 16 }}
+            type="error"
+            showIcon
+            title="Offenders could not be loaded"
+            description={loadError}
+          />
+        )}
+
         {sentenceAlerts.length > 0 && (
           <Alert
             style={{ marginBottom: 16 }}
@@ -897,11 +935,11 @@ export default function OffendersPage() {
                       <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>{selectedProfile.profile.alias ? `"${selectedProfile.profile.alias}"` : 'No Alias'}</Text>
 
                       <div style={{ marginBottom: 16 }}>
-                        {Number(selectedProfile.profile.is_arrested) === 1 ? (
+                        {selectedProfile.profile.arrest_status === 'arrested' ? (
                           <Tag color="red" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: 'bold', borderRadius: '4px' }}>
                             🔴 IN CUSTODY (XIRAN)
                           </Tag>
-                        ) : selectedProfile.profile.arrest_status === 'wanted' || selectedProfile.profile.arrest_status === 'escaped' ? (
+                        ) : selectedProfile.profile.arrest_status === 'wanted' ? (
                           <Tag color="volcano" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: 'bold', borderRadius: '4px' }}>
                             ⚠️ WANTED / ESCAPED
                           </Tag>
@@ -914,10 +952,10 @@ export default function OffendersPage() {
 
                       <Row gutter={8} style={{ width: '100%', marginTop: 8 }}>
                         <Col span={12} style={{ textAlign: 'center' }}>
-                          <Statistic title="Total Cases" value={selectedProfile.cases?.length || 0} styles={{ content: { fontSize: 16 } }} />
+                          <Statistic title="Total Cases" value={selectedProfile.total_cases ?? 0} styles={{ content: { fontSize: 16 } }} />
                         </Col>
                         <Col span={12} style={{ textAlign: 'center' }}>
-                          <Statistic title="Arrests" value={selectedProfile.arrests?.length || 0} styles={{ content: { fontSize: 16 } }} />
+                          <Statistic title="Arrests" value={selectedProfile.total_arrests ?? 0} styles={{ content: { fontSize: 16 } }} />
                         </Col>
                       </Row>
                     </Card>
@@ -936,9 +974,9 @@ export default function OffendersPage() {
                       <Descriptions.Item label="Description/Notes" span={2}>{selectedProfile.profile.description || selectedProfile.profile.profile_notes || 'No description notes available.'}</Descriptions.Item>
                       <Descriptions.Item label="First Arrest Date">{selectedProfile.first_arrest_date ? dayjs(selectedProfile.first_arrest_date).format('YYYY-MM-DD') : 'N/A'}</Descriptions.Item>
                       <Descriptions.Item label="Current Custody Location">
-                        {Number(selectedProfile.profile.is_arrested) === 1 && selectedProfile.arrests?.length > 0 ? (
+                        {selectedProfile.profile.arrest_status === 'arrested' ? (
                           <Text strong type="danger">
-                            {selectedProfile.arrests[selectedProfile.arrests.length - 1]?.police_station_name || 'Unknown Station'}
+                            {selectedProfile.profile.custody_location || 'Unknown Station'}
                           </Text>
                         ) : (
                           <Text type="secondary">Not in custody</Text>

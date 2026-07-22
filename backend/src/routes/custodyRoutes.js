@@ -22,6 +22,13 @@ const {
   generateReleaseCertificate,
   reviewReleaseApproval,
   getWantedEscaped,
+  getPrisonAdmissions,
+  admitPrisoner,
+  assignPrisonCell,
+  recordRollCall,
+  getPrisonCells,
+  savePrisonCell,
+  bulkRollCall,
 } = require('../controllers/custodyController');
 
 const uploadDir = path.join(__dirname, '../../uploads/prisoner-documents');
@@ -41,6 +48,16 @@ const CUSTODY_WRITE_ROLES = ['admin', 'jail', 'court', 'cid'];
 router.use(authMiddleware);
 
 router.get('/wanted-escaped', allowRoles(...REPORT_ROLES), getWantedEscaped);
+router.get('/admissions', allowRoles('admin', 'jail'), getPrisonAdmissions);
+router.post('/admissions', allowRoles('admin', 'jail'), upload.fields([
+  { name: 'photo', maxCount: 1 },
+  { name: 'commitment_warrant', maxCount: 1 },
+]), admitPrisoner);
+router.post('/admissions/:id/cell-assignments', allowRoles('admin', 'jail'), assignPrisonCell);
+router.post('/admissions/:id/roll-calls', allowRoles('admin', 'jail'), recordRollCall);
+router.post('/roll-calls/bulk', allowRoles('admin', 'jail'), bulkRollCall);
+router.get('/cells', allowRoles('admin', 'jail'), getPrisonCells);
+router.post('/cells', allowRoles('admin', 'jail'), savePrisonCell);
 router.get('/criminals/:id', allowRoles(...REPORT_ROLES), getCustodyProfile);
 router.post('/criminals/:id/biometrics', allowRoles(...CUSTODY_WRITE_ROLES), addBiometric);
 router.post('/criminals/:id/documents', allowRoles(...CUSTODY_WRITE_ROLES), upload.single('document'), addDocument);

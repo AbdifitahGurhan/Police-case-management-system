@@ -20,6 +20,8 @@ const {
   saveJudgment,
   issueSentence,
   registerAppeal,
+  updateCourtWitness,
+  decideAppeal,
   closeCourtCase,
 } = require('../controllers/courtController');
 
@@ -39,6 +41,8 @@ router.post('/hearings/:hearingId/proceedings', allowRoles(...COURT_WRITE_ROLES)
 router.post('/cases/:id/judgments', allowRoles(...COURT_ADMIN_ROLES, 'judge'), saveJudgment);
 router.post('/cases/:id/sentences', allowRoles(...COURT_ADMIN_ROLES, 'judge'), issueSentence);
 router.post('/cases/:id/appeals', allowRoles(...COURT_WRITE_ROLES), registerAppeal);
+router.patch('/cases/:id/witnesses/:witnessId', allowRoles(...COURT_WRITE_ROLES), updateCourtWitness);
+router.patch('/appeals/:appealId/decision', allowRoles(...COURT_ADMIN_ROLES, 'judge'), decideAppeal);
 router.patch('/cases/:id/close', allowRoles(...COURT_ADMIN_ROLES), closeCourtCase);
 
 module.exports = router;

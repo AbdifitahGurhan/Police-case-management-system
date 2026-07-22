@@ -141,7 +141,7 @@ export default function CourtDashboard() {
     if (type === 'sentence') {
       const suspects = selected?.suspects || [];
       if (suspects.length === 1) {
-        values.suspect_id = suspects[0].id;
+        values.criminal_id = suspects[0].id;
         values.defendant_name = suspects[0].full_name;
       }
     }
@@ -165,11 +165,8 @@ export default function CourtDashboard() {
       }
       if (modalType === 'sentence') {
         const suspects = selected?.suspects || [];
-        const selectedSuspect = suspects.find(s => s.id === values.suspect_id);
-        const defendantName = selectedSuspect ? selectedSuspect.full_name : (values.defendant_name || '');
         await api.post(`/court/cases/${id}/sentences`, {
           ...values,
-          defendant_name: defendantName,
           sentence_date: values.sentence_date ? values.sentence_date.format('YYYY-MM-DD') : null,
         });
       }
@@ -531,7 +528,7 @@ export default function CourtDashboard() {
               return (
                 <>
                   {suspects.length > 1 ? (
-                    <Form.Item name="suspect_id" label="Defendant name" rules={[requiredRule('Defendant name')]}>
+                    <Form.Item name="criminal_id" label="Defendant name" rules={[requiredRule('Defendant name')]}>
                       <Select
                         placeholder="Select defendant"
                         options={suspects.map(s => ({ value: s.id, label: s.full_name }))}
@@ -542,7 +539,7 @@ export default function CourtDashboard() {
                       <Form.Item label="Defendant name">
                         <Input value={suspects[0].full_name} disabled />
                       </Form.Item>
-                      <Form.Item name="suspect_id" hidden>
+                      <Form.Item name="criminal_id" hidden>
                         <Input />
                       </Form.Item>
                     </>
@@ -556,10 +553,7 @@ export default function CourtDashboard() {
                     options={[
                       { value: 'imprisonment', label: 'Imprisonment' },
                       { value: 'fine', label: 'Fine' },
-                      { value: 'community_service', label: 'Community service' },
-                      { value: 'probation', label: 'Probation' },
-                      { value: 'death', label: 'Death' },
-                      { value: 'other', label: 'Other' },
+                      { value: 'both', label: 'Imprisonment and fine' },
                     ]}
                   />
                 </Form.Item>

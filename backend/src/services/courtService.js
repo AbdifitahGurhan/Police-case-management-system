@@ -11,17 +11,17 @@ const COURT_READY_STATUSES = new Set([
 
 const isCourtReadyStatus = (status) => COURT_READY_STATUSES.has(String(status || '').toLowerCase());
 
-const generateCourtCaseNumber = async () => {
+const generateCourtCaseNumber = async (executor = db) => {
   const year = new Date().getFullYear();
-  const [[row]] = await db.query(
+  const [[row]] = await executor.query(
     'SELECT COUNT(*) AS count FROM court_cases WHERE YEAR(registration_date) = ?',
     [year]
   );
   return `CRT-${year}-${String(Number(row.count || 0) + 1).padStart(5, '0')}`;
 };
 
-const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system') => {
-  const [[policeCase]] = await db.query(
+const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system', executor = db) => {
+  const [[policeCase]] = await executor.query(
     `SELECT c.*, COALESCE(c.title, c.case_title) AS resolved_title
      FROM cases c
      WHERE c.id = ?`,
@@ -29,9 +29,12 @@ const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system') => {
   );
   if (!policeCase || !isCourtReadyStatus(policeCase.status)) return null;
 
-  const [[existing]] = await db.query('SELECT * FROM court_cases WHERE police_case_id = ?', [caseId]);
+  const [[existing]] = await executor.query('SELECT * FROM court_cases WHERE police_case_id = ?', [caseId]);
   if (existing) {
-    await db.query(
+    if (['closed', 'archived'].includes(existing.status)) {
+      return { ...existing, alreadyExists: true, terminal: true };
+    }
+    await executor.query(
       `UPDATE court_cases
        SET police_case_number = ?, ob_number = ?, case_title = ?, crime_category = ?,
            case_description = ?, source_status = ?, updated_at = CURRENT_TIMESTAMP
@@ -49,8 +52,8 @@ const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system') => {
     return { ...existing, alreadyExists: true };
   }
 
-  const courtCaseNumber = await generateCourtCaseNumber();
-  const [result] = await db.query(
+  const courtCaseNumber = await generateCourtCaseNumber(executor);
+  const [result] = await executor.query(
     `INSERT INTO court_cases (
        court_case_number, police_case_id, police_case_number, ob_number, case_title,
        crime_category, case_description, source_status, status, created_by
@@ -68,7 +71,7 @@ const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system') => {
     ]
   );
 
-  await db.query(
+  await executor.query(
     `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
      VALUES (?, ?, 'COURT_CASE_CREATED', ?, ?)`,
     [caseId, actor, `Court case ${courtCaseNumber} created automatically.`, policeCase.status]

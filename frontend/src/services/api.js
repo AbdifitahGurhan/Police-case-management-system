@@ -2,13 +2,14 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000/api';
 const FALLBACK_API_URL = API_URL.includes('127.0.0.1')
   ? API_URL.replace('127.0.0.1', 'localhost')
   : API_URL.replace('localhost', '127.0.0.1');
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },

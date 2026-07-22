@@ -1,7 +1,7 @@
 // src/components/auth/ProtectedRoute.jsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button, Result, Spin } from 'antd';
@@ -10,20 +10,15 @@ import { LockOutlined } from '@ant-design/icons';
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [isDenied, setIsDenied] = useState(false);
+  const role = String(user?.role || '').toLowerCase();
+  const isAdmin = role === 'admin';
+  const isDenied = Boolean(user && !isAdmin && allowedRoles.length > 0 && !allowedRoles.includes(role));
 
   useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        router.push('/login');
-      } else if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-        // Show access denied screen instead of hard redirect
-        setIsDenied(true);
-      } else {
-        setIsDenied(false);
-      }
+    if (!loading && !user) {
+      router.push('/login');
     }
-  }, [user, loading, router, allowedRoles]);
+  }, [user, loading, router]);
 
   if (loading) {
     return (

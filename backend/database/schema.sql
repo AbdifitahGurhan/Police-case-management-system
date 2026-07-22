@@ -717,7 +717,68 @@ CREATE TABLE IF NOT EXISTS court_cases (
   closure_date DATE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_court_cases_police FOREIGN KEY (police_case_id) REFERENCES cases(id) ON DELETE CASCADE
+  CONSTRAINT fk_court_cases_police FOREIGN KEY (police_case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_court_case_police_case (police_case_id)
+);
+
+CREATE TABLE IF NOT EXISTS prison_cells (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  facility VARCHAR(150) NOT NULL,
+  block_name VARCHAR(50) NOT NULL,
+  cell_number VARCHAR(50) NOT NULL,
+  capacity INT NOT NULL DEFAULT 4,
+  is_active TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_prison_cell (facility, block_name, cell_number)
+);
+
+CREATE TABLE IF NOT EXISTS prison_admissions (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  arrest_id INT NOT NULL,
+  suspect_id INT NOT NULL,
+  prison_number VARCHAR(50) NOT NULL UNIQUE,
+  facility VARCHAR(150) NOT NULL,
+  admission_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status ENUM('admitted','discharged') DEFAULT 'admitted',
+  admitted_by VARCHAR(100),
+  notes TEXT,
+  photo_url VARCHAR(500),
+  commitment_warrant_url VARCHAR(500),
+  property_inventory JSON,
+  confirmed_at DATETIME,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_active_arrest_admission (arrest_id),
+  CONSTRAINT fk_admission_arrest FOREIGN KEY (arrest_id) REFERENCES arrests(id) ON DELETE CASCADE,
+  CONSTRAINT fk_admission_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS prison_cell_assignments (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  admission_id INT NOT NULL,
+  facility VARCHAR(150) NOT NULL,
+  block_name VARCHAR(50) NOT NULL,
+  cell_number VARCHAR(50) NOT NULL,
+  assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  released_at DATETIME NULL,
+  assigned_by VARCHAR(100),
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cell_assignment_admission FOREIGN KEY (admission_id) REFERENCES prison_admissions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS prison_roll_calls (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  admission_id INT NOT NULL,
+  roll_date DATE NOT NULL,
+  shift ENUM('morning','afternoon','night') NOT NULL,
+  status ENUM('present','absent','hospital','court','transfer') NOT NULL DEFAULT 'present',
+  notes TEXT,
+  recorded_by VARCHAR(100),
+  recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_admission_roll_call (admission_id, roll_date, shift),
+  CONSTRAINT fk_roll_call_admission FOREIGN KEY (admission_id) REFERENCES prison_admissions(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS court_hearings (
@@ -787,16 +848,15 @@ CREATE TABLE IF NOT EXISTS court_judgments (
 CREATE TABLE IF NOT EXISTS court_sentences (
   id INT PRIMARY KEY AUTO_INCREMENT,
   court_case_id INT NOT NULL,
-  suspect_id INT NULL,
-  defendant_name VARCHAR(150) NOT NULL,
-  sentence_type VARCHAR(100) NOT NULL,
+  criminal_id INT NOT NULL,
+  sentence_type ENUM('imprisonment','fine','both') NOT NULL,
   duration VARCHAR(100),
   fine_amount DECIMAL(15,2),
   sentence_date DATE NOT NULL,
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_sent_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE,
-  CONSTRAINT fk_sent_suspect FOREIGN KEY (suspect_id) REFERENCES criminals(id) ON DELETE SET NULL
+  CONSTRAINT fk_sent_criminal FOREIGN KEY (criminal_id) REFERENCES criminals(id)
 );
 
 CREATE TABLE IF NOT EXISTS court_appeals (
@@ -809,6 +869,20 @@ CREATE TABLE IF NOT EXISTS court_appeals (
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_app_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS case_workflow_authorizations (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  case_id INT NOT NULL,
+  authorization_type ENUM('reopen_case') NOT NULL,
+  reason TEXT NOT NULL,
+  status ENUM('pending','approved','rejected','consumed') DEFAULT 'pending',
+  authorized_by VARCHAR(100),
+  authorized_at TIMESTAMP NULL,
+  expires_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_workflow_auth_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  INDEX idx_workflow_auth_case_status (case_id, authorization_type, status)
 );
 
 

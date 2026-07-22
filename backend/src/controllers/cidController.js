@@ -3,6 +3,8 @@
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { ensureCidCaseForPoliceCase, syncAllCidCases } = require('../services/cidService');
+const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
+const { withTransaction, lockAndAssertReferralAllowed, WorkflowError } = require('../services/caseWorkflowService');
 
 const actor = (req) => req.user?.username || String(req.user?.id || 'system');
 const role = (req) => String(req.user?.role || '').toLowerCase();
@@ -286,23 +288,28 @@ const reviewInvestigation = async (req, res, next) => {
 
 const forwardToProsecutor = async (req, res, next) => {
   try {
-    const [[cidCase]] = await db.query('SELECT * FROM cid_cases WHERE id = ?', [req.params.id]);
-    if (!cidCase) return res.status(404).json({ success: false, message: 'CID case not found.' });
-    if (cidCase.investigation_status !== 'approved') {
-      return res.status(409).json({ success: false, message: 'Investigation must be approved before forwarding to prosecutor.' });
-    }
-    await db.query("UPDATE cid_cases SET investigation_status = 'sent_to_prosecutor', prosecutor_forwarded_at = NOW(), updated_at = NOW() WHERE id = ?", [req.params.id]);
-    await db.query("UPDATE cases SET status = 'ready_for_court' WHERE id = ?", [cidCase.police_case_id]);
-    await db.query(
-      `INSERT INTO referrals (case_id, referred_by, referred_to_role, reason, notes, status)
-       VALUES (?, ?, 'court', 'CID approved investigation forwarded to prosecutor liaison.', ?, 'completed')`,
-      [cidCase.police_case_id, actor(req), req.body.notes || null]
-    );
-    await db.query(
-      `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
-       VALUES (?, ?, 'CID_FORWARDED_TO_PROSECUTOR', 'CID investigation approved and forwarded to prosecutor liaison.', 'ready_for_court')`,
-      [cidCase.police_case_id, actor(req)]
-    );
+    const cidCase = await withTransaction(async (connection) => {
+      const [[lockedCidCase]] = await connection.query('SELECT * FROM cid_cases WHERE id = ? FOR UPDATE', [req.params.id]);
+      if (!lockedCidCase) throw new WorkflowError('CID case not found.', 404);
+      if (lockedCidCase.investigation_status !== 'approved') {
+        throw new WorkflowError('Investigation must be approved before forwarding to prosecutor.');
+      }
+      await lockAndAssertReferralAllowed(connection, lockedCidCase.police_case_id, 'court');
+      await connection.query("UPDATE cid_cases SET investigation_status = 'sent_to_prosecutor', prosecutor_forwarded_at = NOW(), updated_at = NOW() WHERE id = ?", [req.params.id]);
+      await connection.query("UPDATE cases SET status = 'ready_for_court' WHERE id = ?", [lockedCidCase.police_case_id]);
+      await connection.query(
+        `INSERT INTO referrals (case_id, referred_by, referred_to_role, reason, notes, status)
+         VALUES (?, ?, 'court', 'CID approved investigation forwarded to prosecutor liaison.', ?, 'completed')`,
+        [lockedCidCase.police_case_id, actor(req), req.body.notes || null]
+      );
+      await ensureCourtCaseForPoliceCase(lockedCidCase.police_case_id, actor(req), connection);
+      await connection.query(
+        `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
+         VALUES (?, ?, 'CID_FORWARDED_TO_PROSECUTOR', 'CID investigation approved and forwarded to prosecutor liaison.', 'ready_for_court')`,
+        [lockedCidCase.police_case_id, actor(req)]
+      );
+      return lockedCidCase;
+    });
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'CID_FORWARD_TO_PROSECUTOR', entityType: 'cid_cases', entityId: Number(req.params.id), newData: { status: 'sent_to_prosecutor' }, ...auditMeta(req) });
     res.json({ success: true, message: 'CID investigation forwarded to prosecutor liaison.' });
   } catch (err) { next(err); }

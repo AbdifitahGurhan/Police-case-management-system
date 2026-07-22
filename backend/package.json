@@ -7,6 +7,9 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "seed": "node database/seed.js",
+    "test": "node --test test/*.test.js",
+    "migrate:workflow": "node database/workflow_integrity_migration.js",
+    "repair:workflow": "node scripts/repairClosedWorkflow.js",
     "test:system": "node scripts/systemSmokeTest.js"
   },
   "dependencies": {

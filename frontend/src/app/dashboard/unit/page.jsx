@@ -21,6 +21,7 @@ import api from '@/services/api';
 import StandardDashboard from '@/components/dashboard/StandardDashboard';
 
 const { Text, Title } = Typography;
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
 
 const value = (input) => Number(input || 0);
 
@@ -308,7 +309,7 @@ function GenericUnitDashboard({ user }) {
           <Space size={14}>
             <Avatar
               size={64}
-              src={commander?.profile_image ? `http://localhost:5001${commander.profile_image}` : null}
+              src={commander?.profile_image ? `${API_ORIGIN}${commander.profile_image}` : null}
               icon={!commander?.profile_image && <UserOutlined />}
             />
             <div>

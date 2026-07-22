@@ -62,6 +62,7 @@ export default function LoginPage() {
           />
           <Title level={1}>Sign In</Title>
           <Typography.Text type="secondary">Somali Police Case Management System</Typography.Text>
+          <Typography.Text className="login-art-subtitle">Secure access for case, OB, evidence, and court workflows.</Typography.Text>
         </div>
 
         {error && (

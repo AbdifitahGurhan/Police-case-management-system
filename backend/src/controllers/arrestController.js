@@ -3,6 +3,7 @@
 
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
+const { syncCriminalCustodyStatus } = require('../utils/custodyStatus');
 
 const SENTENCE_STATUSES = new Set([
   'awaiting_trial',
@@ -169,52 +170,64 @@ const createArrest = async (req, res, next) => {
     const sentenceStatus = court_decision === 'convicted' && hasSentence ? 'serving' : 'awaiting_trial';
 
     const [[history]] = await db.query('SELECT COUNT(*) AS total FROM arrests WHERE suspect_id = ?', [suspect_id]);
-
-    const [result] = await db.query(
-      `INSERT INTO arrests
-        (case_id, suspect_id, police_station_id, arrested_by, arrest_date, arrest_location, charges,
-         court_decision, court_decision_notes, sentence_period_value, sentence_period_unit,
-         sentence_start_date, expected_release_date, sentence_status,
-         bail_status, bail_amount, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        case_id,
-        suspect_id,
-        policeStationId,
-        req.user.username || req.user.id,
-        arrest_date || new Date(),
-        normalizeOptional(arrest_location),
-        normalizeOptional(charges),
-        court_decision || 'pending',
-        normalizeOptional(court_decision_notes),
-        normalizeOptional(sentence_period_value),
-        normalizeOptional(sentence_period_unit),
-        normalizeOptional(sentence_start_date),
-        expectedReleaseDate,
-        sentenceStatus,
-        bail_status || 'no_bail',
-        bail_amount || null,
-        normalizeOptional(notes),
-      ]
-    );
-
-    const arrestId = result.insertId;
-    await db.query("UPDATE criminals SET is_arrested = 1, arrest_status = 'arrested' WHERE id = ?", [suspect_id]);
-    await db.query(
-      `INSERT IGNORE INTO case_criminals (case_id, criminal_id, role_in_case, notes, added_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [case_id, suspect_id, 'Arrested suspect', 'Automatically linked when arrest was recorded.', req.user.username || req.user.id]
-    );
-
     const repeatMessage = Number(history.total) > 0
       ? ` Repeat offender: ${suspect.full_name} has ${history.total} previous arrest record(s).`
       : '';
 
-    await db.query(
-      `INSERT INTO case_actions (case_id, performed_by, action_type, description)
-       VALUES (?, ?, ?, ?)`,
-      [case_id, req.user.username || req.user.id, 'SUSPECT_ARRESTED', `Suspect ID ${suspect_id} has been arrested.${repeatMessage}`]
-    );
+    const connection = await db.pool.getConnection();
+    let arrestId;
+    try {
+      await connection.beginTransaction();
+
+      const [result] = await connection.query(
+        `INSERT INTO arrests
+          (case_id, suspect_id, police_station_id, arrested_by, arrest_date, arrest_location, charges,
+           court_decision, court_decision_notes, sentence_period_value, sentence_period_unit,
+           sentence_start_date, expected_release_date, sentence_status,
+           bail_status, bail_amount, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          case_id,
+          suspect_id,
+          policeStationId,
+          req.user.username || req.user.id,
+          arrest_date || new Date(),
+          normalizeOptional(arrest_location),
+          normalizeOptional(charges),
+          court_decision || 'pending',
+          normalizeOptional(court_decision_notes),
+          normalizeOptional(sentence_period_value),
+          normalizeOptional(sentence_period_unit),
+          normalizeOptional(sentence_start_date),
+          expectedReleaseDate,
+          sentenceStatus,
+          bail_status || 'no_bail',
+          bail_amount || null,
+          normalizeOptional(notes),
+        ]
+      );
+
+      arrestId = result.insertId;
+      await syncCriminalCustodyStatus(connection, suspect_id);
+      await connection.query(
+        `INSERT IGNORE INTO case_criminals (case_id, criminal_id, role_in_case, notes, added_by)
+         VALUES (?, ?, ?, ?, ?)`,
+        [case_id, suspect_id, 'Arrested suspect', 'Automatically linked when arrest was recorded.', req.user.username || req.user.id]
+      );
+
+      await connection.query(
+        `INSERT INTO case_actions (case_id, performed_by, action_type, description)
+         VALUES (?, ?, ?, ?)`,
+        [case_id, req.user.username || req.user.id, 'SUSPECT_ARRESTED', `Suspect ID ${suspect_id} has been arrested.${repeatMessage}`]
+      );
+
+      await connection.commit();
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
 
     await writeAuditLog({
       userId: req.user.username || req.user.id,
@@ -272,48 +285,59 @@ const updateSentence = async (req, res, next) => {
     else if (court_decision === 'convicted' && releaseDate) sentenceStatus = 'serving';
     else if (court_decision === 'convicted') sentenceStatus = 'sentenced';
 
-    await db.query(
-      `UPDATE arrests SET
-         court_decision = COALESCE(?, court_decision),
-         court_decision_notes = ?,
-         sentence_period_value = ?,
-         sentence_period_unit = ?,
-         sentence_start_date = ?,
-         expected_release_date = ?,
-         sentence_status = ?,
-         final_status = ?,
-         notes = COALESCE(?, notes)
-       WHERE id = ?`,
-      [
-        normalizeOptional(court_decision),
-        normalizeOptional(court_decision_notes),
-        normalizeOptional(sentence_period_value),
-        normalizeOptional(sentence_period_unit),
-        normalizeOptional(sentence_start_date),
-        releaseDate,
-        sentenceStatus,
-        normalizeOptional(final_status),
-        normalizeOptional(notes),
-        arrestId,
-      ]
-    );
+    const connection = await db.pool.getConnection();
+    try {
+      await connection.beginTransaction();
 
-    const stillInCustody = ['awaiting_trial', 'sentenced', 'serving', 'release_review', 'escaped', 'wanted'].includes(sentenceStatus) ? 1 : 0;
-    const arrestStatus = ['wanted', 'escaped'].includes(sentenceStatus)
-      ? 'wanted'
-      : (stillInCustody ? 'arrested' : 'released');
-    await db.query('UPDATE criminals SET is_arrested = ?, arrest_status = ? WHERE id = ?', [stillInCustody, arrestStatus, existing.suspect_id]);
+      await connection.query(
+        `UPDATE arrests SET
+           court_decision = COALESCE(?, court_decision),
+           court_decision_notes = ?,
+           sentence_period_value = ?,
+           sentence_period_unit = ?,
+           sentence_start_date = ?,
+           expected_release_date = ?,
+           sentence_status = ?,
+           final_status = ?,
+           notes = COALESCE(?, notes)
+         WHERE id = ?`,
+        [
+          normalizeOptional(court_decision),
+          normalizeOptional(court_decision_notes),
+          normalizeOptional(sentence_period_value),
+          normalizeOptional(sentence_period_unit),
+          normalizeOptional(sentence_start_date),
+          releaseDate,
+          sentenceStatus,
+          normalizeOptional(final_status),
+          normalizeOptional(notes),
+          arrestId,
+        ]
+      );
 
-    await db.query(
-      `INSERT INTO case_actions (case_id, performed_by, action_type, description)
-       VALUES (?, ?, ?, ?)`,
-      [
-        existing.case_id,
-        req.user.username || req.user.id,
-        'SENTENCE_UPDATED',
-        `Court decision/sentence updated for arrest ${arrestId}. Expected release: ${releaseDate || 'not set'}.`,
-      ]
-    );
+      // Recompute criminals.is_arrested/arrest_status from the suspect's latest arrest
+      // record overall, not just this one — a repeat offender may have a more recent,
+      // still-active arrest that this edit must not clobber.
+      await syncCriminalCustodyStatus(connection, existing.suspect_id);
+
+      await connection.query(
+        `INSERT INTO case_actions (case_id, performed_by, action_type, description)
+         VALUES (?, ?, ?, ?)`,
+        [
+          existing.case_id,
+          req.user.username || req.user.id,
+          'SENTENCE_UPDATED',
+          `Court decision/sentence updated for arrest ${arrestId}. Expected release: ${releaseDate || 'not set'}.`,
+        ]
+      );
+
+      await connection.commit();
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
 
     await writeAuditLog({
       userId: req.user.username || req.user.id,
@@ -345,29 +369,38 @@ const updateArrestStatus = async (req, res, next) => {
       ? (actual_release_date || formatDate(new Date()))
       : normalizeOptional(actual_release_date);
 
-    await db.query(
-      `UPDATE arrests
-       SET sentence_status = ?, final_status = ?, actual_release_date = ?, notes = COALESCE(?, notes)
-       WHERE id = ?`,
-      [sentence_status, normalizeOptional(final_status), releaseDate, normalizeOptional(notes), arrestId]
-    );
+    const connection = await db.pool.getConnection();
+    try {
+      await connection.beginTransaction();
 
-    const stillInCustody = ['awaiting_trial', 'sentenced', 'serving', 'release_review', 'escaped', 'wanted'].includes(sentence_status) ? 1 : 0;
-    const arrestStatus = ['wanted', 'escaped'].includes(sentence_status)
-      ? 'wanted'
-      : (stillInCustody ? 'arrested' : 'released');
-    await db.query('UPDATE criminals SET is_arrested = ?, arrest_status = ? WHERE id = ?', [stillInCustody, arrestStatus, existing.suspect_id]);
+      await connection.query(
+        `UPDATE arrests
+         SET sentence_status = ?, final_status = ?, actual_release_date = ?, notes = COALESCE(?, notes)
+         WHERE id = ?`,
+        [sentence_status, normalizeOptional(final_status), releaseDate, normalizeOptional(notes), arrestId]
+      );
 
-    await db.query(
-      `INSERT INTO case_actions (case_id, performed_by, action_type, description)
-       VALUES (?, ?, ?, ?)`,
-      [
-        existing.case_id,
-        req.user.username || req.user.id,
-        'PRISONER_STATUS_UPDATED',
-        `Prisoner status changed to ${sentence_status}. ${notes || ''}`.trim(),
-      ]
-    );
+      // Recompute from the suspect's latest arrest record overall (see updateSentence).
+      await syncCriminalCustodyStatus(connection, existing.suspect_id);
+
+      await connection.query(
+        `INSERT INTO case_actions (case_id, performed_by, action_type, description)
+         VALUES (?, ?, ?, ?)`,
+        [
+          existing.case_id,
+          req.user.username || req.user.id,
+          'PRISONER_STATUS_UPDATED',
+          `Prisoner status changed to ${sentence_status}. ${notes || ''}`.trim(),
+        ]
+      );
+
+      await connection.commit();
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
 
     await writeAuditLog({
       userId: req.user.username || req.user.id,

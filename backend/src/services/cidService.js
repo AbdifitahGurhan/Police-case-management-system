@@ -6,8 +6,8 @@ const CID_READY_STATUSES = ['referred_to_cid', 'referred_cid', 'assigned_to_cid'
 
 const isCidReadyStatus = (status) => CID_READY_STATUSES.includes(String(status || '').toLowerCase());
 
-const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system') => {
-  const [[policeCase]] = await db.query(
+const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system', executor = db) => {
+  const [[policeCase]] = await executor.query(
     `SELECT c.id, c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
             COALESCE(c.case_type, c.incident_type) AS crime_category,
             c.priority, c.status, c.assigned_officer_id, po.full_name AS assigned_officer_name
@@ -18,7 +18,7 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system') => {
   );
   if (!policeCase) return null;
 
-  const [[referral]] = await db.query(
+  const [[referral]] = await executor.query(
     "SELECT id, status FROM referrals WHERE case_id = ? AND referred_to_role = 'cid' LIMIT 1",
     [caseId]
   );
@@ -26,9 +26,12 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system') => {
   const isCidReady = isCidReadyStatus(policeCase.status) || (referral && ['accepted', 'pending', 'completed'].includes(referral.status));
   if (!isCidReady) return null;
 
-  const [[existing]] = await db.query('SELECT * FROM cid_cases WHERE police_case_id = ?', [caseId]);
+  const [[existing]] = await executor.query('SELECT * FROM cid_cases WHERE police_case_id = ?', [caseId]);
   if (existing) {
-    await db.query(
+    if (['sent_to_court'].includes(existing.investigation_status)) {
+      return { ...existing, alreadyExists: true, terminal: true };
+    }
+    await executor.query(
       `UPDATE cid_cases
        SET case_number = ?, case_title = ?, crime_category = ?, priority = ?,
            assigned_officer = COALESCE(assigned_officer, ?), updated_at = NOW()
@@ -46,7 +49,7 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system') => {
   }
 
   const supervisor = createdBy || 'system';
-  const [result] = await db.query(
+  const [result] = await executor.query(
     `INSERT INTO cid_cases
        (police_case_id, case_number, ob_number, case_title, crime_category, priority,
         assigned_officer, supervisor, assignment_status, investigation_status, created_by)
@@ -64,13 +67,13 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system') => {
     ]
   );
 
-  await db.query(
+  await executor.query(
     `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
      VALUES (?, ?, 'CID_CASE_CREATED', 'Case added to CID investigation dashboard.', ?)`,
     [caseId, createdBy, policeCase.status]
   );
 
-  const [[created]] = await db.query('SELECT * FROM cid_cases WHERE id = ?', [result.insertId]);
+  const [[created]] = await executor.query('SELECT * FROM cid_cases WHERE id = ?', [result.insertId]);
   return created;
 };
 

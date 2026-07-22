@@ -3,6 +3,14 @@
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
+const { syncCriminalCustodyStatus } = require('../utils/custodyStatus');
+const {
+  WorkflowError,
+  withTransaction,
+  validateSentence,
+  validateJudgmentSentenceConsistency,
+  closeCourtWorkflow,
+} = require('../services/caseWorkflowService');
 
 const actor = (req) => req.user?.username || String(req.user?.id || 'system');
 const normalizedRole = (req) => String(req.user?.role || '').toLowerCase();
@@ -240,7 +248,14 @@ const getCourtCaseById = async (req, res, next) => {
       [courtCase.id]
     );
     const [judgments] = await db.query('SELECT * FROM court_judgments WHERE court_case_id = ? ORDER BY decision_date DESC', [courtCase.id]);
-    const [sentences] = await db.query('SELECT * FROM court_sentences WHERE court_case_id = ? ORDER BY sentence_date DESC', [courtCase.id]);
+    const [sentences] = await db.query(
+      `SELECT cs.*, cr.full_name AS defendant_name
+         FROM court_sentences cs
+         JOIN criminals cr ON cr.id = cs.criminal_id
+        WHERE cs.court_case_id = ?
+        ORDER BY cs.sentence_date DESC`,
+      [courtCase.id]
+    );
     const [appeals] = await db.query('SELECT * FROM court_appeals WHERE court_case_id = ? ORDER BY filing_date DESC', [courtCase.id]);
     const [auditTrail] = await db.query(`
       SELECT action, user_id AS performed_by, created_at,
@@ -394,12 +409,29 @@ const scheduleHearing = async (req, res, next) => {
     if (!hearing_type || !hearing_date || !hearing_time) {
       return res.status(400).json({ success: false, message: 'hearing_type, hearing_date, and hearing_time are required.' });
     }
-    const [result] = await db.query(
-      `INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.params.id, hearing_type, hearing_date, hearing_time, court_room || null, assigned_judge || null, actor(req)]
-    );
-    await db.query("UPDATE court_cases SET status = 'hearing_scheduled' WHERE id = ? AND status IN ('registered','awaiting_hearing')", [req.params.id]);
+    const result = await withTransaction(async (connection) => {
+      const [[courtCase]] = await connection.query(
+        'SELECT status, closure_date FROM court_cases WHERE id = ? FOR UPDATE',
+        [req.params.id]
+      );
+      if (!courtCase) throw new WorkflowError('Court case not found.', 404);
+      if (['closed', 'archived'].includes(courtCase.status)) {
+        throw new WorkflowError('A hearing cannot be scheduled for a closed Court Case.');
+      }
+      if (courtCase.closure_date && hearing_date > String(courtCase.closure_date).slice(0, 10)) {
+        throw new WorkflowError('Hearing date cannot be after Court Case closure.');
+      }
+      const [insert] = await connection.query(
+        `INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [req.params.id, hearing_type, hearing_date, hearing_time, court_room || null, assigned_judge || null, actor(req)]
+      );
+      await connection.query(
+        "UPDATE court_cases SET status = 'hearing_scheduled' WHERE id = ? AND status IN ('registered','awaiting_hearing')",
+        [req.params.id]
+      );
+      return insert;
+    });
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: 'SCHEDULE_HEARING', entityType: 'court_hearings', entityId: result.insertId, newData: { court_case_id: Number(req.params.id), ...req.body }, ...auditRequestMeta(req) });
     res.status(201).json({ success: true, message: 'Hearing scheduled.', hearingId: result.insertId });
   } catch (err) { next(err); }
@@ -408,15 +440,32 @@ const scheduleHearing = async (req, res, next) => {
 const updateHearing = async (req, res, next) => {
   try {
     const { hearing_date, hearing_time, court_room, assigned_judge, status } = req.body;
-    const [[oldHearing]] = await db.query('SELECT * FROM court_hearings WHERE id = ?', [req.params.hearingId]);
-    await db.query(
-      `UPDATE court_hearings
-       SET hearing_date = COALESCE(?, hearing_date), hearing_time = COALESCE(?, hearing_time),
-           court_room = COALESCE(?, court_room), assigned_judge = COALESCE(?, assigned_judge),
-           status = COALESCE(?, status)
-       WHERE id = ?`,
-      [hearing_date || null, hearing_time || null, court_room || null, assigned_judge || null, status || null, req.params.hearingId]
-    );
+    const oldHearing = await withTransaction(async (connection) => {
+      const [[hearing]] = await connection.query(
+        `SELECT ch.*, cc.status AS court_case_status, cc.closure_date
+           FROM court_hearings ch JOIN court_cases cc ON cc.id = ch.court_case_id
+          WHERE ch.id = ? FOR UPDATE`,
+        [req.params.hearingId]
+      );
+      if (!hearing) throw new WorkflowError('Hearing not found.', 404);
+      const nextDate = hearing_date || String(hearing.hearing_date).slice(0, 10);
+      const nextHearingStatus = status || hearing.status;
+      if (hearing.closure_date && nextDate > String(hearing.closure_date).slice(0, 10) && nextHearingStatus !== 'cancelled') {
+        throw new WorkflowError('Hearing date cannot be after closure unless the hearing is cancelled.', 400);
+      }
+      if (['closed', 'archived'].includes(hearing.court_case_status) && nextHearingStatus === 'scheduled') {
+        throw new WorkflowError('A hearing for a closed Court Case cannot remain scheduled.');
+      }
+      await connection.query(
+        `UPDATE court_hearings
+         SET hearing_date = COALESCE(?, hearing_date), hearing_time = COALESCE(?, hearing_time),
+             court_room = COALESCE(?, court_room), assigned_judge = COALESCE(?, assigned_judge),
+             status = COALESCE(?, status)
+         WHERE id = ?`,
+        [hearing_date || null, hearing_time || null, court_room || null, assigned_judge || null, status || null, req.params.hearingId]
+      );
+      return hearing;
+    });
     const [[newHearing]] = await db.query('SELECT * FROM court_hearings WHERE id = ?', [req.params.hearingId]);
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: 'UPDATE_HEARING', entityType: 'court_hearings', entityId: Number(req.params.hearingId), oldData: oldHearing, newData: newHearing, ...auditRequestMeta(req) });
     res.json({ success: true, message: 'Hearing updated.' });
@@ -426,8 +475,16 @@ const updateHearing = async (req, res, next) => {
 const addProceeding = async (req, res, next) => {
   try {
     const { notes, judge_remarks, prosecutor_remarks, defense_remarks } = req.body;
-    const [[hearing]] = await db.query('SELECT id, court_case_id FROM court_hearings WHERE id = ?', [req.params.hearingId]);
+    const [[hearing]] = await db.query(
+      `SELECT ch.id, ch.court_case_id, cc.status AS court_case_status
+         FROM court_hearings ch JOIN court_cases cc ON cc.id = ch.court_case_id
+        WHERE ch.id = ?`,
+      [req.params.hearingId]
+    );
     if (!hearing) return res.status(404).json({ success: false, message: 'Hearing not found.' });
+    if (['closed', 'archived'].includes(hearing.court_case_status)) {
+      throw new WorkflowError('Proceedings cannot be added to a closed Court Case.');
+    }
     const [result] = await db.query(
       `INSERT INTO court_proceedings (court_case_id, hearing_id, proceeding_date, notes, judge_remarks, prosecutor_remarks, defense_remarks, created_by)
        VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?)`,
@@ -445,38 +502,109 @@ const saveJudgment = async (req, res, next) => {
     if (!decision_type || !judgment_summary) {
       return res.status(400).json({ success: false, message: 'decision_type and judgment_summary are required.' });
     }
-    const [result] = await db.query(
-      `INSERT INTO court_judgments (court_case_id, judge_name, decision_date, decision_type, judgment_summary, created_by)
-       VALUES (?, ?, COALESCE(?, CURDATE()), ?, ?, ?)`,
-      [req.params.id, judge_name || null, decision_date || null, decision_type, judgment_summary, actor(req)]
-    );
-    const [[courtCase]] = await db.query('SELECT police_case_id FROM court_cases WHERE id = ?', [req.params.id]);
-    await db.query("UPDATE court_cases SET status = 'judgment_issued', final_outcome = ? WHERE id = ?", [decision_type, req.params.id]);
-    await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: 'SAVE_JUDGMENT', entityType: 'court_judgments', entityId: result.insertId, newData: { court_case_id: Number(req.params.id), ...req.body }, ...auditRequestMeta(req) });
-    if (courtCase?.police_case_id) {
-      await db.query("UPDATE cases SET status = 'court_decided' WHERE id = ?", [courtCase.police_case_id]);
-      await db.query(
+    const saved = await withTransaction(async (connection) => {
+      const [[courtCase]] = await connection.query(
+        'SELECT police_case_id, status, closure_date FROM court_cases WHERE id = ? FOR UPDATE',
+        [req.params.id]
+      );
+      if (!courtCase) throw new WorkflowError('Court case not found.', 404);
+      if (['closed', 'archived'].includes(courtCase.status)) {
+        throw new WorkflowError('A judgment cannot be added to a closed Court Case.');
+      }
+      const effectiveDate = decision_date || new Date().toISOString().slice(0, 10);
+      if (courtCase.closure_date && effectiveDate > String(courtCase.closure_date).slice(0, 10)) {
+        throw new WorkflowError('Judgment decision date cannot be after closure date.');
+      }
+      const [insert] = await connection.query(
+        `INSERT INTO court_judgments (court_case_id, judge_name, decision_date, decision_type, judgment_summary, created_by)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [req.params.id, judge_name || null, effectiveDate, decision_type, judgment_summary, actor(req)]
+      );
+      await connection.query("UPDATE court_cases SET status = 'judgment_issued', final_outcome = ? WHERE id = ?", [decision_type, req.params.id]);
+      await connection.query("UPDATE cases SET status = 'court_decided' WHERE id = ?", [courtCase.police_case_id]);
+      await connection.query(
         `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
          VALUES (?, ?, 'JUDGMENT_ISSUED', ?, 'court_decided')`,
         [courtCase.police_case_id, actor(req), `Court judgment issued: ${decision_type}.`]
       );
-    }
-    res.status(201).json({ success: true, message: 'Judgment saved.', judgmentId: result.insertId });
+      return { insert, courtCase };
+    });
+    await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: 'SAVE_JUDGMENT', entityType: 'court_judgments', entityId: saved.insert.insertId, newData: { court_case_id: Number(req.params.id), ...req.body }, ...auditRequestMeta(req) });
+    res.status(201).json({ success: true, message: 'Judgment saved.', judgmentId: saved.insert.insertId });
   } catch (err) { next(err); }
 };
 
 const issueSentence = async (req, res, next) => {
   try {
-    const { suspect_id, defendant_name, sentence_type, duration, fine_amount, sentence_date } = req.body;
-    if (!defendant_name || !sentence_type) {
-      return res.status(400).json({ success: false, message: 'defendant_name and sentence_type are required.' });
+    const { criminal_id, sentence_type, duration, fine_amount, sentence_date } = req.body;
+    if (!criminal_id || !sentence_type) {
+      return res.status(400).json({ success: false, message: 'criminal_id and sentence_type are required.' });
     }
-    const [result] = await db.query(
-      `INSERT INTO court_sentences (court_case_id, suspect_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURDATE()), ?)`,
-      [req.params.id, suspect_id || null, defendant_name, sentence_type, duration || null, fine_amount || null, sentence_date || null, actor(req)]
-    );
-    await db.query("UPDATE court_cases SET status = 'sentenced' WHERE id = ? AND status = 'judgment_issued'", [req.params.id]);
+    validateSentence({ sentence_type, duration, fine_amount });
+    const result = await withTransaction(async (connection) => {
+      const [[defendant]] = await connection.query(
+        `SELECT cr.id, cr.full_name, cc.police_case_id, cc.status, cc.closure_date
+           FROM court_cases cc
+           JOIN case_criminals link ON link.case_id = cc.police_case_id AND link.criminal_id = ? AND link.status = 'active'
+           JOIN criminals cr ON cr.id = link.criminal_id
+          WHERE cc.id = ? FOR UPDATE`,
+        [criminal_id, req.params.id]
+      );
+      if (!defendant) {
+        throw new WorkflowError('The sentenced defendant must belong to the linked Police Case.', 400, 'INVALID_DEFENDANT');
+      }
+      if (['closed', 'archived'].includes(defendant.status)) {
+        throw new WorkflowError('A sentence cannot be added to a closed Court Case.');
+      }
+      const [[judgment]] = await connection.query(
+        `SELECT decision_type, judgment_summary FROM court_judgments
+          WHERE court_case_id = ? ORDER BY decision_date DESC, id DESC LIMIT 1 FOR UPDATE`,
+        [req.params.id]
+      );
+      if (!judgment || judgment.decision_type !== 'convicted') {
+        throw new WorkflowError('A conviction judgment is required before sentencing.');
+      }
+      validateJudgmentSentenceConsistency(judgment.judgment_summary, { sentence_type, duration, fine_amount });
+      const [insert] = await connection.query(
+        `INSERT INTO court_sentences
+          (court_case_id, criminal_id, sentence_type, duration, fine_amount, sentence_date, created_by)
+         VALUES (?, ?, ?, ?, ?, COALESCE(?, CURDATE()), ?)`,
+        [req.params.id, criminal_id, sentence_type, duration || null, fine_amount || null, sentence_date || null, actor(req)]
+      );
+      await connection.query("UPDATE court_cases SET status = 'sentenced' WHERE id = ? AND status = 'judgment_issued'", [req.params.id]);
+      const [arrestUpdate] = await connection.query(
+        `UPDATE arrests SET court_decision = 'convicted', sentence_status = 'sentenced',
+          charges = CASE WHEN LOWER(COALESCE(charges,'')) IN ('','not charged','not_charged') THEN 'convicted by court' ELSE charges END
+         WHERE case_id = ? AND suspect_id = ?`,
+        [defendant.police_case_id, criminal_id]
+      );
+      if (arrestUpdate.affectedRows === 0 && ['imprisonment', 'both'].includes(sentence_type)) {
+        const [[policeCase]] = await connection.query(
+          'SELECT district_id FROM cases WHERE id = ?',
+          [defendant.police_case_id]
+        );
+        await connection.query(
+          `INSERT INTO arrests
+            (case_id, suspect_id, police_station_id, arrested_by, arrest_date, arrest_location,
+             charges, court_decision, court_decision_notes, sentence_start_date,
+             sentence_status, bail_status, notes)
+           VALUES (?, ?, ?, ?, COALESCE(?, CURDATE()), 'Court commitment',
+                   'convicted by court', 'convicted', ?, COALESCE(?, CURDATE()),
+                   'sentenced', 'no_bail', 'Automatically created from an imprisonment sentence.')`,
+          [
+            defendant.police_case_id,
+            criminal_id,
+            policeCase?.district_id || null,
+            actor(req),
+            sentence_date || null,
+            judgment.judgment_summary,
+            sentence_date || null,
+          ]
+        );
+      }
+      await syncCriminalCustodyStatus(connection, criminal_id);
+      return insert;
+    });
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: 'ISSUE_SENTENCE', entityType: 'court_sentences', entityId: result.insertId, newData: { court_case_id: Number(req.params.id), ...req.body }, ...auditRequestMeta(req) });
     res.status(201).json({ success: true, message: 'Sentence issued.', sentenceId: result.insertId });
   } catch (err) { next(err); }
@@ -488,39 +616,100 @@ const registerAppeal = async (req, res, next) => {
     if (!filed_by || !appeal_reason) {
       return res.status(400).json({ success: false, message: 'filed_by and appeal_reason are required.' });
     }
-    const [result] = await db.query(
-      `INSERT INTO court_appeals (court_case_id, filed_by, appeal_reason, filing_date, status, created_by)
-       VALUES (?, ?, ?, COALESCE(?, CURDATE()), 'pending', ?)`,
-      [req.params.id, filed_by, appeal_reason, filing_date || null, actor(req)]
-    );
-    await db.query("UPDATE court_cases SET status = 'appealed' WHERE id = ?", [req.params.id]);
+    const result = await withTransaction(async (connection) => {
+      const [[courtCase]] = await connection.query(
+        'SELECT id, status FROM court_cases WHERE id = ? FOR UPDATE',
+        [req.params.id]
+      );
+      if (!courtCase) throw new WorkflowError('Court case not found.', 404);
+      const [[activeAppeal]] = await connection.query(
+        "SELECT id FROM court_appeals WHERE court_case_id = ? AND status IN ('pending','approved') LIMIT 1 FOR UPDATE",
+        [req.params.id]
+      );
+      if (activeAppeal) throw new WorkflowError('An active appeal already exists.');
+      const [insert] = await connection.query(
+        `INSERT INTO court_appeals (court_case_id, filed_by, appeal_reason, filing_date, status, created_by)
+         VALUES (?, ?, ?, COALESCE(?, CURDATE()), 'pending', ?)`,
+        [req.params.id, filed_by, appeal_reason, filing_date || null, actor(req)]
+      );
+      await connection.query("UPDATE court_cases SET status = 'appealed' WHERE id = ?", [req.params.id]);
+      return insert;
+    });
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: 'REGISTER_APPEAL', entityType: 'court_appeals', entityId: result.insertId, newData: { court_case_id: Number(req.params.id), ...req.body }, ...auditRequestMeta(req) });
     res.status(201).json({ success: true, message: 'Appeal registered.', appealId: result.insertId });
+  } catch (err) { next(err); }
+};
+
+const updateCourtWitness = async (req, res, next) => {
+  try {
+    const { status, testimony } = req.body;
+    if (!['summoned', 'present', 'absent'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Valid witness status is required.' });
+    }
+    const [[linked]] = await db.query(
+      `SELECT cc.id
+         FROM court_cases cc
+         JOIN witness_statements ws ON ws.case_id = cc.police_case_id AND ws.witness_id = ?
+        WHERE cc.id = ?`,
+      [req.params.witnessId, req.params.id]
+    );
+    if (!linked) return res.status(404).json({ success: false, message: 'Witness is not linked to this court case.' });
+
+    const [[existing]] = await db.query(
+      'SELECT * FROM court_witnesses WHERE court_case_id = ? AND witness_id = ? LIMIT 1',
+      [req.params.id, req.params.witnessId]
+    );
+    let entityId;
+    if (existing) {
+      await db.query(
+        `UPDATE court_witnesses
+            SET status = ?, testimony = COALESCE(?, testimony),
+                summoned_at = CASE WHEN ? = 'summoned' THEN COALESCE(summoned_at, NOW()) ELSE summoned_at END
+          WHERE id = ?`,
+        [status, testimony || null, status, existing.id]
+      );
+      entityId = existing.id;
+    } else {
+      const [result] = await db.query(
+        `INSERT INTO court_witnesses (court_case_id, witness_id, status, testimony, summoned_at)
+         VALUES (?, ?, ?, ?, CASE WHEN ? = 'summoned' THEN NOW() ELSE NULL END)`,
+        [req.params.id, req.params.witnessId, status, testimony || null, status]
+      );
+      entityId = result.insertId;
+    }
+    await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: 'UPDATE_COURT_WITNESS', entityType: 'court_witnesses', entityId, oldData: existing || null, newData: { status, testimony }, ...auditRequestMeta(req) });
+    res.json({ success: true, message: 'Court witness updated.' });
+  } catch (err) { next(err); }
+};
+
+const decideAppeal = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Appeal decision must be approved or rejected.' });
+    }
+    const [[appeal]] = await db.query('SELECT * FROM court_appeals WHERE id = ?', [req.params.appealId]);
+    if (!appeal) return res.status(404).json({ success: false, message: 'Appeal not found.' });
+    if (appeal.status !== 'pending') return res.status(409).json({ success: false, message: 'This appeal has already been decided.' });
+    await db.query('UPDATE court_appeals SET status = ? WHERE id = ?', [status, req.params.appealId]);
+    await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: status === 'approved' ? 'APPROVE_APPEAL' : 'REJECT_APPEAL', entityType: 'court_appeals', entityId: Number(req.params.appealId), oldData: appeal, newData: { ...appeal, status }, ...auditRequestMeta(req) });
+    res.json({ success: true, message: `Appeal ${status}.` });
   } catch (err) { next(err); }
 };
 
 const closeCourtCase = async (req, res, next) => {
   try {
     const { closure_reason, final_outcome, archive = false } = req.body;
-    const nextStatus = archive ? 'archived' : 'closed';
     const [[courtCase]] = await db.query('SELECT police_case_id, status, final_outcome, closure_reason FROM court_cases WHERE id = ?', [req.params.id]);
-    await db.query(
-      `UPDATE court_cases
-       SET status = ?, closure_date = CURDATE(), closure_reason = COALESCE(?, closure_reason),
-           final_outcome = COALESCE(?, final_outcome)
-       WHERE id = ?`,
-      [nextStatus, closure_reason || null, final_outcome || null, req.params.id]
-    );
+    await withTransaction((connection) => closeCourtWorkflow(connection, {
+      courtCaseId: Number(req.params.id),
+      closureReason: closure_reason,
+      finalOutcome: final_outcome,
+      archive,
+      actor: actor(req),
+    }));
     const [[closedCase]] = await db.query('SELECT status, final_outcome, closure_reason, closure_date FROM court_cases WHERE id = ?', [req.params.id]);
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email, action: archive ? 'ARCHIVE_COURT_CASE' : 'CLOSE_COURT_CASE', entityType: 'court_cases', entityId: Number(req.params.id), oldData: courtCase, newData: closedCase, ...auditRequestMeta(req) });
-    if (courtCase?.police_case_id) {
-      await db.query("UPDATE cases SET status = 'closed' WHERE id = ?", [courtCase.police_case_id]);
-      await db.query(
-        `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
-         VALUES (?, ?, 'COURT_CASE_CLOSED', ?, 'closed')`,
-        [courtCase.police_case_id, actor(req), closure_reason || 'Court case closed.']
-      );
-    }
     res.json({ success: true, message: archive ? 'Court case archived.' : 'Court case closed.' });
   } catch (err) { next(err); }
 };
@@ -540,5 +729,7 @@ module.exports = {
   saveJudgment,
   issueSentence,
   registerAppeal,
+  updateCourtWitness,
+  decideAppeal,
   closeCourtCase,
 };

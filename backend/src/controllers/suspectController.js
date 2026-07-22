@@ -7,6 +7,7 @@ const path = require('path');
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { parseFaceImage } = require('../utils/faceBiometric');
+const { syncCriminalCustodyStatus, deriveCustodyFromSentenceStatus, WANTED_STATUSES } = require('../utils/custodyStatus');
 
 const VALID_GENDERS = new Set(['male', 'female']);
 
@@ -162,7 +163,7 @@ const getcriminals = async (req, res, next) => {
       }
       const [rows] = await db.query(
         `SELECT s.*, cs.role_in_case, cs.notes AS case_notes,
-                (SELECT COUNT(*) FROM case_criminals csh WHERE csh.criminal_id = s.id) AS case_count
+                (SELECT COUNT(*) FROM case_criminals csh WHERE csh.criminal_id = s.id AND csh.status = 'active') AS case_count
          FROM criminals s
          JOIN case_criminals cs ON s.id = cs.criminal_id
          JOIN cases c_scope ON c_scope.id = cs.case_id
@@ -171,7 +172,7 @@ const getcriminals = async (req, res, next) => {
       return res.json({ success: true, data: rows });
     }
     let sql = `
-      SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count
+      SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id AND cs.status = 'active') AS case_count
       FROM criminals s
       ${req.user.scopeType ? 'JOIN case_criminals cs_scope ON s.id = cs_scope.criminal_id JOIN cases c_scope ON c_scope.id = cs_scope.case_id' : ''}
       WHERE 1=1
@@ -219,7 +220,7 @@ const getcriminals = async (req, res, next) => {
 const getSuspectById = async (req, res, next) => {
   try {
     const [[row]] = await db.query(`
-      SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count
+      SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id AND cs.status = 'active') AS case_count
       FROM criminals s
       WHERE s.id = ?
       GROUP BY s.id
@@ -229,7 +230,7 @@ const getSuspectById = async (req, res, next) => {
       `SELECT c.id, c.ob_number, COALESCE(c.title, c.case_title) AS title, cs.role_in_case
        FROM cases c
        JOIN case_criminals cs ON c.id = cs.case_id
-       WHERE cs.criminal_id = ?`,
+       WHERE cs.criminal_id = ? AND cs.status = 'active'`,
       [req.params.id]
     );
     res.json({ success: true, data: { ...row, cases } });
@@ -441,19 +442,34 @@ const releaseSuspect = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Eedeysanahaan horey uma xirna.' });
     }
 
-    await db.query("UPDATE criminals SET is_arrested = 0, arrest_status = 'released' WHERE id = ?", [suspectId]);
-    await db.query(
-      `UPDATE arrests
-       SET sentence_status = CASE
-             WHEN sentence_status IN ('sentenced','serving','release_review','completed') THEN 'released'
-             ELSE sentence_status
-           END,
-           actual_release_date = COALESCE(actual_release_date, CURDATE()),
-           final_status = COALESCE(final_status, ?)
-       WHERE suspect_id = ?
-         AND sentence_status IN ('awaiting_trial','sentenced','serving','release_review','completed')`,
-      [release_reason || 'Released by authorized officer', suspectId]
-    );
+    const connection = await db.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      await connection.query(
+        `UPDATE arrests
+         SET sentence_status = CASE
+               WHEN sentence_status IN ('awaiting_trial','sentenced','serving','release_review','completed') THEN 'released'
+               ELSE sentence_status
+             END,
+             actual_release_date = COALESCE(actual_release_date, CURDATE()),
+             final_status = COALESCE(final_status, ?)
+         WHERE suspect_id = ?
+           AND sentence_status IN ('awaiting_trial','sentenced','serving','release_review','completed')`,
+        [release_reason || 'Released by authorized officer', suspectId]
+      );
+
+      // Recompute criminals.is_arrested/arrest_status from the (now-released) latest
+      // arrest record, so the custody record and the profile flag change atomically.
+      await syncCriminalCustodyStatus(connection, suspectId);
+
+      await connection.commit();
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
 
     const actionDescription = release_reason
       ? `Eedeysane waa la sii daayay. Sabab: ${release_reason}`
@@ -656,7 +672,9 @@ const searchAndMatch = async (req, res, next) => {
 
 const loadSuspectHistory = async (suspectId) => {
   const [[profile]] = await db.query(`
-    SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id) AS case_count, COUNT(DISTINCT a.id) AS arrest_count
+    SELECT s.*,
+           (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id AND cs.status = 'active') AS case_count,
+           COUNT(DISTINCT a.id) AS arrest_count
     FROM criminals s
     LEFT JOIN arrests a ON s.id = a.suspect_id
     WHERE s.id = ?
@@ -697,7 +715,7 @@ const loadSuspectHistory = async (suspectId) => {
     FROM case_criminals cs
     JOIN cases c ON c.id = cs.case_id
     LEFT JOIN districts d ON c.district_id = d.id
-    WHERE cs.criminal_id = ?
+    WHERE cs.criminal_id = ? AND cs.status = 'active'
     ORDER BY c.created_at ASC
   `, [suspectId]);
 
@@ -769,8 +787,45 @@ const loadSuspectHistory = async (suspectId) => {
   const dueForRelease = hydratedArrests.filter((row) => row.release_due);
   const wantedOrEscaped = hydratedArrests.filter((row) => ['wanted', 'escaped'].includes(row.sentence_status));
 
+  // --- Single source of truth for custody status/location: the suspect's latest arrest
+  // record (by arrest_date, tie-broken by id), reconciled with any completed prison
+  // transfer tied to it. Never trust criminals.is_arrested/arrest_status alone here —
+  // those are only a cache that write paths keep in sync, and can still drift if a
+  // profile edit sets them directly without a backing arrest record.
+  const latestArrestRecord = hydratedArrests.length
+    ? [...hydratedArrests].sort((a, b) => {
+        const dateDiff = new Date(b.arrest_date) - new Date(a.arrest_date);
+        return dateDiff !== 0 ? dateDiff : b.id - a.id;
+      })[0]
+    : null;
+
+  const latestTransfer = latestArrestRecord
+    ? prison_transfers.find((t) => t.status === 'completed' && (t.arrest_id === latestArrestRecord.id || t.arrest_id === null))
+    : null;
+
+  let custodyStatus;
+  let custodyLocation = null;
+  if (latestArrestRecord) {
+    const derived = deriveCustodyFromSentenceStatus(latestArrestRecord.sentence_status);
+    custodyStatus = derived.arrestStatus;
+    if (derived.isArrested) {
+      custodyLocation = latestTransfer?.to_facility || latestArrestRecord.police_station_name || 'Unknown Station';
+    }
+  } else {
+    // No arrest record exists at all — the only legitimate manually-set state is "wanted".
+    custodyStatus = WANTED_STATUSES.includes(profile.arrest_status) ? 'wanted' : 'not_arrested';
+  }
+  const isInCustody = custodyStatus === 'arrested';
+
   return {
-    profile,
+    profile: {
+      ...profile,
+      is_arrested: isInCustody ? 1 : 0,
+      arrest_status: custodyStatus,
+      custody_location: custodyLocation,
+    },
+    total_cases: cases.length,
+    total_arrests: hydratedArrests.length,
     first_arrest_date: hydratedArrests[0]?.arrest_date || null,
     repeat_offender: hydratedArrests.length > 1 || cases.length > 1,
     release_alerts: dueForRelease.map((row) => ({

@@ -288,7 +288,7 @@ export default function CaseDetailsPage() {
     if (!isSuspectModalOpen) stopCamera();
   }, [isSuspectModalOpen]);
 
-  const startCamera = async () => {
+  const startCamera = async (retryOnSystemLock = true) => {
     setCameraError('');
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera not available in this browser.');
@@ -303,6 +303,14 @@ export default function CaseDetailsPage() {
       setIsCameraActive(true);
     } catch (err) {
       console.error('Camera error', err);
+      // Chrome/Windows can briefly report "Permission denied by system" right after a previous
+      // stream's tracks are stopped, because the OS hasn't released the device yet. Retry once
+      // rather than surfacing this as a real permission denial (which uses a different message).
+      const isTransientSystemLock = err.name === 'NotAllowedError' && /system/i.test(err.message || '');
+      if (isTransientSystemLock && retryOnSystemLock) {
+        setTimeout(() => startCamera(false), 400);
+        return;
+      }
       setCameraError('Camera access denied or unavailable.');
     }
   };

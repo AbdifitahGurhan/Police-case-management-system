@@ -5,6 +5,10 @@ const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
 const { ensureCidCaseForPoliceCase } = require('../services/cidService');
+const {
+  withTransaction,
+  lockAndAssertReferralAllowed,
+} = require('../services/caseWorkflowService');
 
 const actor = (req) => req.user?.username || req.user?.id || 'system';
 
@@ -53,45 +57,45 @@ const createReferral = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'referred_to_role must be "cid" or "court".' });
     }
 
-    const [[caseRow]] = await db.query('SELECT id, status FROM cases WHERE id = ?', [case_id]);
-    if (!caseRow) return res.status(404).json({ success: false, message: 'Case not found.' });
+    const transactionResult = await withTransaction(async (connection) => {
+      const caseRow = await lockAndAssertReferralAllowed(connection, case_id, referred_to_role);
+      const [result] = await connection.query(
+        `INSERT INTO referrals (case_id, referred_by, referred_to_role, referred_to_user, reason, notes)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [case_id, actor(req), referred_to_role, referred_to_user || null, reason || null, notes || null]
+      );
 
-    const [result] = await db.query(
-      `INSERT INTO referrals (case_id, referred_by, referred_to_role, referred_to_user, reason, notes)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [case_id, actor(req), referred_to_role, referred_to_user || null, reason || null, notes || null]
-    );
-
-    const newStatus = referred_to_role === 'court' ? 'approved_for_court' : 'referred_to_cid';
-    await db.query('UPDATE cases SET status = ? WHERE id = ?', [newStatus, case_id]);
-    if (referred_to_role === 'court') {
-      await ensureCourtCaseForPoliceCase(case_id, actor(req));
-    } else {
-      await ensureCidCaseForPoliceCase(case_id, actor(req));
-    }
-
-    await db.query(
-      `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        case_id,
-        actor(req),
-        referred_to_role === 'court' ? 'CASE_REFERRED_TO_COURT' : 'CASE_REFERRED',
-        referred_to_role === 'court'
-          ? 'Police investigation completed and case forwarded to court for further legal action. Police station workflow ends at court referral.'
-          : `Case referred to ${referred_to_role.toUpperCase()}`,
-        caseRow.status,
-        newStatus,
-      ]
-    );
+      const newStatus = referred_to_role === 'court' ? 'approved_for_court' : 'referred_to_cid';
+      await connection.query('UPDATE cases SET status = ? WHERE id = ?', [newStatus, case_id]);
+      if (referred_to_role === 'court') {
+        await ensureCourtCaseForPoliceCase(case_id, actor(req), connection);
+      } else {
+        await ensureCidCaseForPoliceCase(case_id, actor(req), connection);
+      }
+      await connection.query(
+        `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          case_id,
+          actor(req),
+          referred_to_role === 'court' ? 'CASE_REFERRED_TO_COURT' : 'CASE_REFERRED',
+          referred_to_role === 'court'
+            ? 'Police investigation completed and case forwarded to court.'
+            : `Case referred to ${referred_to_role.toUpperCase()}`,
+          caseRow.status,
+          newStatus,
+        ]
+      );
+      return { referralId: result.insertId, newStatus };
+    });
 
     await writeAuditLog({
       userId: actor(req),
       userEmail: req.user.email || req.user.username,
       action: referred_to_role === 'court' ? 'COURT_REFERRAL' : 'CREATE_REFERRAL',
       entityType: 'referrals',
-      entityId: result.insertId,
-      newData: { case_id, referred_to_role, reason: reason || null, notes: notes || null, status: newStatus },
+      entityId: transactionResult.referralId,
+      newData: { case_id, referred_to_role, reason: reason || null, notes: notes || null, status: transactionResult.newStatus },
     });
 
     res.status(201).json({
@@ -99,8 +103,8 @@ const createReferral = async (req, res, next) => {
       message: referred_to_role === 'court'
         ? 'Case referred to court. Police station workflow ends at this stage.'
         : `Case referred to ${referred_to_role}.`,
-      referralId: result.insertId,
-      status: newStatus,
+      referralId: transactionResult.referralId,
+      status: transactionResult.newStatus,
     });
   } catch (err) { next(err); }
 };

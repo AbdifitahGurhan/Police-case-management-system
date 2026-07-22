@@ -8,6 +8,7 @@ const { generateCaseNumber } = require('../utils/caseNumberGenerator');
 const { buildScopeWhere, getUserLocation } = require('../utils/locationScope');
 const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
 const { ensureCidCaseForPoliceCase } = require('../services/cidService');
+const { assertPoliceTransition } = require('../services/caseWorkflowService');
 
 const CASE_STATUS_FLOW = {
   draft: ['registered'],
@@ -227,6 +228,8 @@ const getCaseById = async (req, res, next) => {
               ob.registration_time AS ob_registration_time,
               ob.registered_by_name AS ob_registered_by_name,
               ob.registered_by_role AS ob_registered_by_role,
+              COALESCE(c.complainant_name, ob.reported_by) AS complainant_name,
+              COALESCE(c.complainant_phone, ob.reporter_phone) AS complainant_phone,
               sa.state_name,
               r.region_name,
               ci.city_name,
@@ -509,14 +512,7 @@ const updateCase = async (req, res, next) => {
     const incidentDateError = validateIncidentDate(incident_date);
     if (incidentDateError) return res.status(400).json({ success: false, message: incidentDateError });
     const nextStatus = status ? mapLegacyStatus(status) : status;
-    const isUserAdmin = req.user && (req.user.role === 'admin' || req.user.role?.toLowerCase() === 'admin' || req.user.username === 'admin@police.so');
-    if (nextStatus && !isUserAdmin && !canTransitionStatus(existing.status, nextStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status transition from ${existing.status} to ${nextStatus}.`,
-        allowedNextStatuses: getAllowedNextStatuses(existing.status),
-      });
-    }
+    if (nextStatus) assertPoliceTransition(existing.status, nextStatus);
 
     await db.query(
       `UPDATE cases SET title=?, description=?, incident_date=?, incident_location=?, priority=?, status=?, assigned_officer_id=? WHERE id=?`,

@@ -43,6 +43,7 @@ import api from '@/services/api';
 const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
 const { TextArea } = Input;
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000/api').replace(/\/api\/?$/, '');
 
 const cidRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
 const supervisorRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison'];
@@ -498,6 +499,31 @@ export default function CIDDashboard() {
                           { title: 'Type', dataIndex: 'type' },
                           { title: 'Collected by', dataIndex: 'collected_by', render: safe },
                           { title: 'Status', dataIndex: 'status', render: (v) => <Tag className="status-tag status-tag--neutral">{safe(v)}</Tag> },
+                          {
+                            title: 'File',
+                            dataIndex: 'file_url',
+                            render: (url) => url
+                              ? <Button size="small" href={`${API_ORIGIN}${url}`} target="_blank">Download</Button>
+                              : '—',
+                          },
+                        ]}
+                      />
+                    ),
+                  },
+                  {
+                    key: 'custody',
+                    label: `Custody (${selected.custody?.length || 0})`,
+                    children: (
+                      <Table
+                        rowKey="id"
+                        dataSource={selected.custody || []}
+                        columns={[
+                          { title: 'Evidence', dataIndex: 'evidence_number' },
+                          { title: 'From', dataIndex: 'transferred_from', render: safe },
+                          { title: 'To', dataIndex: 'transferred_to', render: safe },
+                          { title: 'Location', dataIndex: 'location', render: safe },
+                          { title: 'Date', dataIndex: 'transfer_date', render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—') },
+                          { title: 'Reason', dataIndex: 'reason', ellipsis: true },
                         ]}
                       />
                     ),
@@ -567,6 +593,24 @@ export default function CIDDashboard() {
                           { title: 'Submitted by', dataIndex: 'submitted_by' },
                           { title: 'Submitted', dataIndex: 'submitted_at', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm') },
                           { title: 'Findings', dataIndex: 'findings', ellipsis: true },
+                          { title: 'Recommendations', dataIndex: 'recommendations', ellipsis: true },
+                        ]}
+                      />
+                    ),
+                  },
+                  {
+                    key: 'audit',
+                    label: `Audit (${selected.auditTrail?.length || 0})`,
+                    children: (
+                      <Table
+                        rowKey={(row) => `${row.entity_type}-${row.entity_id}-${row.created_at}-${row.action}`}
+                        dataSource={selected.auditTrail || []}
+                        columns={[
+                          { title: 'User', dataIndex: 'performed_by', render: safe },
+                          { title: 'Action', dataIndex: 'action', render: (v) => v?.replaceAll('_', ' ') },
+                          { title: 'Date/time', dataIndex: 'created_at', render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—') },
+                          { title: 'Previous', dataIndex: 'previous_value', ellipsis: true, render: (v) => (v ? JSON.stringify(v) : '—') },
+                          { title: 'New', dataIndex: 'new_value', ellipsis: true, render: (v) => (v ? JSON.stringify(v) : '—') },
                         ]}
                       />
                     ),
@@ -585,6 +629,7 @@ export default function CIDDashboard() {
           destroyOnHidden
           forceRender
           width={760}
+          zIndex={1200}
         >
           <Form form={form} layout="vertical" onFinish={submitModal}>
             {modalType === 'assign' && (

@@ -18,6 +18,7 @@ import {
 
 const { Title } = Typography;
 const { Option } = Select;
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
 
 export default function PoliceOfficersPage() {
   const { message } = App.useApp();
@@ -104,7 +105,7 @@ export default function PoliceOfficersPage() {
         ...record,
         date_of_birth: record.date_of_birth ? dayjs(record.date_of_birth) : null
       });
-      setFileList(record.profile_image ? [{ uid: '-1', name: 'photo.png', status: 'done', url: `http://localhost:5005${record.profile_image}` }] : []);
+      setFileList(record.profile_image ? [{ uid: '-1', name: 'photo.png', status: 'done', url: `${API_ORIGIN}${record.profile_image}` }] : []);
     } else {
       form.resetFields();
       setFileList([]);
@@ -193,7 +194,7 @@ export default function PoliceOfficersPage() {
   };
 
   const columns = [
-    { title: 'Photo', dataIndex: 'profile_image', key: 'profile_image', render: i => <Avatar src={i ? `http://localhost:5005${i}` : `https://ui-avatars.com/api/?name=Officer`} /> },
+    { title: 'Photo', dataIndex: 'profile_image', key: 'profile_image', render: i => <Avatar src={i ? `${API_ORIGIN}${i}` : `https://ui-avatars.com/api/?name=Officer`} /> },
     { title: 'Full Name', dataIndex: 'full_name', key: 'full_name' },
     { title: 'Force No.', dataIndex: 'force_number', key: 'force_number', render: f => <Tag color="blue">{f}</Tag> },
     { title: 'Rank', dataIndex: 'rank_name', key: 'rank_name' },

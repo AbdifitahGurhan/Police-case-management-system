@@ -57,17 +57,21 @@ export default function NewCaseWizardPage() {
   const [incidentForm] = Form.useForm();
   const [suspectDraftForm] = Form.useForm();
   const [evidenceDraftForm] = Form.useForm();
+  const [complainantData, setComplainantData] = useState(null);
+  const [incidentData, setIncidentData] = useState(null);
   const [suspects, setSuspects] = useState([]);
   const [evidenceItems, setEvidenceItems] = useState([]);
 
   const goNext = async () => {
     if (current === 0) {
-      await complainantForm.validateFields();
+      const values = await complainantForm.validateFields();
+      setComplainantData(values);
       setCurrent(1);
       return;
     }
     if (current === 1) {
-      await incidentForm.validateFields();
+      const values = await incidentForm.validateFields();
+      setIncidentData(values);
       setCurrent(2);
       return;
     }
@@ -104,8 +108,14 @@ export default function NewCaseWizardPage() {
   const submitWizard = async () => {
     setSubmitting(true);
     try {
-      const complainant = await complainantForm.validateFields();
-      const incident = await incidentForm.validateFields();
+      // Earlier step forms are unmounted by the wizard. Use the validated
+      // snapshots captured before advancing instead of reading disconnected forms.
+      const complainant = complainantData;
+      const incident = incidentData;
+
+      if (!complainant || !incident?.title) {
+        throw new Error('Case details are incomplete. Please return to the Incident step.');
+      }
 
       const incidentDate = incident.incident_date
         ? incident.incident_date.format('YYYY-MM-DD HH:mm:ss')

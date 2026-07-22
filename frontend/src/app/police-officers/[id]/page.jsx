@@ -11,6 +11,7 @@ import { requiredRule, textLengthRule } from '@/utils/validation';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
 
 export default function OfficerDetailsPage({ params }) {
   const { message } = App.useApp();
@@ -139,7 +140,7 @@ export default function OfficerDetailsPage({ params }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <Space align="center" size="large">
               <Button icon={<ArrowLeftOutlined />} shape="circle" onClick={() => router.back()} />
-              <Avatar size={80} src={officer?.profile_image ? `http://localhost:5005${officer.profile_image}` : 'https://ui-avatars.com/api/?name=Officer'} />
+              <Avatar size={80} src={officer?.profile_image ? `${API_ORIGIN}${officer.profile_image}` : 'https://ui-avatars.com/api/?name=Officer'} />
               <div>
                 <Title level={2} style={{ margin: 0 }}>{officer?.full_name}</Title>
                 <Text type="secondary"><Tag color="blue">{officer?.force_number}</Tag> {officer?.rank_name}</Text>

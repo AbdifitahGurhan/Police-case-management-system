@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../src/config/database');
 
-const API_URL = process.env.API_URL || 'http://localhost:5001/api';
+const API_URL = process.env.API_URL || 'http://localhost:5000/api';
 const WEB_URL = API_URL.replace(/\/api\/?$/, '');
 const RUN_ID = Date.now();
 const FACE_IMAGE = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==';

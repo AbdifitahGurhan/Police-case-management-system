@@ -193,7 +193,7 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
 
   if (!user) return null;
 
-  const apiOrigin = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '');
+  const apiOrigin = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
   const profileImageUrl = user.profileImage ? `${apiOrigin}${user.profileImage}` : null;
   const displayName = user.fullName || user.username || 'User';
   const initials = displayName

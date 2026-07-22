@@ -9,7 +9,6 @@ import {
   Col,
   DatePicker,
   Descriptions,
-  Drawer,
   Dropdown,
   Empty,
   Form,
@@ -67,13 +66,13 @@ const statusMeta = {
 const decisionColor = { convicted: 'red', acquitted: 'green', dismissed: 'default' };
 
 const roleConfig = {
-  admin: { title: 'Maamulka Sare - Maxkamadda', actions: ['assign', 'hearing', 'proceeding', 'judgment', 'sentence', 'appeal', 'close', 'documents'] },
-  court: { title: 'Maamulka Guud ee Maxkamadda', actions: ['assign', 'hearing', 'proceeding', 'judgment', 'sentence', 'appeal', 'close', 'documents'] },
-  court_admin: { title: 'Maamulaha Maxkamadda', actions: ['assign', 'hearing', 'proceeding', 'close', 'documents'] },
-  judge: { title: 'Dashboard-ka Garsooraha', actions: ['proceeding', 'judgment', 'sentence', 'documents'] },
+  admin: { title: 'Maamulka Sare - Maxkamadda', actions: ['assign', 'hearing', 'hearing_manage', 'proceeding', 'witness', 'judgment', 'sentence', 'appeal', 'appeal_decision', 'close', 'documents'] },
+  court: { title: 'Maamulka Guud ee Maxkamadda', actions: ['assign', 'hearing', 'hearing_manage', 'proceeding', 'witness', 'judgment', 'sentence', 'appeal', 'appeal_decision', 'close', 'documents'] },
+  court_admin: { title: 'Maamulaha Maxkamadda', actions: ['assign', 'hearing', 'hearing_manage', 'proceeding', 'witness', 'appeal_decision', 'close', 'documents'] },
+  judge: { title: 'Dashboard-ka Garsooraha', actions: ['hearing_manage', 'proceeding', 'witness', 'judgment', 'sentence', 'appeal_decision', 'documents'] },
   prosecutor: { title: 'Dashboard-ka Xeer-ilaaliyaha', actions: ['appeal', 'documents'] },
   prosecutor_liaison: { title: 'Xiriiriyaha Xeer-ilaalinta', actions: ['appeal', 'documents'] },
-  court_clerk: { title: 'Kaaliyaha Maxkamadda', actions: ['hearing', 'proceeding', 'documents'] },
+  court_clerk: { title: 'Kaaliyaha Maxkamadda', actions: ['hearing', 'hearing_manage', 'proceeding', 'witness', 'documents'] },
 };
 
 const statusTag = (status) => {
@@ -82,6 +81,10 @@ const statusTag = (status) => {
 };
 
 const safe = (value) => value || 'N/A';
+const formatDate = (value) => {
+  if (!value) return null;
+  return dayjs.isDayjs(value) ? value.format('YYYY-MM-DD') : dayjs(value).format('YYYY-MM-DD');
+};
 
 export default function CourtCasesPage() {
   const { message } = App.useApp();
@@ -160,16 +163,25 @@ export default function CourtCasesPage() {
 
   const openModal = (type, initial = {}) => {
     setModalType(type);
-    setActiveHearing(initial.hearing || null);
+    const hearing = initial.hearing
+      || (type === 'proceeding' ? selected?.hearings?.[0] : null);
+    setActiveHearing(hearing || null);
     form.resetFields();
 
     const values = initial.values || {};
     if (type === 'sentence') {
       const suspects = selected?.suspects || [];
       if (suspects.length === 1) {
-        values.suspect_id = suspects[0].id;
+        values.criminal_id = suspects[0].id;
         values.defendant_name = suspects[0].full_name;
       }
+    }
+    if (type === 'hearing_update' && initial.hearing) {
+      values.hearing_date = initial.hearing.hearing_date ? dayjs(initial.hearing.hearing_date) : null;
+      values.hearing_time = initial.hearing.hearing_time ? dayjs(initial.hearing.hearing_time, 'HH:mm:ss') : null;
+      values.court_room = initial.hearing.court_room;
+      values.assigned_judge = initial.hearing.assigned_judge;
+      values.status = initial.hearing.status;
     }
 
     form.setFieldsValue(values);
@@ -194,31 +206,49 @@ export default function CourtCasesPage() {
       if (modalType === 'hearing') {
         await api.post(`/court/cases/${id}/hearings`, {
           ...values,
-          hearing_date: values.hearing_date.format('YYYY-MM-DD'),
-          hearing_time: values.hearing_time.format('HH:mm:ss'),
+          hearing_date: formatDate(values.hearing_date),
+          hearing_time: dayjs.isDayjs(values.hearing_time)
+            ? values.hearing_time.format('HH:mm:ss')
+            : dayjs(values.hearing_time).format('HH:mm:ss'),
         });
       }
-      if (modalType === 'proceeding') await api.post(`/court/hearings/${activeHearing.id}/proceedings`, values);
+      if (modalType === 'proceeding') {
+        if (!activeHearing?.id) {
+          throw new Error('Ma jiro dhegeysi la doortay. Fadlan marka hore qorshee ama ka dooro dhegeysi jadwalka.');
+        }
+        await api.post(`/court/hearings/${activeHearing.id}/proceedings`, values);
+      }
+      if (modalType === 'hearing_update') {
+        if (!activeHearing?.id) throw new Error('Ma jiro dhegeysi la doortay.');
+        await api.patch(`/court/hearings/${activeHearing.id}`, {
+          ...values,
+          hearing_date: formatDate(values.hearing_date),
+          hearing_time: values.hearing_time ? dayjs(values.hearing_time).format('HH:mm:ss') : null,
+        });
+      }
+      if (modalType === 'witness') {
+        await api.patch(`/court/cases/${id}/witnesses/${values.witness_id}`, values);
+      }
+      if (modalType === 'appeal_decision') {
+        await api.patch(`/court/appeals/${values.appeal_id}/decision`, { status: values.status });
+      }
       if (modalType === 'judgment') {
         await api.post(`/court/cases/${id}/judgments`, {
           ...values,
-          decision_date: values.decision_date ? values.decision_date.format('YYYY-MM-DD') : null,
+          decision_date: formatDate(values.decision_date),
         });
       }
       if (modalType === 'sentence') {
         const suspects = selected?.suspects || [];
-        const selectedSuspect = suspects.find(s => s.id === values.suspect_id);
-        const defendantName = selectedSuspect ? selectedSuspect.full_name : (values.defendant_name || '');
         await api.post(`/court/cases/${id}/sentences`, {
           ...values,
-          defendant_name: defendantName,
-          sentence_date: values.sentence_date ? values.sentence_date.format('YYYY-MM-DD') : null,
+          sentence_date: formatDate(values.sentence_date),
         });
       }
       if (modalType === 'appeal') {
         await api.post(`/court/cases/${id}/appeals`, {
           ...values,
-          filing_date: values.filing_date ? values.filing_date.format('YYYY-MM-DD') : null,
+          filing_date: formatDate(values.filing_date),
         });
       }
       if (modalType === 'close') await api.patch(`/court/cases/${id}/close`, values);
@@ -226,7 +256,12 @@ export default function CourtCasesPage() {
       closeModal();
       await refreshAfterAction();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Ficilka maxkamaddu waa ku guuldareystay.');
+      console.error('Court action failed:', error);
+      message.error(
+        error.response?.data?.message
+        || error.message
+        || 'Ficilka maxkamaddu waa ku guuldareystay.'
+      );
     }
   };
 
@@ -343,16 +378,18 @@ export default function CourtCasesPage() {
           <Table columns={caseColumns} dataSource={cases} rowKey="id" loading={loading || detailLoading} scroll={{ x: 1250 }} />
         </Card>
 
-        <Drawer
+        <Modal
           title={
             <span style={{ fontWeight: 600, fontSize: 15, color: isDark ? '#FFFFFF' : '#0F172A' }}>
               Faahfaahinta Kiiska Maxkamadda
             </span>
           }
           open={detailOpen}
-          onClose={() => setDetailOpen(false)}
-          size="large"
-          placement="right"
+          onCancel={() => setDetailOpen(false)}
+          footer={null}
+          width={1100}
+          centered
+          destroyOnHidden
           styles={{
             header: {
               borderBottom: `1px solid ${isDark ? '#2B2B2B' : '#e5e7eb'}`,
@@ -360,15 +397,15 @@ export default function CourtCasesPage() {
               background: isDark ? '#171717' : '#ffffff',
             },
             body: {
-              minHeight: 'calc(100vh - 57px)',
+              maxHeight: 'calc(100vh - 150px)',
               padding: 24,
               background: isDark ? '#171717' : '#f8fafc',
-              overflowX: 'hidden',
+              overflow: 'auto',
             },
           }}
         >
           {courtCase ? (
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
 
               {/* ── Case Identity Block ────────────────────────────────── */}
               <div style={{
@@ -403,18 +440,19 @@ export default function CourtCasesPage() {
               {/* ── Action Buttons (Two-Tier) ──────────────────────────── */}
               {(() => {
                 const s = courtCase.status;
+                const canRecordJudgment = can('judgment') && ['hearing_scheduled', 'in_trial'].includes(s);
                 const primaryAction = (() => {
                   if (['registered', 'awaiting_hearing'].includes(s) && can('hearing'))
                     return { label: 'Qorshee Dhegeysi', action: 'hearing' };
                   if (['hearing_scheduled', 'in_trial'].includes(s) && can('proceeding'))
                     return { label: 'Ku dar Qoraalka', action: 'proceeding' };
-                  if (s === 'judgment_issued' && can('sentence'))
-                    return { label: 'Duubaa Xukunka', action: 'sentence' };
+                  if (s === 'judgment_issued' && courtCase.final_outcome === 'convicted' && can('sentence'))
+                    return { label: 'Xukun rid', action: 'sentence' };
                   return null;
                 })();
 
                 const overflowItems = [
-                  can('judgment') ? {
+                  can('judgment') && !canRecordJudgment ? {
                     key: 'judgment',
                     label: "Duubaa Go'aanka Maxkamadda",
                     onClick: () => openModal('judgment'),
@@ -435,6 +473,16 @@ export default function CourtCasesPage() {
                         style={{ fontWeight: 600 }}
                       >
                         {primaryAction.label}
+                      </Button>
+                    )}
+                    {canRecordJudgment && (
+                      <Button
+                        type="primary"
+                        icon={<FileDoneOutlined />}
+                        onClick={() => openModal('judgment')}
+                        style={{ fontWeight: 600 }}
+                      >
+                        Go&apos;aan ka gaar
                       </Button>
                     )}
                     {can('assign') && (
@@ -511,7 +559,7 @@ export default function CourtCasesPage() {
                     key: 'court_activity',
                     label: 'Hawlaha Maxkamadda',
                     children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
                         <Card title="Dhegeysiyada Maxkamadda (Hearings)" size="small">
                           <Table
                             size="small"
@@ -527,9 +575,12 @@ export default function CourtCasesPage() {
                               { title: 'Heerka', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
                               {
                                 title: 'Ficil',
-                                render: (_, row) => can('proceeding')
-                                  ? <Button size="small" onClick={() => openModal('proceeding', { hearing: row })}>Ku dar Qoraalka</Button>
-                                  : null,
+                                render: (_, row) => (
+                                  <Space>
+                                    {can('proceeding') && <Button size="small" onClick={() => openModal('proceeding', { hearing: row })}>Ku dar Qoraalka</Button>}
+                                    {can('hearing_manage') && <Button size="small" onClick={() => openModal('hearing_update', { hearing: row })}>Maamul</Button>}
+                                  </Space>
+                                ),
                               },
                             ]}
                           />
@@ -592,6 +643,12 @@ export default function CourtCasesPage() {
                                   { title: 'Sababta', dataIndex: 'appeal_reason', ellipsis: true },
                                   { title: 'Taariikhda', dataIndex: 'filing_date' },
                                   { title: 'Heerka', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
+                                  {
+                                    title: 'Go’aan',
+                                    render: (_, row) => can('appeal_decision') && row.status === 'pending'
+                                      ? <Button size="small" onClick={() => openModal('appeal_decision', { values: { appeal_id: row.id } })}>Go’aan ka gaar</Button>
+                                      : null,
+                                  },
                                 ]}
                               />
                             </div>
@@ -607,7 +664,7 @@ export default function CourtCasesPage() {
                     key: 'overview',
                     label: 'Guudmar & Faahfaahin',
                     children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
                         <Descriptions title="Macluumaadka Kiiska & Maxkamadda" bordered column={2}>
                           <Descriptions.Item label="Kiiska Maxkamadda">{courtCase.court_case_number}</Descriptions.Item>
                           <Descriptions.Item label="Kiiska Booliska">
@@ -636,7 +693,7 @@ export default function CourtCasesPage() {
                     key: 'police_evidence',
                     label: `Faylka Booliska & Caddeymaha`,
                     children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
                         <Card title={`Eedaysanayaasha Kiiska Ku Xiran (Offenders) (${selected.criminals.length})`} size="small">
                           <Table
                             size="small" rowKey="id" dataSource={selected.criminals} pagination={false}
@@ -658,6 +715,12 @@ export default function CourtCasesPage() {
                               { title: 'Cinwaanka', dataIndex: 'address', render: safe },
                               { title: 'Heerka Maxkamadda', dataIndex: 'court_status', render: (v) => <Tag>{v || 'pending'}</Tag> },
                               { title: 'Hadalka Markhaatiga', dataIndex: 'statement', ellipsis: true },
+                              {
+                                title: 'Ficil',
+                                render: (_, row) => can('witness')
+                                  ? <Button size="small" onClick={() => openModal('witness', { values: { witness_id: row.id, status: row.court_status || 'summoned', testimony: row.testimony } })}>Maamul</Button>
+                                  : null,
+                              },
                             ]}
                           />
                         </Card>
@@ -701,17 +764,20 @@ export default function CourtCasesPage() {
               />
             </Space>
           ) : <Empty />}
-        </Drawer>
+        </Modal>
 
   <Modal
     title={modalType ? (() => {
       const titles = {
         assign: 'U-xilsaar Garsoore / Xeer-ilaaliye (Assign)',
         hearing: 'Qorshee Dhegeysi Cusub (Schedule Hearing)',
+        hearing_update: 'Maamul Dhegeysiga (Update Hearing)',
         proceeding: 'Qoraalka Dacwadda (Add Proceedings)',
+        witness: 'Maamul Markhaatiga (Witness)',
         judgment: 'Go\'aanka Maxkamadda (Judgment)',
         sentence: 'Xukun Ridis (Sentence)',
         appeal: 'Gudbi Racfaan (Appeal)',
+        appeal_decision: 'Go’aanka Racfaanka (Appeal Decision)',
         close: 'Xiridda Kiiska Maxkamadda (Close)',
       };
       return titles[modalType] || 'Ficilka Maxkamadda';
@@ -784,6 +850,39 @@ export default function CourtCasesPage() {
           <Form.Item name="defense_remarks" label="Hadallada Qareenka Difaaca"><TextArea rows={2} /></Form.Item>
         </>
       )}
+      {modalType === 'hearing_update' && (
+        <Row gutter={16}>
+          <Col span={12}><Form.Item name="hearing_date" label="Taariikhda Dhegeysiga"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="hearing_time" label="Saacadda Dhegeysiga"><TimePicker style={{ width: '100%' }} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="court_room" label="Qolka Maxkamadda"><Input /></Form.Item></Col>
+          <Col span={12}><Form.Item name="assigned_judge" label="Garsooraha"><Select allowClear options={courtPersonnel.judges} /></Form.Item></Col>
+          <Col span={24}><Form.Item name="status" label="Heerka"><Select options={[
+            { value: 'scheduled', label: 'Qorshaysan' },
+            { value: 'completed', label: 'La dhammeeyey' },
+            { value: 'cancelled', label: 'La baajiyey' },
+          ]} /></Form.Item></Col>
+        </Row>
+      )}
+      {modalType === 'witness' && (
+        <>
+          <Form.Item name="witness_id" hidden><Input /></Form.Item>
+          <Form.Item name="status" label="Heerka Markhaatiga" rules={[{ required: true }]}><Select options={[
+            { value: 'summoned', label: 'Loo yeeray' },
+            { value: 'present', label: 'Wuu yimid' },
+            { value: 'absent', label: 'Wuu maqnaa' },
+          ]} /></Form.Item>
+          <Form.Item name="testimony" label="Markhaati-furka"><TextArea rows={5} /></Form.Item>
+        </>
+      )}
+      {modalType === 'appeal_decision' && (
+        <>
+          <Form.Item name="appeal_id" hidden><Input /></Form.Item>
+          <Form.Item name="status" label="Go’aanka Racfaanka" rules={[{ required: true }]}><Select options={[
+            { value: 'approved', label: 'La aqbalay' },
+            { value: 'rejected', label: 'La diiday' },
+          ]} /></Form.Item>
+        </>
+      )}
       {modalType === 'judgment' && (
         <>
           <Form.Item name="judge_name" label="Magaca Garsooraha"><Input /></Form.Item>
@@ -802,7 +901,7 @@ export default function CourtCasesPage() {
           <Row gutter={16}>
             <Col span={24}>
               {suspects.length > 1 ? (
-                <Form.Item name="suspect_id" label="Magaca Eedaysanaha" rules={[{ required: true, message: 'Fadlan dooro eedaysanaha' }]}>
+                <Form.Item name="criminal_id" label="Magaca Eedaysanaha" rules={[{ required: true, message: 'Fadlan dooro eedaysanaha' }]}>
                   <Select
                     placeholder="Dooro eedaysanaha"
                     options={suspects.map(s => ({ value: s.id, label: s.full_name }))}
@@ -813,7 +912,7 @@ export default function CourtCasesPage() {
                   <Form.Item label="Magaca Eedaysanaha">
                     <Input value={suspects[0].full_name} disabled style={{ color: 'rgba(0,0,0,0.85)' }} />
                   </Form.Item>
-                  <Form.Item name="suspect_id" hidden>
+                  <Form.Item name="criminal_id" hidden>
                     <Input />
                   </Form.Item>
                 </>
@@ -826,8 +925,7 @@ export default function CourtCasesPage() {
             <Col span={12}><Form.Item name="sentence_type" label="Nooca Xukunka" rules={[{ required: true }]}><Select options={[
               { value: 'imprisonment', label: 'Xabsi' },
               { value: 'fine', label: 'Ganaax Lacageed' },
-              { value: 'probation', label: 'Dabagal (Probation)' },
-              { value: 'community_service', label: 'Adeeg Bulsho' },
+              { value: 'both', label: 'Xabsi iyo Ganaax' },
             ]} /></Form.Item></Col>
             <Col span={12}><Form.Item name="sentence_date" label="Taariikhda Xukunka"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
             <Col span={12}><Form.Item name="duration" label="Muddada Xukunka"><Input placeholder="tusaale. 2 sano, 6 bilood..." /></Form.Item></Col>

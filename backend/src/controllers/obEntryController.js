@@ -170,7 +170,9 @@ const convertObToCase = async (req, res, next) => {
              state_administration_id = COALESCE(?, state_administration_id),
              region_id = COALESCE(?, region_id),
              city_id = COALESCE(?, city_id),
-             district_id = COALESCE(?, district_id)
+             district_id = COALESCE(?, district_id),
+             complainant_name = COALESCE(complainant_name, ?),
+             complainant_phone = COALESCE(complainant_phone, ?)
          WHERE id = ?`,
         [
           ob.id,
@@ -178,6 +180,8 @@ const convertObToCase = async (req, res, next) => {
           ob.region_id || null,
           ob.city_id || null,
           ob.district_id || null,
+          ob.reported_by || null,
+          ob.reporter_phone || null,
           existingCase.id,
         ]
       );
@@ -198,8 +202,8 @@ const convertObToCase = async (req, res, next) => {
       `INSERT INTO cases
         (case_number, case_title, title, ob_number, ob_entry_id, original_ob_staff_id, original_ob_staff_name,
          incident_type, description, incident_location, status, priority, state_administration_id, region_id, city_id,
-         district_id, assigned_officer_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         district_id, assigned_officer_id, created_by, complainant_name, complainant_phone)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         caseNumber,
         ob.incident_type,
@@ -219,6 +223,8 @@ const convertObToCase = async (req, res, next) => {
         ob.district_id,
         assigned_staff_id || null,
         req.user.username,
+        ob.reported_by || null,
+        ob.reporter_phone || null,
       ]
     );
 

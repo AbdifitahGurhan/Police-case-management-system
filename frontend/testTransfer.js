@@ -1,10 +1,10 @@
 const axios = require('axios');
 async function test() {
   try {
-    const login = await axios.post('http://localhost:5005/api/auth/login', { username: "admin", password: "Admin@123" });
+    const login = await axios.post('http://localhost:5000/api/auth/login', { username: "admin", password: "Admin@123" });
     const token = login.data.token;
     
-    const res = await axios.post('http://localhost:5005/api/transfers/officer', {
+    const res = await axios.post('http://localhost:5000/api/transfers/officer', {
       officer_id: 1,
       to_assignment_type: "State Administration",
       to_assignment_id: 1,

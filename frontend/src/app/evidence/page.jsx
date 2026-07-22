@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 
 const { Title, Text } = Typography;
-const UPLOAD_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '');
+const UPLOAD_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
 
 export default function EvidenceBrowserPage() {
   const { user } = useAuth();

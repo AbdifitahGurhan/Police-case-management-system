@@ -117,6 +117,17 @@ const Sidebar = ({ collapsed }) => {
         icon: <BankOutlined />,
         label: 'Kiisaska Maxkamadda',
       }] : []),
+      ...(role === 'jail' ? [{
+        key: 'jail_operations',
+        icon: <BankOutlined />,
+        label: 'Prison Operations',
+        children: [
+          { key: '/dashboard/jail?action=admit', label: 'Prison Admission' },
+          { key: '/dashboard/jail?action=capacity', label: 'Cell Capacity' },
+          { key: '/dashboard/jail?action=bulk_roll', label: 'Daily Roll Call' },
+          { key: '/dashboard/jail?action=alerts', label: 'Release & Alerts' },
+        ],
+      }] : []),
       ...(!isCourtRole ? [{
         key: '/search',
         icon: <SearchOutlined />,

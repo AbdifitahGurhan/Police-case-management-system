@@ -1,6 +1,8 @@
 // src/middleware/roleMiddleware.js — Role-based authorization gate
 'use strict';
 
+const { normalizeRole } = require('../utils/locationScope');
+
 /**
  * Middleware factory: Allow only specified roles.
  * Usage: router.get('/admin', authMiddleware, allowRoles('admin'), handler)
@@ -11,10 +13,15 @@ const allowRoles = (...roles) => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Unauthorized.' });
     }
-    if (!roles.includes(req.user.role)) {
+    const userRole = normalizeRole(req.user.role);
+    const allowedRoles = roles.map(normalizeRole);
+    if (userRole === 'admin') {
+      return next();
+    }
+    if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({
         success: false,
-        message: `Access denied. Required roles: ${roles.join(', ')}. Your role: ${req.user.role}`,
+        message: `Access denied. Required roles: ${allowedRoles.join(', ')}. Your role: ${userRole}`,
       });
     }
     next();

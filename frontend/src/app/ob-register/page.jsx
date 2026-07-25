@@ -1,18 +1,21 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { App, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Typography } from 'antd';
-import { FileAddOutlined, LoginOutlined } from '@ant-design/icons';
+import { App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography, Upload } from 'antd';
+import { DeleteOutlined, FileAddOutlined, InboxOutlined, LoginOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import Link from 'next/link';
 import { nameRules, phoneRules, requiredRule, textLengthRule } from '@/utils/validation';
+import { emailRule, noFutureDateTimeRule, disabledFutureDate } from '@/utils/validation';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
+const ObSection = ({ number, title, children }) => <Card size="small" title={<Space><Tag color="blue">{number}</Tag><Text strong>{title}</Text></Space>} style={{marginBottom:16}}><Row gutter={[16,0]}>{children}</Row></Card>;
 
 export default function ObRegisterPage() {
   const { user } = useAuth();
@@ -21,6 +24,7 @@ export default function ObRegisterPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
+  const [files, setFiles] = useState([]);
   const [form] = Form.useForm();
 
   const loadEntries = useCallback(async () => {
@@ -42,9 +46,16 @@ export default function ObRegisterPage() {
   const createEntry = async (values) => {
     setSaving(true);
     try {
-      const response = await api.post('/ob-entries', values);
+      const payload = new FormData();
+      Object.entries(values).forEach(([key,value]) => {
+        if (value === undefined || value === null || value === '') return;
+        payload.append(key, key === 'incident_datetime' ? value.format('YYYY-MM-DD HH:mm:ss') : value);
+      });
+      files.forEach(file => payload.append('attachments', file.originFileObj));
+      const response = await api.post('/ob-entries', payload, { headers:{'Content-Type':'multipart/form-data'} });
       message.success(`OB registered: ${response.data.obNumber}`);
       form.resetFields();
+      setFiles([]);
       setOpen(false);
       loadEntries();
     } catch (error) {
@@ -54,7 +65,7 @@ export default function ObRegisterPage() {
     }
   };
 
-  const canCreate = ['admin', 'ob_staff', 'officer', 'district_admin'].includes(user?.role);
+  const canCreate = ['admin', 'ob_staff', 'officer', 'district_admin', ...commanderRoles].includes(user?.role);
   const location = user?.location || {};
 
   const columns = [
@@ -108,9 +119,8 @@ export default function ObRegisterPage() {
           title="Register OB Entry"
           open={open}
           onCancel={() => setOpen(false)}
-          onOk={() => form.submit()}
-          confirmLoading={saving}
-          width={720}
+          footer={null}
+          width={1100}
         >
           <Card size="small" variant="none" style={{ marginBottom: 16 }}>
             <Space orientation="vertical" size={2}>
@@ -118,41 +128,14 @@ export default function ObRegisterPage() {
               <Text type="secondary">{location.stateName || 'Administration'} → {location.regionName || 'Region'} → {location.districtName || 'District / Police Station'}</Text>
             </Space>
           </Card>
-          <Form form={form} layout="vertical" onFinish={createEntry}>
-            <Row gutter={16}>
-              <Col xs={24} md={12}>
-                <Form.Item name="incident_type" label="Incident Type" rules={[requiredRule('Incident type')]}>
-                  <Select placeholder="Select incident type">
-                    <Select.Option value="Theft">Theft</Select.Option>
-                    <Select.Option value="Robbery">Robbery</Select.Option>
-                    <Select.Option value="Assault">Assault</Select.Option>
-                    <Select.Option value="Fraud">Fraud</Select.Option>
-                    <Select.Option value="Traffic">Traffic</Select.Option>
-                    <Select.Option value="General">General</Select.Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item name="incident_location" label="Incident Location" rules={[requiredRule('Incident location'), textLengthRule('Incident location', 3, 255)]}>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item name="reported_by" label="Reported By" rules={nameRules('Reporter name')}>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item name="reporter_phone" label="Reporter Phone" rules={phoneRules}>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col span={24}>
-                <Form.Item name="description" label="Initial Incident Description" rules={[textLengthRule('Incident description', 10, 5000)]}>
-                  <TextArea rows={4} />
-                </Form.Item>
-              </Col>
-            </Row>
+          <Form form={form} layout="vertical" onFinish={createEntry} initialValues={{case_level:'normal',reporter_id_type:'National ID',respondent_id_type:'National ID',incident_datetime:dayjs().subtract(1,'hour')}}>
+            <ObSection number="1" title="Xogta Dacwadda"><Col xs={24} md={16}><Form.Item name="case_title" label="Cinwaanka dacwadda" rules={[requiredRule('Cinwaanka'),textLengthRule('Cinwaanka',3,255)]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="case_type" label="Nooca dacwadda" rules={[requiredRule('Nooca dacwadda')]}><Select options={['Criminal','Civil','Family','Commercial','Administrative','Other'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="case_level" label="Heerka"><Select options={[{value:'normal',label:'Caadi'},{value:'urgent',label:'Degdeg'},{value:'critical',label:'Halis'}]}/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="incident_type" label="Nooca dhacdada" rules={[requiredRule('Nooca dhacdada')]}><Select options={['Theft','Robbery','Assault','Fraud','Traffic','General'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={24} md={8}><Form.Item label="OB Number"><Input disabled value="Automatic — unique"/></Form.Item></Col></ObSection>
+            <ObSection number="2" title="Dacwoodaha"><Col xs={24} md={12}><Form.Item name="reported_by" label="Magaca oo buuxa" rules={nameRules('Magaca dacwoodaha')}><Input/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="reporter_id_type" label="Aqoonsiga"><Select options={['National ID','Passport'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="reporter_id_number" label="Lambarka aqoonsiga" rules={[requiredRule('Lambarka aqoonsiga')]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="reporter_phone" label="Telefoon" rules={[requiredRule('Telefoon'),...phoneRules]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="reporter_email" label="Email" rules={[emailRule]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="reporter_address" label="Cinwaan"><Input/></Form.Item></Col></ObSection>
+            <ObSection number="3" title="Laga Dacwooday"><Col xs={24} md={12}><Form.Item name="respondent_name" label="Magaca oo buuxa" rules={nameRules('Magaca laga dacwooday')}><Input/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="respondent_id_type" label="Aqoonsiga"><Select options={['National ID','Passport'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="respondent_id_number" label="Lambarka aqoonsiga"><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_phone" label="Telefoon" rules={phoneRules}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_email" label="Email" rules={[emailRule]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_address" label="Cinwaan"><Input/></Form.Item></Col></ObSection>
+            <ObSection number="4" title="Faahfaahinta Dacwadda"><Col xs={24} md={12}><Form.Item name="incident_location" label="Goobta dhacdada" rules={[requiredRule('Goobta'),textLengthRule('Goobta',3,255)]}><Input/></Form.Item></Col><Col xs={24} md={12}><Form.Item name="incident_datetime" label="Taariikhda iyo waqtiga" rules={[requiredRule('Taariikhda'),noFutureDateTimeRule('Taariikhda')]}><DatePicker showTime style={{width:'100%'}} disabledDate={disabledFutureDate}/></Form.Item></Col><Col xs={24} md={12}><Form.Item name="claim_value" label="Qiimaha dacwadda (USD)" rules={[{validator:(_,v)=>v===undefined||v===null||v===''||Number(v)>=0?Promise.resolve():Promise.reject(new Error('Amount cannot be negative.'))}]}><InputNumber min={0} precision={2} step={0.01} stringMode prefix="$" style={{width:'100%'}}/></Form.Item></Col><Col span={24}><Form.Item name="description" label="Sharaxaad faahfaahsan" rules={[requiredRule('Sharaxaadda'),textLengthRule('Sharaxaadda',10,5000)]}><TextArea rows={5} showCount maxLength={5000}/></Form.Item></Col></ObSection>
+            <ObSection number="5" title="Caddeymaha"><Col span={24}><Upload.Dragger multiple accept=".pdf,image/*,video/*" fileList={files} beforeUpload={file=>{if(file.size>10*1024*1024){message.error('File-ku waa inuu ka yaraadaa 10MB.');return Upload.LIST_IGNORE}setFiles(old=>[...old,{...file,originFileObj:file,status:'done'}]);return false}} onRemove={file=>setFiles(old=>old.filter(x=>x.uid!==file.uid))}><p className="ant-upload-drag-icon"><InboxOutlined/></p><p>PDF, sawir ama fiidiyow halkan ku jiid</p><p className="ant-upload-hint">Ugu badnaan 10 files, midkiiba 10MB</p></Upload.Dragger></Col></ObSection>
+            <ObSection number="6" title="Xogta Diiwaangelinta"><Col xs={24} md={6}><Form.Item label="Xafiiska"><Input readOnly value={location.districtName||location.regionName||'System'}/></Form.Item></Col><Col xs={24} md={6}><Form.Item label="Shaqaalaha"><Input readOnly value={user?.fullName||user?.username}/></Form.Item></Col><Col xs={24} md={6}><Form.Item label="Taariikhda"><Input readOnly value={dayjs().format('YYYY-MM-DD')}/></Form.Item></Col><Col xs={24} md={6}><Form.Item label="Waqtiga"><Input readOnly value={dayjs().format('HH:mm:ss')}/></Form.Item></Col></ObSection>
+            <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><Button onClick={()=>setOpen(false)}>Jooji</Button><Button icon={<DeleteOutlined/>} onClick={()=>{form.resetFields();setFiles([])}}>Nadiifi</Button><Button type="primary" htmlType="submit" loading={saving}>Kaydi</Button></div>
           </Form>
         </Modal>
       </Space>

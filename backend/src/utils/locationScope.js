@@ -13,10 +13,22 @@ const ROLE_ALIASES = {
 
 const normalizeRole = (role) => ROLE_ALIASES[role] || String(role || '').toLowerCase();
 
+const CID_GLOBAL_READ_ROLES = new Set([
+  'cid',
+  'cid_director',
+  'cid_supervisor',
+  'cid_officer',
+]);
+
+const hasGlobalCidRead = (user) => CID_GLOBAL_READ_ROLES.has(normalizeRole(user?.role));
+
 const buildScopeWhere = (user, alias = 'c') => {
   const params = [];
   let clause = '1=1';
-  if (!user || normalizeRole(user.role) === 'admin') return { clause, params };
+  const role = normalizeRole(user?.role);
+  if (!user || role === 'admin' || role === 'jail' || hasGlobalCidRead(user)) {
+    return { clause, params };
+  }
 
   const source = user.location || user;
   if (source.district_id || source.districtId || user.scopeType === 'district') {
@@ -116,4 +128,4 @@ const getUserLocation = async (user) => {
   return {};
 };
 
-module.exports = { buildScopeWhere, getUserLocation, normalizeRole };
+module.exports = { buildScopeWhere, getUserLocation, normalizeRole, hasGlobalCidRead };

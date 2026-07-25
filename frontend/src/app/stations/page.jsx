@@ -118,7 +118,7 @@ export default function StationManagementPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'region_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'region_admin', 'region_commander']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
           <div>

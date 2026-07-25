@@ -6,8 +6,8 @@ const { writeAuditLog } = require('../utils/auditLogger');
 const { generateOBNumber } = require('../utils/obNumberGenerator');
 const { generateCaseNumber } = require('../utils/caseNumberGenerator');
 const { buildScopeWhere, getUserLocation } = require('../utils/locationScope');
-const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
 const { ensureCidCaseForPoliceCase } = require('../services/cidService');
+const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
 const { assertPoliceTransition } = require('../services/caseWorkflowService');
 
 const CASE_STATUS_FLOW = {
@@ -308,12 +308,17 @@ const createCase = async (req, res, next) => {
     let {
       title, description, incident_date, incident_location, priority, assigned_officer_id, status,
       state_administration_id, region_id, city_id, district_id, ob_entry_id,
-      case_type, incident_type, complainant_name, complainant_phone, victim_name
+      case_type, case_level, incident_type, complainant_name, complainant_phone, victim_name,
+      complainant_id_type, complainant_id_number, complainant_email, complainant_address, claim_value,
+      ob_number: requestedObNumber
     } = req.body;
 
     if (!title) return res.status(400).json({ success: false, message: 'Case title is required.' });
     const incidentDateError = validateIncidentDate(incident_date);
     if (incidentDateError) return res.status(400).json({ success: false, message: incidentDateError });
+    if (claim_value !== undefined && claim_value !== '' && (!/^\d+(\.\d{1,2})?$/.test(String(claim_value)) || Number(claim_value) < 0)) {
+      return res.status(400).json({ success: false, message: 'Amount must be a non-negative USD value with no more than two decimal places.' });
+    }
 
     const offenderName = req.body.offender_name;
     const offenderFaceImage = req.body.offender_face_image;
@@ -325,6 +330,9 @@ const createCase = async (req, res, next) => {
     if (ob_entry_id) {
       [[ob]] = await db.query('SELECT * FROM ob_entries WHERE id = ?', [ob_entry_id]);
       if (!ob) return res.status(404).json({ success: false, message: 'OB entry not found.' });
+      if (incident_date && String(incident_date).slice(0, 10) > String(ob.registration_date).slice(0, 10)) {
+        return res.status(400).json({ success: false, message: 'Incident date cannot be later than the OB registration date.' });
+      }
 
       const obScope = buildScopeWhere(req.user, 'ob');
       const [[allowedOb]] = await db.query(
@@ -346,7 +354,12 @@ const createCase = async (req, res, next) => {
       }
     }
 
-    const obNumber = ob?.ob_number || await generateOBNumber();
+    let obNumber = ob?.ob_number || (requestedObNumber ? String(requestedObNumber).trim().toUpperCase() : await generateOBNumber());
+    if (!ob && requestedObNumber) {
+      if (!/^[A-Z0-9][A-Z0-9/-]{3,49}$/.test(obNumber)) return res.status(400).json({ success: false, message: 'OB Number format is invalid.' });
+      const [[duplicateOb]] = await db.query('SELECT id FROM cases WHERE ob_number = ? LIMIT 1', [obNumber]);
+      if (duplicateOb) return res.status(409).json({ success: false, message: 'OB Number already exists.' });
+    }
     const caseNumber = await generateCaseNumber();
     const location = await getUserLocation(req.user);
     
@@ -361,16 +374,18 @@ const createCase = async (req, res, next) => {
     complainant_phone = complainant_phone || ob?.reporter_phone || null;
 
     const [result] = await db.query(
-      `INSERT INTO cases (case_number, ob_number, title, case_title, case_type, incident_type,
-                          complainant_name, complainant_phone, victim_name,
-                          description, incident_date, incident_location, priority, 
+      `INSERT INTO cases (case_number, ob_number, title, case_title, case_type, case_level, incident_type,
+                          complainant_name, complainant_phone, complainant_id_type, complainant_id_number,
+                          complainant_email, complainant_address, victim_name,
+                          description, incident_date, incident_location, priority, claim_value,
                           state_administration_id, region_id, city_id, district_id, 
                           assigned_officer_id, created_by, status, ob_entry_id,
                           original_ob_staff_id, original_ob_staff_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-      [caseNumber, obNumber, title, title, case_type || null, incident_type || null,
-      complainant_name || null, complainant_phone || null, victim_name || null,
-      description || null, incident_date || null, incident_location || null, priority || 'medium',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+      [caseNumber, obNumber, title, title, case_type || null, case_level || 'normal', incident_type || null,
+      complainant_name || null, complainant_phone || null, complainant_id_type || null, complainant_id_number || null,
+      complainant_email || null, complainant_address || null, victim_name || null,
+      description || null, incident_date || null, incident_location || null, priority || 'medium', claim_value || null,
       state_administration_id || null, region_id || null, city_id || null, district_id || null,
       assigned_officer_id || null, req.user.username, status || (ob ? 'CASE_REGISTERED' : 'draft'), ob_entry_id || null,
       ob?.registered_by_user_id || (req.user.role === 'ob_staff' ? req.user.id : null),

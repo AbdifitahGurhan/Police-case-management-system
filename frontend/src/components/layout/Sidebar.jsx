@@ -18,6 +18,7 @@ import {
   SearchOutlined,
   BarChartOutlined,
   IdcardOutlined,
+  FileDoneOutlined,
 } from '@ant-design/icons';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -90,7 +91,7 @@ const Sidebar = ({ collapsed }) => {
 
     const stationOperationRoles = ['district_admin'];
     const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
-    const stationWorkflowRoles = ['ob_staff', 'staff', 'officer', 'district_admin', 'district_commander', 'police_station_commander', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
+    const stationWorkflowRoles = ['ob_staff', 'staff', 'officer', 'district_admin', 'region_commander', 'district_commander', 'police_station_commander', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const courtRoles = ['court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk'];
     const cidRoles = ['cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const isCourtRole = courtRoles.includes(role);
@@ -148,14 +149,23 @@ const Sidebar = ({ collapsed }) => {
         icon: <IdcardOutlined />,
         label: 'Offenders',
       }] : []),
+      ...(['admin','court','court_admin','court_clerk','judge','prosecutor','prosecutor_liaison','officer','cid','cid_director','cid_supervisor','cid_officer','district_admin','district_commander','police_station_commander'].includes(role) ? [{
+        key: '/warrants',
+        icon: <FileDoneOutlined />,
+        label: 'Warrants',
+      }] : []),
     ];
 
     const adminMenus = [];
 
     if (role === 'admin') {
       adminMenus.push({ key: '/users', icon: <UserOutlined />, label: 'User Role Management' });
+      adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Judges & Prosecutors' });
       adminMenus.push({ key: '/ranks', icon: <StarOutlined />, label: 'Ranks' });
       adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'State Administrations' });
+    }
+    if (['court','court_admin'].includes(role)) {
+      adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Judges & Prosecutors' });
     }
 
     if (canViewReports) {
@@ -169,7 +179,7 @@ const Sidebar = ({ collapsed }) => {
       });
     }
 
-    if (role === 'region_admin') {
+    if (['region_admin', 'region_commander'].includes(role)) {
       adminMenus.push({
         key: 'region_police_stations',
         icon: <BankOutlined />,

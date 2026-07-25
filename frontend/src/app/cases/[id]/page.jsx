@@ -10,7 +10,7 @@ import {
 import {
   ArrowLeftOutlined, EditOutlined, ShareAltOutlined, PlusOutlined,
   UserAddOutlined, SolutionOutlined, FileAddOutlined, HistoryOutlined,
-  EnvironmentOutlined, DownloadOutlined, TeamOutlined, UserOutlined
+  DownloadOutlined, TeamOutlined, UserOutlined
 } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
@@ -21,6 +21,7 @@ import dayjs from 'dayjs';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { compressImageFile } from '@/utils/imageCompression';
 import {
   disabledFutureDate,
   nameRules,
@@ -50,13 +51,10 @@ export default function CaseDetailsPage() {
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
   const [isWitnessModalOpen, setIsWitnessModalOpen] = useState(false);
   const [isArrestModalOpen, setIsArrestModalOpen] = useState(false);
-  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [selectedSuspect, setSelectedSuspect] = useState(null);
   const [suspectFaceImage, setSuspectFaceImage] = useState('');
   const [editingSuspect, setEditingSuspect] = useState(null);
-  const [geography, setGeography] = useState({ regions: [], districts: [] });
-  const [transferHistory, setTransferHistory] = useState([]);
   const [assignableOfficers, setAssignableOfficers] = useState([]);
   const [duplicateAlert, setDuplicateAlert] = useState(null);
 
@@ -87,24 +85,6 @@ export default function CaseDetailsPage() {
     }
   }, [id, message, router]);
 
-  const fetchTransferHistory = useCallback(async () => {
-    try {
-      const tRes = await api.get(`/transfers/history/${id}`);
-      setTransferHistory(tRes.data.data || []);
-    } catch (err) {
-      setTransferHistory([]);
-    }
-  }, [id]);
-
-  const fetchGeography = async () => {
-    try {
-      const res = await api.get('/stations/geography');
-      setGeography(res.data.data);
-    } catch (err) {
-      console.error("Geography load failed", err);
-    }
-  };
-
   const fetchAssignableOfficers = async () => {
     try {
       const res = await api.get('/cases/assignable/officers');
@@ -123,14 +103,12 @@ export default function CaseDetailsPage() {
     ];
     if (id && !authLoading && user && allowedRoles.includes(user.role)) {
       fetchCaseDetails();
-      fetchTransferHistory();
-      fetchGeography();
       const assignRoles = ['admin', 'district_commander', 'police_station_commander', 'district_admin'];
       if (assignRoles.includes(user.role)) {
         fetchAssignableOfficers();
       }
     }
-  }, [id, fetchCaseDetails, fetchTransferHistory, user, authLoading]);
+  }, [id, fetchCaseDetails, user, authLoading]);
 
   const handleUpdateStatus = async (values) => {
     setSubmitting(true);
@@ -288,7 +266,7 @@ export default function CaseDetailsPage() {
     if (!isSuspectModalOpen) stopCamera();
   }, [isSuspectModalOpen]);
 
-  const startCamera = async (retryOnSystemLock = true) => {
+  const startCamera = async () => {
     setCameraError('');
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera not available in this browser.');
@@ -302,16 +280,10 @@ export default function CaseDetailsPage() {
       setCameraStream(stream);
       setIsCameraActive(true);
     } catch (err) {
-      console.error('Camera error', err);
-      // Chrome/Windows can briefly report "Permission denied by system" right after a previous
-      // stream's tracks are stopped, because the OS hasn't released the device yet. Retry once
-      // rather than surfacing this as a real permission denial (which uses a different message).
-      const isTransientSystemLock = err.name === 'NotAllowedError' && /system/i.test(err.message || '');
-      if (isTransientSystemLock && retryOnSystemLock) {
-        setTimeout(() => startCamera(false), 400);
-        return;
-      }
-      setCameraError('Camera access denied or unavailable.');
+      const permissionDenied = err?.name === 'NotAllowedError';
+      setCameraError(permissionDenied
+        ? 'Camera permission waa xiran yahay. Ka oggolow browser-ka ama Windows Camera Privacy settings.'
+        : 'Camera-ga lama heli karo ama qalab kale ayaa isticmaalaya.');
     }
   };
 
@@ -321,7 +293,9 @@ export default function CaseDetailsPage() {
     if (!video || !cameraStream) return;
     if (video.srcObject !== cameraStream) {
       video.srcObject = cameraStream;
-      video.play().catch((e) => console.error('Video play error:', e));
+      video.play().catch(() => {
+        setCameraError('Camera preview-ga lama bilaabi karin.');
+      });
     }
   }, [cameraStream]);
 
@@ -390,15 +364,14 @@ export default function CaseDetailsPage() {
         formData.append('file', values.file[0].originFileObj);
       }
 
-      await api.post('/evidence', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await api.post('/evidence', formData);
 
       message.success("Evidence uploaded successfully.");
       setIsEvidenceModalOpen(false);
+      evidenceForm.resetFields();
       fetchCaseDetails();
     } catch (err) {
-      message.error("Failed to upload evidence.");
+      message.error(err.response?.data?.message || "Failed to upload evidence.");
     } finally {
       setSubmitting(false);
     }
@@ -412,20 +385,6 @@ export default function CaseDetailsPage() {
       fetchCaseDetails();
     } catch (err) {
       message.error("Action failed.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleTransfer = async (values) => {
-    setSubmitting(true);
-    try {
-      await api.post('/transfers', { ...values, case_id: id });
-      message.success("Transfer initiated successfully.");
-      setIsTransferModalOpen(false);
-      fetchCaseDetails();
-    } catch (err) {
-      message.error("Transfer failed.");
     } finally {
       setSubmitting(false);
     }
@@ -530,47 +489,12 @@ export default function CaseDetailsPage() {
   const stationOperationRoles = ['district_admin'];
   const canSubmitForReview = ['admin', 'officer', ...stationOperationRoles].includes(role);
   const canReviewCase = ['admin', ...commanderRoles].includes(role);
-  const canTransferCase = ['admin', ...commanderRoles].includes(role);
   const canAssignCase = ['admin', 'district_admin', 'district_commander', 'police_station_commander'].includes(role);
   const canUpdateStatus = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
   const canReferCase = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
   const canManageInvestigation = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
   const canAddWitness = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
   const caseEndedAtCourtReferral = data.status === 'referred_to_court';
-
-  const transfersTab = (
-    <Space orientation="vertical" style={{ width: '100%' }} size="large">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Title level={4} style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Transfers</Title>
-        {canTransferCase && !caseEndedAtCourtReferral && (
-          <Button icon={<EnvironmentOutlined />} onClick={() => setIsTransferModalOpen(true)}>
-            Transfer case
-          </Button>
-        )}
-      </div>
-      {transferHistory.length === 0 ? (
-        <Text type="secondary">No transfer history.</Text>
-      ) : (
-        <Timeline
-          items={transferHistory.map((t, index) => ({
-            key: `transfer-${t.id || index}`,
-            content: (
-              <>
-                <Text strong>{String(t.transfer_type || '').replaceAll('_', ' ')} transfer</Text>
-                {' '}to {t.to_region_name || t.to_district_name || 'new location'}
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  By {t.transferred_by_name} on {dayjs(t.transferred_at).format('DD MMM YYYY HH:mm')}
-                </Text>
-                <br />
-                <Text italic style={{ display: 'block', marginTop: 4 }}>Reason: {t.transfer_reason}</Text>
-              </>
-            ),
-          }))}
-        />
-      )}
-    </Space>
-  );
 
   const courtStatusTab = (
     <Space orientation="vertical" style={{ width: '100%' }} size="large">
@@ -777,7 +701,6 @@ export default function CaseDetailsPage() {
               </Space>
             )}
 
-            {canTransferCase && !caseEndedAtCourtReferral && <Button icon={<EnvironmentOutlined />} onClick={() => setIsTransferModalOpen(true)}>Transfer</Button>}
             {canAssignCase && !caseEndedAtCourtReferral && (
               <Button
                 icon={<TeamOutlined />}
@@ -883,7 +806,6 @@ export default function CaseDetailsPage() {
                   },
                   { key: 'suspects', label: `Suspects (${data.suspects?.length || 0})`, children: suspectsTab },
                   { key: 'evidence', label: `Evidence (${data.evidence?.length || 0})`, children: evidenceTab },
-                  { key: 'transfers', label: `Transfers (${transferHistory.length})`, children: transfersTab },
                   { key: 'court', label: 'Court status', children: courtStatusTab },
                 ]}
               />
@@ -989,8 +911,25 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title={editingSuspect ? "Edit Suspect Details" : "Add Suspect to Case"} open={isSuspectModalOpen} onCancel={() => { setIsSuspectModalOpen(false); setEditingSuspect(null); stopCamera(); setDuplicateAlert(null); }} onOk={() => suspectForm.submit()} width={820}>
-        <Form form={suspectForm} onFinish={handleSuspect} onValuesChange={handleFormValuesChange} layout="vertical">
+      <Modal
+        title={editingSuspect ? "Edit Suspect Details" : "Add Suspect to Case"}
+        open={isSuspectModalOpen}
+        onCancel={() => { setIsSuspectModalOpen(false); setEditingSuspect(null); stopCamera(); setDuplicateAlert(null); }}
+        onOk={() => suspectForm.submit()}
+        confirmLoading={submitting}
+        width={820}
+      >
+        <Form
+          form={suspectForm}
+          onFinish={handleSuspect}
+          onFinishFailed={({ errorFields }) => {
+            const firstField = errorFields[0]?.name;
+            if (firstField) suspectForm.scrollToField(firstField, { behavior: 'smooth', block: 'center' });
+            message.error('Fadlan buuxi meelaha casaanka lagu calaamadeeyey.');
+          }}
+          onValuesChange={handleFormValuesChange}
+          layout="vertical"
+        >
           <Row gutter={16}>
             {duplicateAlert && (
               <Col span={24}>
@@ -1102,12 +1041,13 @@ export default function CaseDetailsPage() {
                     <>
                       <Button type="primary" onClick={startCamera}>Start Camera</Button>
                       <Upload
-                        beforeUpload={(file) => {
-                          const reader = new FileReader();
-                          reader.onload = (e) => {
-                            setSuspectFaceImage(e.target.result);
-                          };
-                          reader.readAsDataURL(file);
+                        beforeUpload={async (file) => {
+                          try {
+                            setSuspectFaceImage(await compressImageFile(file));
+                            setCameraError('');
+                          } catch (error) {
+                            setCameraError(error.message);
+                          }
                           return false;
                         }}
                         showUploadList={false}
@@ -1141,7 +1081,28 @@ export default function CaseDetailsPage() {
         <Form form={evidenceForm} onFinish={handleEvidence} layout="vertical">
           <Form.Item name="title" label="Title" rules={[requiredRule('Evidence title'), textLengthRule('Evidence title', 3, 255)]}><Input /></Form.Item>
           <Form.Item name="type" label="Type" initialValue="document"><Select><Option value="document">Document</Option><Option value="physical">Physical</Option></Select></Form.Item>
-          <Form.Item name="file" label="Attachment" valuePropName="fileList" getValueFromEvent={(event) => event?.fileList || []}><Upload beforeUpload={() => false} maxCount={1}><Button icon={<PlusOutlined />}>Select File</Button></Upload></Form.Item>
+          <Form.Item
+            name="file"
+            label="Image (JPG, JPEG, PNG)"
+            valuePropName="fileList"
+            getValueFromEvent={(event) => event?.fileList || []}
+            rules={[{ required: true, message: 'Fadlan dooro sawirka caddeynta.' }]}
+          >
+            <Upload
+              beforeUpload={(file) => {
+                const allowed = ['image/jpeg', 'image/png'].includes(file.type);
+                if (!allowed) {
+                  message.error('Waxaa la oggol yahay JPG, JPEG, ama PNG oo keliya.');
+                  return Upload.LIST_IGNORE;
+                }
+                return false;
+              }}
+              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+              maxCount={1}
+            >
+              <Button icon={<PlusOutlined />}>Select Image</Button>
+            </Upload>
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -1172,32 +1133,6 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title="Transfer Case / Reassign Officer" open={isTransferModalOpen} onCancel={() => setIsTransferModalOpen(false)} footer={null} destroyOnHidden>
-        <Form layout="vertical" onFinish={handleTransfer}>
-          <Form.Item name="transfer_type" label="Transfer Type" rules={[requiredRule('Transfer type')]}>
-            <Select placeholder="Select type">
-              <Select.Option value="location">Location Transfer</Select.Option>
-              <Select.Option value="officer">Officer Reassignment</Select.Option>
-              <Select.Option value="both">Both</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item noStyle shouldUpdate={(p, c) => p.transfer_type !== c.transfer_type}>
-            {({ getFieldValue }) => (getFieldValue('transfer_type') === 'location' || getFieldValue('transfer_type') === 'both') && (
-              <>
-                <Form.Item name="to_region_id" label="New Region" rules={[requiredRule('Region')]}><Select placeholder="Region">{geography.regions.map((r, index) => <Option key={`region-${r.id}-${index}`} value={r.id}>{r.name}</Option>)}</Select></Form.Item>
-                <Form.Item name="to_district_id" label="New District Station" rules={[requiredRule('District Station')]}><Select placeholder="District Station">{geography.districts.map((d, index) => <Option key={`district-${d.id}-${index}`} value={d.id}>{d.name}</Option>)}</Select></Form.Item>
-              </>
-            )}
-          </Form.Item>
-          <Form.Item noStyle shouldUpdate={(p, c) => p.transfer_type !== c.transfer_type}>
-            {({ getFieldValue }) => (getFieldValue('transfer_type') === 'officer' || getFieldValue('transfer_type') === 'both') && (
-              <Form.Item name="to_officer_id" label="New Assigned Officer" rules={[requiredRule('Assigned officer'), textLengthRule('Assigned officer', 2, 100)]}><Input placeholder="Internal Badge Number or Name" /></Form.Item>
-            )}
-          </Form.Item>
-          <Form.Item name="reason" label="Reason for Transfer" rules={[requiredRule('Transfer reason'), textLengthRule('Transfer reason', 5, 1000)]}><TextArea rows={3} /></Form.Item>
-          <Button type="primary" htmlType="submit" loading={submitting} block>Execute Transfer</Button>
-        </Form>
-      </Modal>
     </ProtectedRoute>
   );
 }

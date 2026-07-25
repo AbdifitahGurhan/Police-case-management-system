@@ -15,6 +15,7 @@ const db = require('../config/database');
  * @param {Object|null} options.newData
  * @param {string|null} options.ipAddress
  * @param {string|null} options.userAgent
+ * @param {number|null} options.policeStationId
  */
 async function writeAuditLog({
   userId = null,
@@ -26,18 +27,20 @@ async function writeAuditLog({
   newData = null,
   ipAddress = null,
   userAgent = null,
+  policeStationId = null,
 }) {
   try {
     await db.query(
       `INSERT INTO audit_logs 
-         (user_id, user_email, action, entity_type, entity_id, old_data, new_data, ip_address, user_agent)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (user_id, user_email, action, entity_type, entity_id, police_station_id, old_data, new_data, ip_address, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         userEmail,
         action,
         entityType,
         entityId,
+        policeStationId,
         oldData ? JSON.stringify(oldData) : null,
         newData ? JSON.stringify(newData) : null,
         ipAddress,

@@ -35,6 +35,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import CaseStatusStepper from '@/components/shared/CaseStatusStepper';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,6 +45,16 @@ const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
 const { TextArea } = Input;
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000/api').replace(/\/api\/?$/, '');
+const DISMISSED_CID_ALERTS_KEY = 'dismissed-cid-dashboard-alerts';
+
+const getDismissedAlertIds = () => {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    return new Set(JSON.parse(window.localStorage.getItem(DISMISSED_CID_ALERTS_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+};
 
 const cidRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
 const supervisorRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison'];
@@ -75,6 +86,18 @@ const CID_STATUS_OPTIONS = [
   'approved',
 ];
 
+const CID_STAGE_DETAILS = [
+  { key: 'open', label: '1. Furan', help: 'Kiiska CID waa la furay oo wuxuu sugayaa bilaabidda baaritaanka.' },
+  { key: 'under_investigation', label: '2. Baaritaan', help: 'Geli hawlaha baaritaanka iyo wixii la ogaaday.' },
+  { key: 'evidence_collection', label: '3. Caddeymo', help: 'Diiwaangeli caddeymaha la ururiyey iyo halka laga helay.' },
+  { key: 'witness_interviews', label: '4. Markhaati', help: 'Diiwaangeli wareysiyada iyo hadallada markhaatiyaasha.' },
+  { key: 'suspect_tracking', label: '5. Raadraac', help: 'Ku qor xogta raadraaca iyo halka tuhmanuhu marayo.' },
+  { key: 'arrest_made', label: '6. Xarig', help: 'Xaqiiji qofka la xiray iyo faahfaahinta xarigga.' },
+  { key: 'investigation_completed', label: '7. Dhammaad', help: 'Soo koob natiijada baaritaanka iyo talada ugu dambeysa.' },
+  { key: 'supervisor_review', label: '8. Dib-u-Eeg', help: 'U gudbi kormeeraha si uu u hubiyo shaqada la dhameystiray.' },
+  { key: 'approved', label: '9. La Xaqiijiyey', help: 'Kormeeruhu wuxuu ansixiyaa ama dib ugu celiyaa baaritaanka.' },
+];
+
 const assignmentMeta = {
   assigned: 'Assigned',
   accepted: 'Accepted',
@@ -92,6 +115,7 @@ const statusTag = (value) => (
 export default function CIDDashboard() {
   const { message } = App.useApp();
   const { user } = useAuth();
+  const router = useRouter();
   const [dashboard, setDashboard] = useState(null);
   const [cases, setCases] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -114,9 +138,10 @@ export default function CIDDashboard() {
         api.get('/cid/cases', { params: { limit: 50, ...nextFilters } }),
       ]);
       const notificationsRes = await api.get('/notifications', { params: { limit: 8 } });
+      const dismissedAlertIds = getDismissedAlertIds();
       setDashboard(dashboardRes.data.data);
       setCases(casesRes.data.data || []);
-      setAlerts(notificationsRes.data.data || []);
+      setAlerts((notificationsRes.data.data || []).filter((item) => !dismissedAlertIds.has(item.id)));
     } catch (error) {
       message.error(error.response?.data?.message || 'Failed to load CID dashboard.');
     } finally {
@@ -155,8 +180,33 @@ export default function CIDDashboard() {
   };
 
   const openAlertCase = async (item) => {
-    await loadDashboard(filters);
-    if (item.cid_case_id) await loadDetail(item.cid_case_id);
+    const dismissedAlertIds = getDismissedAlertIds();
+    if (item.id) dismissedAlertIds.add(item.id);
+    window.localStorage.setItem(DISMISSED_CID_ALERTS_KEY, JSON.stringify([...dismissedAlertIds]));
+    setAlerts((current) => current.filter((alert) => alert.id !== item.id));
+
+    const queuedCase = cases.find((row) => Number(row.id) === Number(item.cid_case_id));
+    if (queuedCase?.police_case_id) {
+      router.push(`/cases/${queuedCase.police_case_id}`);
+      return;
+    }
+
+    try {
+      const response = await api.get(`/cid/cases/${item.cid_case_id}`);
+      const policeCaseId = response.data?.data?.cidCase?.police_case_id;
+      if (!policeCaseId) throw new Error('Missing police case id');
+      router.push(`/cases/${policeCaseId}`);
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Case View-ga lama furi karin.');
+    }
+  };
+
+  const openCaseView = (row) => {
+    if (!row?.police_case_id) {
+      message.error('Case-ka asalka ah lama helin.');
+      return;
+    }
+    router.push(`/cases/${row.police_case_id}`);
   };
 
   useEffect(() => {
@@ -235,7 +285,7 @@ export default function CIDDashboard() {
   ], [dashboard]);
 
   const columns = [
-    { title: 'Case #', dataIndex: 'case_number', render: (value, row) => <Button type="link" onClick={() => loadDetail(row.id)}>{value}</Button> },
+    { title: 'Case #', dataIndex: 'case_number', render: (value, row) => <Button type="link" onClick={() => openCaseView(row)}>{value}</Button> },
     { title: 'OB #', dataIndex: 'ob_number' },
     { title: 'Title', dataIndex: 'case_title', ellipsis: true },
     { title: 'Crime', dataIndex: 'crime_category' },
@@ -265,7 +315,7 @@ export default function CIDDashboard() {
       key: 'action',
       render: (_, row) => (
         <Space>
-          <Button size="small" onClick={() => loadDetail(row.id)}>Open</Button>
+          <Button size="small" onClick={() => openCaseView(row)}>View</Button>
           {row.assignment_status === 'assigned' && (
             <Button
               size="small"
@@ -291,6 +341,17 @@ export default function CIDDashboard() {
   const cidCase = selected?.cidCase;
   const needsAcknowledge = cidCase?.assignment_status === 'assigned';
   const crimeScenes = selected?.crimeScenes || [];
+  const currentStageIndex = Math.max(0, CID_STAGE_DETAILS.findIndex((stage) => stage.key === cidCase?.investigation_status));
+  const nextStage = CID_STAGE_DETAILS[currentStageIndex + 1];
+
+  const openNextStage = () => {
+    if (!nextStage) return;
+    if (nextStage.key === 'approved') {
+      openModal('review', { decision: 'approved' });
+      return;
+    }
+    openModal('investigation', { investigation_status: nextStage.key });
+  };
 
   return (
     <ProtectedRoute allowedRoles={cidRoles}>
@@ -388,10 +449,10 @@ export default function CIDDashboard() {
               )}
               <Button
                 type="primary"
-                disabled={needsAcknowledge}
-                onClick={() => openModal('investigation', { investigation_status: cidCase.investigation_status })}
+                disabled={needsAcknowledge || !nextStage}
+                onClick={openNextStage}
               >
-                Update investigation
+                Dhammeystir marxaladda xigta
               </Button>
               <Button disabled={needsAcknowledge} onClick={() => openModal('scene')}>Log crime scene</Button>
               <Button disabled={needsAcknowledge} onClick={() => openModal('report')}>Submit report</Button>
@@ -420,6 +481,55 @@ export default function CIDDashboard() {
                     {assignmentMeta[cidCase.assignment_status] || safe(cidCase.assignment_status)}
                   </Tag>
                 </Space>
+              </Card>
+
+              <Card
+                size="small"
+                className="standard-panel"
+                title="Goobta dhammeystirka shaqada"
+                extra={nextStage && (
+                  <Button type="primary" disabled={needsAcknowledge} onClick={openNextStage}>
+                    Dhammeystir: {nextStage.label}
+                  </Button>
+                )}
+              >
+                <Row gutter={[12, 12]}>
+                  {CID_STAGE_DETAILS.map((stage, index) => {
+                    const completed = index < currentStageIndex;
+                    const active = index === currentStageIndex;
+                    return (
+                      <Col xs={24} md={12} xl={8} key={stage.key}>
+                        <Card
+                          size="small"
+                          style={{
+                            height: '100%',
+                            borderColor: active ? '#a8ff4d' : undefined,
+                            opacity: index > currentStageIndex + 1 ? 0.55 : 1,
+                          }}
+                        >
+                          <Space orientation="vertical" size={4}>
+                            <Space>
+                              {completed && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
+                              <Text strong={active}>{stage.label}</Text>
+                              {active && <Tag color="processing">Hadda</Tag>}
+                              {completed && <Tag color="success">Dhameystiran</Tag>}
+                            </Space>
+                            <Text type="secondary">{stage.help}</Text>
+                          </Space>
+                        </Card>
+                      </Col>
+                    );
+                  })}
+                </Row>
+                {!nextStage && (
+                  <Alert
+                    showIcon
+                    type="success"
+                    title="Baaritaanka waa la xaqiijiyey"
+                    description="Dhammaan sagaalka marxaladood waa la dhameystiray."
+                    style={{ marginTop: 12 }}
+                  />
+                )}
               </Card>
 
               <Card
@@ -640,12 +750,19 @@ export default function CIDDashboard() {
             )}
             {modalType === 'investigation' && (
               <>
-                <Form.Item name="investigation_status" label="Investigation status">
-                  <Select options={CID_STATUS_OPTIONS.map((value) => ({ value, label: statusMeta[value].label }))} />
+                <Alert
+                  showIcon
+                  type="info"
+                  title={CID_STAGE_DETAILS.find((stage) => stage.key === form.getFieldValue('investigation_status'))?.label || 'Marxaladda baaritaanka'}
+                  description="Buuxi xogta shaqada aad qabatay; markaad kaydiso kiisku wuxuu u gudbayaa marxaladdan."
+                  style={{ marginBottom: 16 }}
+                />
+                <Form.Item name="investigation_status" label="Marxaladda">
+                  <Select disabled options={CID_STAGE_DETAILS.map((stage) => ({ value: stage.key, label: stage.label }))} />
                 </Form.Item>
-                <Form.Item name="progress_note" label="Progress note"><TextArea rows={3} /></Form.Item>
-                <Form.Item name="findings" label="Findings"><TextArea rows={3} /></Form.Item>
-                <Form.Item name="recommendations" label="Recommendations"><TextArea rows={3} /></Form.Item>
+                <Form.Item name="progress_note" label="Shaqada la qabtay" rules={[{ required: true, message: 'Qor shaqada lagu dhameystiray marxaladdan.' }]}><TextArea rows={3} /></Form.Item>
+                <Form.Item name="findings" label="Waxyaabaha la ogaaday"><TextArea rows={3} /></Form.Item>
+                <Form.Item name="recommendations" label="Talooyinka / tallaabada xigta"><TextArea rows={3} /></Form.Item>
               </>
             )}
             {modalType === 'scene' && (

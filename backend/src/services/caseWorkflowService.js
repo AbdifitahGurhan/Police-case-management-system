@@ -4,6 +4,17 @@ const db = require('../config/database');
 
 const TERMINAL_POLICE_STATUSES = new Set(['court_decided', 'closed', 'archived']);
 const TERMINAL_COURT_STATUSES = new Set(['closed', 'archived']);
+const CID_WORKFLOW = [
+  'open',
+  'under_investigation',
+  'evidence_collection',
+  'witness_interviews',
+  'suspect_tracking',
+  'arrest_made',
+  'investigation_completed',
+  'supervisor_review',
+  'approved',
+];
 
 class WorkflowError extends Error {
   constructor(message, statusCode = 409, code = 'WORKFLOW_CONFLICT') {
@@ -35,6 +46,28 @@ const assertPoliceTransition = (from, to, { authorizedReopen = false } = {}) => 
       ['referred_to_cid', 'under_investigation', 'approved_for_court'].includes(to)) return true;
   if (!(POLICE_TRANSITIONS[from] || []).includes(to)) {
     throw new WorkflowError(`Invalid police case status transition from ${from} to ${to}.`);
+  }
+  return true;
+};
+
+const assertCidTransition = (from, to, { supervisor = false } = {}) => {
+  if (!to || from === to) return true;
+  if (to === 'rejected' && supervisor && from === 'supervisor_review') return true;
+  const fromIndex = CID_WORKFLOW.indexOf(from);
+  const toIndex = CID_WORKFLOW.indexOf(to);
+  if (fromIndex < 0 || toIndex < 0 || toIndex !== fromIndex + 1) {
+    throw new WorkflowError(
+      `Invalid CID investigation transition from ${from} to ${to}. Complete each stage in order.`,
+      409,
+      'INVALID_CID_TRANSITION'
+    );
+  }
+  if (to === 'approved' && !supervisor) {
+    throw new WorkflowError(
+      'Only a supervisor can approve the investigation.',
+      403,
+      'CID_SUPERVISOR_REQUIRED'
+    );
   }
   return true;
 };
@@ -236,6 +269,8 @@ module.exports = {
   TERMINAL_POLICE_STATUSES,
   TERMINAL_COURT_STATUSES,
   assertPoliceTransition,
+  assertCidTransition,
+  CID_WORKFLOW,
   validateSentence,
   validateJudgmentSentenceConsistency,
   withTransaction,

@@ -8,6 +8,7 @@ const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { parseFaceImage } = require('../utils/faceBiometric');
 const { syncCriminalCustodyStatus, deriveCustodyFromSentenceStatus, WANTED_STATUSES } = require('../utils/custodyStatus');
+const { hasGlobalCidRead } = require('../utils/locationScope');
 
 const VALID_GENDERS = new Set(['male', 'female']);
 
@@ -110,7 +111,7 @@ const canAccessCase = async (user, caseId) => {
     [caseId]
   );
   if (!row) return false;
-  if (!user.scopeType) return true;
+  if (!user.scopeType || hasGlobalCidRead(user)) return true;
   const columnMap = {
     state_administration: 'state_administration_id',
     region: 'region_id',
@@ -155,10 +156,14 @@ const checkDuplicate = async (req, res, next) => {
 const getcriminals = async (req, res, next) => {
   try {
     const { case_id, search, gender, nationality, arrested, repeat } = req.query;
+    const hasCustodyRegistryAccess = String(req.user.role || '').trim().toLowerCase() === 'jail';
+    const applyLocationScope = Boolean(req.user.scopeType)
+      && !hasGlobalCidRead(req.user)
+      && !hasCustodyRegistryAccess;
     if (case_id) {
       const scopeParams = [case_id];
       let scopeWhere = 'cs.case_id = ?';
-      if (req.user.scopeType) {
+      if (applyLocationScope) {
         scopeWhere = applyCaseScope(req.user, scopeWhere, scopeParams, 'c_scope');
       }
       const [rows] = await db.query(
@@ -174,11 +179,11 @@ const getcriminals = async (req, res, next) => {
     let sql = `
       SELECT s.*, (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id AND cs.status = 'active') AS case_count
       FROM criminals s
-      ${req.user.scopeType ? 'JOIN case_criminals cs_scope ON s.id = cs_scope.criminal_id JOIN cases c_scope ON c_scope.id = cs_scope.case_id' : ''}
+      ${applyLocationScope ? 'JOIN case_criminals cs_scope ON s.id = cs_scope.criminal_id JOIN cases c_scope ON c_scope.id = cs_scope.case_id' : ''}
       WHERE 1=1
     `;
     const params = [];
-    if (req.user.scopeType) {
+    if (applyLocationScope) {
       sql = applyCaseScope(req.user, sql, params);
     }
     if (search) {
@@ -312,6 +317,7 @@ const createSuspect = async (req, res, next) => {
     const faceCapture = saveFaceCaptureImage(face_capture_image);
     const faceCaptureUrl = faceCapture?.url || null;
     const faceKey = faceCapture?.biometricKey || null;
+    const profilePhotoUrl = photoUrl || faceCaptureUrl;
     const isArrested = ['arrested', 'wanted'].includes(arrest_status) ? 1 : 0;
     const [result] = await db.query(
       `INSERT INTO criminals
@@ -332,8 +338,8 @@ const createSuspect = async (req, res, next) => {
         normalizeOptional(phone),
         normalizeOptional(address),
         normalizeOptional(description) || normalizeOptional(profile_notes),
-        photoUrl,
-        photoUrl,
+        profilePhotoUrl,
+        profilePhotoUrl,
         faceCaptureUrl,
         normalizeOptional(face_capture_notes),
         normalizeOptional(profile_notes),
@@ -414,6 +420,12 @@ const updateSuspect = async (req, res, next) => {
       params.push(faceCaptureUrl);
       updates.push('fingerprint_hash=?');
       params.push(faceKey);
+      if (!photoUrl) {
+        updates.push('photo_url=?');
+        params.push(faceCaptureUrl);
+        updates.push('offender_photo=?');
+        params.push(faceCaptureUrl);
+      }
     }
 
     params.push(req.params.id);
@@ -673,6 +685,11 @@ const searchAndMatch = async (req, res, next) => {
 const loadSuspectHistory = async (suspectId) => {
   const [[profile]] = await db.query(`
     SELECT s.*,
+           COALESCE(s.photo_url, (
+             SELECT pa.photo_url FROM prison_admissions pa
+              WHERE pa.suspect_id = s.id AND pa.photo_url IS NOT NULL
+              ORDER BY pa.admission_date DESC, pa.id DESC LIMIT 1
+           )) AS photo_url,
            (SELECT COUNT(*) FROM case_criminals cs WHERE cs.criminal_id = s.id AND cs.status = 'active') AS case_count,
            COUNT(DISTINCT a.id) AS arrest_count
     FROM criminals s

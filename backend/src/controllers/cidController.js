@@ -4,7 +4,12 @@ const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { ensureCidCaseForPoliceCase, syncAllCidCases } = require('../services/cidService');
 const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
-const { withTransaction, lockAndAssertReferralAllowed, WorkflowError } = require('../services/caseWorkflowService');
+const {
+  withTransaction,
+  lockAndAssertReferralAllowed,
+  WorkflowError,
+  assertCidTransition,
+} = require('../services/caseWorkflowService');
 
 const actor = (req) => req.user?.username || String(req.user?.id || 'system');
 const role = (req) => String(req.user?.role || '').toLowerCase();
@@ -205,6 +210,11 @@ const updateInvestigation = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: 'Acknowledge the case before updating investigation notes.',
+      });
+    }
+    if (investigation_status) {
+      assertCidTransition(oldCase.investigation_status, investigation_status, {
+        supervisor: ['admin', 'cid', 'cid_director', 'cid_supervisor'].includes(role(req)),
       });
     }
     await db.query(

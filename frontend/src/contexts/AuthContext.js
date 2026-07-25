@@ -16,16 +16,27 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = Cookies.get('token');
-      const savedUser = Cookies.get('user');
+      const token = Cookies.get('token') || localStorage.getItem('token');
+      const savedUser = Cookies.get('user') || localStorage.getItem('user');
 
       if (token && savedUser) {
         try {
-          setUser(JSON.parse(savedUser));
+          const parsedUser = JSON.parse(savedUser);
+          const normalizedUser = {
+            ...parsedUser,
+            role: String(parsedUser.role || '').trim().toLowerCase(),
+          };
+          setUser(normalizedUser);
+          Cookies.set('token', token, { expires: 1, path: '/', sameSite: 'lax' });
+          Cookies.set('user', JSON.stringify(normalizedUser), { expires: 1, path: '/', sameSite: 'lax' });
+          localStorage.setItem('token', token);
+          localStorage.setItem('user', JSON.stringify(normalizedUser));
         } catch (err) {
           console.error("Failed to parse user cookie", err);
           Cookies.remove('token');
           Cookies.remove('user');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
           if (!pathname.startsWith('/login')) {
             router.push('/login');
           }
@@ -51,12 +62,18 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.post('/auth/login', { username: identifier, email: identifier, password });
       const { token, user: userData } = response.data;
+      const normalizedUser = {
+        ...userData,
+        role: String(userData.role || '').trim().toLowerCase(),
+      };
 
       // Store in cookies (expires in 24h as per JWT)
-      Cookies.set('token', token, { expires: 1 });
-      Cookies.set('user', JSON.stringify(userData), { expires: 1 });
+      Cookies.set('token', token, { expires: 1, path: '/', sameSite: 'lax' });
+      Cookies.set('user', JSON.stringify(normalizedUser), { expires: 1, path: '/', sameSite: 'lax' });
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(normalizedUser));
       
-      setUser(userData);
+      setUser(normalizedUser);
       
       const roleRedirects = {
         admin: '/dashboard/admin',
@@ -76,13 +93,15 @@ export const AuthProvider = ({ children }) => {
         prosecutor_liaison: '/dashboard/cid',
         court_clerk: '/dashboard/court',
         jail: '/dashboard/jail',
+        state_commander: '/dashboard/unit',
+        region_commander: '/dashboard/unit',
         district_commander: '/dashboard/unit',
         police_station_commander: '/dashboard/unit',
         ob_staff: '/ob-register',
         staff: '/cases'
       };
       
-      router.push(roleRedirects[userData.role] || '/cases');
+      router.push(roleRedirects[normalizedUser.role] || '/cases');
       return { success: true };
     } catch (error) {
       return { 
@@ -95,6 +114,8 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     Cookies.remove('token');
     Cookies.remove('user');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setUser(null);
     router.push('/login');
   };

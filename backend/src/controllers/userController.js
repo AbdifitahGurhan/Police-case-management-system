@@ -27,6 +27,23 @@ const ensureRegionAssignableRole = async (roleId) => {
   return role;
 };
 
+const ensureCommanderAssignment = async ({ role_id, user_type, is_commander, district_id, state_administration_id }) => {
+  const [[role]] = await db.query('SELECT name FROM roles WHERE id = ?', [role_id]);
+  const roleName = normalizeRole(role?.name);
+  const stationCommander = ['district_commander', 'police_station_commander'].includes(roleName)
+    || user_type === 'COMMANDER' || Boolean(is_commander);
+  if (stationCommander && !district_id && !state_administration_id) {
+    const error = new Error('Commander or Station Commander must be assigned to exactly one police station or administration.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (district_id && state_administration_id && ['district_commander', 'police_station_commander'].includes(roleName)) {
+    const error = new Error('Station Commander can only be directly assigned to one police station.');
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
 const mapAuthUser = (row) => ({
   id: row.id,
   username: row.username,
@@ -116,6 +133,7 @@ const createUser = async (req, res, next) => {
       }
       await ensureRegionAssignableRole(role_id);
     }
+    await ensureCommanderAssignment({ role_id, user_type, is_commander, district_id, state_administration_id });
     const hash = await bcrypt.hash(password, 12);
     const [result] = await db.query(
       `INSERT INTO users
@@ -171,6 +189,13 @@ const updateUser = async (req, res, next) => {
         await ensureRegionAssignableRole(role_id);
       }
     }
+    await ensureCommanderAssignment({
+      role_id: role_id || existing[0].role_id,
+      user_type: user_type || existing[0].user_type,
+      is_commander: is_commander === undefined ? existing[0].is_commander : is_commander,
+      district_id: district_id === undefined ? existing[0].district_id : district_id,
+      state_administration_id: state_administration_id === undefined ? existing[0].state_administration_id : state_administration_id,
+    });
 
     let hashUpdate = '';
     const params = [];

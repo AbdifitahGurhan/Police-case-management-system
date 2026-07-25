@@ -25,7 +25,8 @@ const notify = (type, message, description) => {
 // Add a request interceptor to attach JWT
 api.interceptors.request.use(
   (config) => {
-    const token = Cookies.get('token');
+    const token = Cookies.get('token')
+      || (typeof window !== 'undefined' ? window.localStorage.getItem('token') : null);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -57,6 +58,10 @@ api.interceptors.response.use(
       // Clear cookie only when the token is missing or expired.
       Cookies.remove('token');
       Cookies.remove('user');
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('token');
+        window.localStorage.removeItem('user');
+      }
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
          window.location.href = '/login';
       }
@@ -65,7 +70,7 @@ api.interceptors.response.use(
     // 403 — access denied: silently ignore, let the UI handle it gracefully
     // 409 — conflict (e.g. duplicate profile): let the calling page handle it
     const skipStatuses = [401, 403, 409];
-    if (!skipStatuses.includes(error.response?.status)) {
+    if (!skipStatuses.includes(error.response?.status) && !originalRequest?.skipErrorNotification) {
       notify(
         'error',
         error.response?.data?.message || 'Request failed.',

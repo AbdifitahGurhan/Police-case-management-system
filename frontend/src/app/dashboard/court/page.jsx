@@ -561,7 +561,7 @@ export default function CourtDashboard() {
                   <Input placeholder="Optional for fine-only sentences" />
                 </Form.Item>
                 <Form.Item name="fine_amount" label="Fine amount">
-                  <InputNumber style={{ width: '100%' }} min={0} />
+                  <InputNumber style={{ width: '100%' }} min={0} precision={2} step={0.01} stringMode prefix="$" />
                 </Form.Item>
                 <Form.Item name="sentence_date" label="Sentence date" rules={[requiredRule('Sentence date')]}>
                   <DatePicker style={{ width: '100%' }} />

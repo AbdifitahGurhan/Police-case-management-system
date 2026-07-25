@@ -225,7 +225,7 @@ export default function PoliceOfficersPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'state_admin', 'region_admin', 'city_admin', 'district_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'state_admin', 'region_admin', 'region_commander', 'city_admin', 'district_admin']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>

@@ -28,7 +28,18 @@ const login = async (req, res, next) => {
              phone, \`rank\`, user_type, assigned_level, is_commander,
              state_administration_id, region_id, district_id,
              state_name, region_name, district_name,
-             NULL AS scope_type, NULL as scope_id
+             CASE u.assigned_level
+               WHEN 'STATE' THEN 'state_administration'
+               WHEN 'REGION' THEN 'region'
+               WHEN 'DISTRICT_POLICE_STATION' THEN 'district'
+               ELSE NULL
+             END AS scope_type,
+             CASE u.assigned_level
+               WHEN 'STATE' THEN u.state_administration_id
+               WHEN 'REGION' THEN u.region_id
+               WHEN 'DISTRICT_POLICE_STATION' THEN u.district_id
+               ELSE NULL
+             END AS scope_id
       FROM (
         SELECT u.id, u.username, u.email, u.password_hash,
                CASE WHEN u.status = 'ACTIVE' THEN u.is_active ELSE 0 END AS is_active,

@@ -28,7 +28,18 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png']);
+    const allowedMimeTypes = new Set(['image/jpeg', 'image/png']);
+    if (!allowedExtensions.has(extension) || !allowedMimeTypes.has(file.mimetype)) {
+      const error = new Error('Evidence image must be JPG, JPEG, or PNG.');
+      error.status = 400;
+      return cb(error);
+    }
+    return cb(null, true);
+  },
 });
 
 router.use(authMiddleware);

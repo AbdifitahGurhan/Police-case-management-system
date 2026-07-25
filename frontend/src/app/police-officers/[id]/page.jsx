@@ -8,6 +8,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import { requiredRule, textLengthRule } from '@/utils/validation';
+import { useAuth } from '@/contexts/AuthContext';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -15,6 +16,7 @@ const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/ap
 
 export default function OfficerDetailsPage({ params }) {
   const { message } = App.useApp();
+  const { user } = useAuth();
   const router = useRouter();
   const { id } = use(params);
   const [officer, setOfficer] = useState(null);
@@ -35,10 +37,10 @@ export default function OfficerDetailsPage({ params }) {
   const selectedDistrict = Form.useWatch('district_id', transferForm);
 
   useEffect(() => {
-    if (isTransferModalOpen) {
+    if (isTransferModalOpen && user?.role !== 'district_admin') {
        api.get('/state-administrations').then(res => setStates(res.data.data)).catch(console.error);
     }
-  }, [isTransferModalOpen]);
+  }, [isTransferModalOpen, user?.role]);
 
   useEffect(() => {
     if (selectedState) {
@@ -74,7 +76,7 @@ export default function OfficerDetailsPage({ params }) {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, message]);
 
   useEffect(() => {
     if (id) fetchOfficerDetails();
@@ -90,6 +92,9 @@ export default function OfficerDetailsPage({ params }) {
       if (values.to_assignment_type === 'City') targetId = values.city_id;
       if (values.to_assignment_type === 'District') targetId = values.district_id;
       if (values.to_assignment_type === 'District Station') targetId = values.district_id;
+      if (user?.role === 'district_admin' && ['District', 'District Station'].includes(values.to_assignment_type)) {
+        targetId = user.scopeId;
+      }
 
       if (!targetId) {
         return message.error("Please complete the unit selection dropdowns.");
@@ -132,7 +137,7 @@ export default function OfficerDetailsPage({ params }) {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'state_admin', 'region_admin', 'city_admin', 'district_admin', 'neighborhood_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'state_admin', 'region_admin', 'region_commander', 'city_admin', 'district_admin', 'neighborhood_admin']}>
       <Card loading={loading} variant="none">
         
         <Space orientation="vertical" size="large" style={{ width: '100%' }}>
@@ -154,7 +159,7 @@ export default function OfficerDetailsPage({ params }) {
 
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={16}>
-              <Card title="Bio & Contact Information" bordered={false} className="shadow-sm">
+              <Card title="Bio & Contact Information" variant="borderless" className="shadow-sm">
                 <Descriptions column={{ xxl: 2, xl: 2, lg: 2, md: 1, sm: 1, xs: 1 }}>
                   <Descriptions.Item label="Contact Phone">{officer?.phone || 'N/A'}</Descriptions.Item>
                   <Descriptions.Item label="Primary Email">{officer?.email || 'N/A'}</Descriptions.Item>
@@ -169,7 +174,7 @@ export default function OfficerDetailsPage({ params }) {
             <Col xs={24} lg={8}>
               <Card 
                 title={<><EnvironmentOutlined /> Current Assignment</>} 
-                bordered={false} 
+                variant="borderless"
                 style={{ height: '100%', background: '#f0f2f5' }}
               >
                 {officer?.current_assignment_type === 'Unassigned' ? (
@@ -184,7 +189,7 @@ export default function OfficerDetailsPage({ params }) {
             </Col>
           </Row>
 
-          <Card title={<><AuditOutlined /> Career History</>} bordered={false}>
+          <Card title={<><AuditOutlined /> Career History</>} variant="borderless">
             <Title level={5}>Transfer Logs</Title>
             <Table 
                columns={transferCols} 
@@ -221,15 +226,15 @@ export default function OfficerDetailsPage({ params }) {
            <Form form={transferForm} layout="vertical">
               <Form.Item name="to_assignment_type" label="Target Level" rules={[requiredRule('Target level')]}>
                   <Select placeholder="e.g. City" onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, city_id: undefined, district_id: undefined })}>
-                      <Option value="State Administration">State Administration</Option>
-                      <Option value="Region">Region</Option>
-                      <Option value="City">City</Option>
+                      {user?.role !== 'district_admin' && <Option value="State Administration">State Administration</Option>}
+                      {user?.role !== 'district_admin' && <Option value="Region">Region</Option>}
+                      {user?.role !== 'district_admin' && <Option value="City">City</Option>}
                       <Option value="District">District</Option>
                       <Option value="District Station">District Station</Option>
                   </Select>
                </Form.Item>
               
-              {assignmentType && (
+              {assignmentType && user?.role !== 'district_admin' && (
                 <Form.Item name="state_id" label="State Administration" rules={[requiredRule('State administration')]}>
                   <Select placeholder="Select State Administration" showSearch optionFilterProp="children">
                     {states.map(s => <Option key={s.id} value={s.id}>{s.state_name}</Option>)}
@@ -237,7 +242,7 @@ export default function OfficerDetailsPage({ params }) {
                 </Form.Item>
               )}
 
-               {assignmentType && ['Region', 'City', 'District', 'District Station'].includes(assignmentType) && (
+               {user?.role !== 'district_admin' && assignmentType && ['Region', 'City', 'District', 'District Station'].includes(assignmentType) && (
                  <Form.Item name="region_id" label="Region" rules={[requiredRule('Region')]}>
                    <Select placeholder="Select Region" showSearch optionFilterProp="children" disabled={!selectedState}>
                      {regions.map(r => <Option key={r.id} value={r.id}>{r.region_name}</Option>)}
@@ -245,7 +250,7 @@ export default function OfficerDetailsPage({ params }) {
                  </Form.Item>
                )}
  
-               {assignmentType && ['City', 'District', 'District Station'].includes(assignmentType) && (
+               {user?.role !== 'district_admin' && assignmentType && ['City', 'District', 'District Station'].includes(assignmentType) && (
                  <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
                    <Select placeholder="Select City" showSearch optionFilterProp="children" disabled={!selectedRegion}>
                      {cities.map(c => <Option key={c.id} value={c.id}>{c.city_name}</Option>)}
@@ -253,7 +258,7 @@ export default function OfficerDetailsPage({ params }) {
                  </Form.Item>
                )}
  
-               {assignmentType && ['District', 'District Station'].includes(assignmentType) && (
+               {user?.role !== 'district_admin' && assignmentType && ['District', 'District Station'].includes(assignmentType) && (
                  <Form.Item name="district_id" label="District Station" rules={[requiredRule('District Station')]}>
                    <Select placeholder="Select District Station" showSearch optionFilterProp="children" disabled={!selectedCity}>
                      {districts.map(d => <Option key={d.id} value={d.id}>{d.district_name}</Option>)}

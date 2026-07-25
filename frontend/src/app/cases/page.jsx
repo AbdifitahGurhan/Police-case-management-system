@@ -4,6 +4,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Breadcrumb,
+  Alert,
   Button,
   Card,
   Input,
@@ -33,6 +34,7 @@ const CASE_READ_ROLES = [
 const CASE_WRITE_ROLES = [
   'admin', 'officer', 'district_admin',
   'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
+  'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
 ];
 
 const STATUS_OPTIONS = [
@@ -67,6 +69,7 @@ export default function CaseListPage() {
   const [cases, setCases] = useState([]);
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({
     search: '',
@@ -81,7 +84,8 @@ export default function CaseListPage() {
     pages: 0,
   });
 
-  const canCreate = user && CASE_WRITE_ROLES.includes(user.role);
+  const normalizedRole = String(user?.role || '').trim().toLowerCase();
+  const canCreate = user && CASE_WRITE_ROLES.includes(normalizedRole);
 
   const fetchCases = useCallback(async (page = 1, pageSize = 20, activeFilters = filters) => {
     setLoading(true);
@@ -98,6 +102,7 @@ export default function CaseListPage() {
       const res = await api.get('/cases', { params });
       const meta = res.data.pagination || {};
       setCases(res.data.data || []);
+      setLoadError('');
       setPagination({
         current: meta.page || page,
         pageSize: meta.limit || pageSize,
@@ -107,13 +112,14 @@ export default function CaseListPage() {
     } catch (err) {
       console.error(err);
       setCases([]);
+      setLoadError(err.response?.data?.message || 'Cases-ka lama soo akhrin karin. Fadlan dib u cusboonaysii bogga.');
     } finally {
       setLoading(false);
     }
   }, [filters]);
 
   useEffect(() => {
-    if (!authLoading && user && CASE_READ_ROLES.includes(user.role)) {
+    if (!authLoading && user && CASE_READ_ROLES.includes(normalizedRole)) {
       fetchCases(1, pagination.pageSize, filters);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,6 +237,14 @@ export default function CaseListPage() {
         </div>
 
         <Card variant="none" className="standard-panel">
+          {loadError && (
+            <Alert
+              type="error"
+              showIcon
+              message={loadError}
+              style={{ marginBottom: 16 }}
+            />
+          )}
           <Space style={{ marginBottom: 16 }} wrap>
             <Input
               placeholder="Search case, OB, or location..."

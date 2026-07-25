@@ -44,6 +44,7 @@ import CaseStatusStepper from '@/components/shared/CaseStatusStepper';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import { useTheme } from '@/contexts/ThemeContext';
+import { formatUSD } from '@/utils/currency';
 
 const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
@@ -239,10 +240,15 @@ export default function CourtCasesPage() {
         });
       }
       if (modalType === 'sentence') {
-        const suspects = selected?.suspects || [];
+        const hasDuration = Boolean(String(values.duration || '').trim());
+        const hasFine = Number(values.fine_amount) > 0;
+        const sentenceType = hasDuration && hasFine ? 'both' : values.sentence_type;
         await api.post(`/court/cases/${id}/sentences`, {
           ...values,
+          sentence_type: sentenceType,
           sentence_date: formatDate(values.sentence_date),
+        }, {
+          skipErrorNotification: true,
         });
       }
       if (modalType === 'appeal') {
@@ -256,7 +262,6 @@ export default function CourtCasesPage() {
       closeModal();
       await refreshAfterAction();
     } catch (error) {
-      console.error('Court action failed:', error);
       message.error(
         error.response?.data?.message
         || error.message
@@ -627,7 +632,7 @@ export default function CourtCasesPage() {
                                   { title: 'Eedaysanaha', dataIndex: 'defendant_name' },
                                   { title: 'Nooca Xukunka', dataIndex: 'sentence_type' },
                                   { title: 'Muddada', dataIndex: 'duration', render: safe },
-                                  { title: 'Ganaaxa', dataIndex: 'fine_amount', render: safe },
+                                  { title: 'Ganaaxa', dataIndex: 'fine_amount', render: (v) => v === null || v === undefined ? 'N/A' : formatUSD(v) },
                                   { title: 'Taariikhda', dataIndex: 'sentence_date' },
                                 ]}
                               />
@@ -790,7 +795,21 @@ export default function CourtCasesPage() {
     width={720}
     zIndex={1050}
   >
-    <Form form={form} layout="vertical" onFinish={submitModal}>
+    <Form
+      form={form}
+      layout="vertical"
+      onFinish={submitModal}
+      onValuesChange={(_, allValues) => {
+        if (
+          modalType === 'sentence'
+          && String(allValues.duration || '').trim()
+          && Number(allValues.fine_amount) > 0
+          && allValues.sentence_type !== 'both'
+        ) {
+          form.setFieldValue('sentence_type', 'both');
+        }
+      }}
+    >
       {modalType === 'assign' && (
         <Row gutter={16}>
           <Col span={12}>
@@ -929,7 +948,7 @@ export default function CourtCasesPage() {
             ]} /></Form.Item></Col>
             <Col span={12}><Form.Item name="sentence_date" label="Taariikhda Xukunka"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
             <Col span={12}><Form.Item name="duration" label="Muddada Xukunka"><Input placeholder="tusaale. 2 sano, 6 bilood..." /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fine_amount" label="Cadadka Ganaaxa (Fine Amount)"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+            <Col span={12}><Form.Item name="fine_amount" label="Cadadka Ganaaxa (USD)"><InputNumber min={0} precision={2} step={0.01} stringMode prefix="$" style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
         );
       })()}

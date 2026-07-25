@@ -21,6 +21,7 @@ import {
   Select,
   Space,
   Statistic,
+  Steps,
   Switch,
   Table,
   Tabs,
@@ -45,6 +46,7 @@ import {
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
+import { compressImageFile } from '@/utils/imageCompression';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -158,7 +160,7 @@ export default function OffendersPage() {
     if (!modalOpen) stopCamera();
   }, [modalOpen]);
 
-  const startCamera = async (retryOnSystemLock = true) => {
+  const startCamera = async () => {
     setCameraError('');
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera not available in this browser.');
@@ -172,16 +174,10 @@ export default function OffendersPage() {
       setCameraStream(stream);
       setIsCameraActive(true);
     } catch (err) {
-      console.error('Camera error', err);
-      // Chrome/Windows can briefly report "Permission denied by system" right after a previous
-      // stream's tracks are stopped, because the OS hasn't released the device yet. Retry once
-      // rather than surfacing this as a real permission denial (which uses a different message).
-      const isTransientSystemLock = err.name === 'NotAllowedError' && /system/i.test(err.message || '');
-      if (isTransientSystemLock && retryOnSystemLock) {
-        setTimeout(() => startCamera(false), 400);
-        return;
-      }
-      setCameraError('Camera access denied or unavailable.');
+      const permissionDenied = err?.name === 'NotAllowedError';
+      setCameraError(permissionDenied
+        ? 'Camera permission waa xiran yahay. Ka oggolow browser-ka ama Windows Camera Privacy settings.'
+        : 'Camera-ga lama heli karo ama qalab kale ayaa isticmaalaya.');
     }
   };
 
@@ -190,7 +186,9 @@ export default function OffendersPage() {
     if (!video || !cameraStream) return;
     if (video.srcObject !== cameraStream) {
       video.srcObject = cameraStream;
-      video.play().catch((e) => console.error('Video play error:', e));
+      video.play().catch(() => {
+        setCameraError('Camera preview-ga lama bilaabi karin.');
+      });
     }
   }, [cameraStream]);
 
@@ -518,6 +516,24 @@ export default function OffendersPage() {
     rejected: 'red',
   }[status] || 'default');
 
+  const releaseStepIndex = (status) => ({
+    pending_admin_review: 0,
+    admin_reviewed: 1,
+    prison_confirmed: 2,
+    court_approved: 3,
+    certificate_generated: 4,
+    released: 5,
+  }[status] ?? 0);
+
+  const releaseStepItems = [
+    { title: 'Admin Review', content: 'Admin' },
+    { title: 'Prison Confirm', content: 'Jail' },
+    { title: 'Court Approval', content: 'Court/Admin' },
+    { title: 'Approved', content: 'Ready for certificate' },
+    { title: 'Certificate', content: 'Generated' },
+    { title: 'Released', content: 'Final' },
+  ];
+
   const printReleaseCertificate = (certificate) => {
     const win = window.open('', '_blank');
     win.document.write(`
@@ -694,7 +710,7 @@ export default function OffendersPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin', 'ob_staff']}>
+    <ProtectedRoute allowedRoles={['admin', 'region_commander', 'officer', 'cid', 'court', 'jail', 'district_admin', 'ob_staff']}>
       <div className="offenders-page">
         {loadError && (
           <Alert
@@ -857,12 +873,13 @@ export default function OffendersPage() {
                       <>
                         <Button type="primary" onClick={startCamera}>Start Camera</Button>
                         <Upload
-                          beforeUpload={(file) => {
-                            const reader = new FileReader();
-                            reader.onload = (e) => {
-                              setSuspectFaceImage(e.target.result);
-                            };
-                            reader.readAsDataURL(file);
+                          beforeUpload={async (file) => {
+                            try {
+                              setSuspectFaceImage(await compressImageFile(file));
+                              setCameraError('');
+                            } catch (error) {
+                              setCameraError(error.message);
+                            }
                             return false;
                           }}
                           showUploadList={false}
@@ -1063,9 +1080,29 @@ export default function OffendersPage() {
                               {['admin', 'jail'].includes(user?.role) && <Button onClick={() => openCustodyAction('transfer')}>Prison Transfer</Button>}
                               {['admin', 'jail'].includes(user?.role) && <Button onClick={() => openCustodyAction('medical')}>Medical Record</Button>}
                               {['admin', 'jail'].includes(user?.role) && <Button onClick={() => openCustodyAction('visitor')}>Visitor Log</Button>}
-                              {['admin', 'jail'].includes(user?.role) && <Button type="primary" onClick={() => openCustodyAction('release')}>Request Release</Button>}
+                              {['admin', 'jail'].includes(user?.role)
+                                && (!selectedProfile.release_approvals?.[0]?.status || selectedProfile.release_approvals[0].status === 'rejected')
+                                && <Button type="primary" onClick={() => openCustodyAction('release')}>Request Release</Button>}
                             </Space>
                           )}
+                          {(selectedProfile.release_approvals || []).length > 0 && (() => {
+                            const latest = selectedProfile.release_approvals[0];
+                            return (
+                              <Card size="small" title="Release Progress" style={{ marginBottom: 12 }}>
+                                {latest.status === 'rejected' ? (
+                                  <Alert type="error" showIcon title="Release request rejected" description={latest.review_notes || latest.request_reason} />
+                                ) : (
+                                  <Steps
+                                    size="small"
+                                    responsive
+                                    current={releaseStepIndex(latest.status)}
+                                    status={latest.status === 'released' ? 'finish' : 'process'}
+                                    items={releaseStepItems}
+                                  />
+                                )}
+                              </Card>
+                            );
+                          })()}
                           <Table
                             title={() => 'Prison Transfer History'}
                             size="small"
@@ -1137,6 +1174,9 @@ export default function OffendersPage() {
                                     )}
                                     {['admin', 'court', 'jail'].includes(user?.role) && row.status === 'court_approved' && (
                                       <Button size="small" type="primary" onClick={() => generateReleaseCertificate(row)}>Generate Certificate</Button>
+                                    )}
+                                    {['admin', 'court', 'jail'].includes(user?.role) && row.status === 'certificate_generated' && (
+                                      <Button size="small" type="primary" danger onClick={() => generateReleaseCertificate(row)}>Confirm Release</Button>
                                     )}
                                     {user?.role === 'admin' && ['pending_admin_review', 'admin_reviewed', 'prison_confirmed'].includes(row.status) && (
                                       <Button size="small" danger onClick={() => reviewReleaseApproval(row, 'reject')}>Reject</Button>

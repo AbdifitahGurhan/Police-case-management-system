@@ -19,6 +19,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import StandardDashboard from '@/components/dashboard/StandardDashboard';
+import DistrictOperationsDashboard from '@/components/dashboard/DistrictOperationsDashboard';
 
 const { Text, Title } = Typography;
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
@@ -102,7 +103,7 @@ function RegionDashboard({ user }) {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['region_admin']}>
+    <ProtectedRoute allowedRoles={['region_admin', 'region_commander']}>
       <div className="standard-dashboard">
         <div className="standard-dashboard-hero">
           <div>
@@ -333,7 +334,11 @@ function GenericUnitDashboard({ user }) {
 export default function UnitDashboardPage() {
   const { user } = useAuth();
 
-  if (user?.role === 'region_admin') {
+  if (['district_admin', 'district_commander', 'police_station_commander'].includes(user?.role)) {
+    return <DistrictOperationsDashboard user={user} />;
+  }
+
+  if (['region_admin', 'region_commander'].includes(user?.role)) {
     return <RegionDashboard user={user} />;
   }
 

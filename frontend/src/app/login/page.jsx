@@ -32,7 +32,11 @@ export default function LoginPage() {
         court: '/dashboard/court',
         prosecutor: '/dashboard/court',
         prosecutor_liaison: '/dashboard/cid',
-        jail: '/dashboard/jail'
+        jail: '/dashboard/jail',
+        state_commander: '/dashboard/unit',
+        region_commander: '/dashboard/unit',
+        district_commander: '/dashboard/unit',
+        police_station_commander: '/dashboard/unit'
       };
       router.replace(roleRedirects[user.role] || '/cases');
     }

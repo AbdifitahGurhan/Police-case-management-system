@@ -850,7 +850,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'region_admin', 'officer', 'cid', 'court', 'jail', 'district_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'region_admin', 'region_commander', 'officer', 'cid', 'court', 'jail', 'district_admin']}>
       <div className="reports-page">
         <div className="reports-hero">
           <div>

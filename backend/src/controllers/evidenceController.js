@@ -5,8 +5,10 @@ const path = require('path');
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { generateHash, saveBlockchainRecord } = require('../utils/hashUtil');
+const { hasGlobalCidRead } = require('../utils/locationScope');
 
 const applyCaseScope = (user, sql, params, alias = 'c') => {
+  if (hasGlobalCidRead(user)) return sql;
   if (user.scopeType === 'state_administration') { sql += ` AND ${alias}.state_administration_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'region') { sql += ` AND ${alias}.region_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'city') { sql += ` AND ${alias}.city_id = ?`; params.push(user.scopeId); }
@@ -20,7 +22,7 @@ const canAccessCase = async (user, caseId) => {
     [caseId]
   );
   if (!row) return false;
-  if (!user.scopeType) return true;
+  if (!user.scopeType || hasGlobalCidRead(user)) return true;
   const columnMap = {
     state_administration: 'state_administration_id',
     region: 'region_id',

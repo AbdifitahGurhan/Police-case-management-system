@@ -45,6 +45,11 @@ const respondToConfirmation = async (req, res, next) => {
     );
     if (!caseRow) return res.status(404).json({ success: false, message: 'Case not found.' });
 
+    if (['district_admin', 'district_commander', 'police_station_commander'].includes(req.user.role)
+      && Number(caseRow.district_id) !== Number(req.user.scopeId)) {
+      return res.status(403).json({ success: false, message: 'This case is outside your district.' });
+    }
+
     if (caseRow.status !== 'PENDING_COMMANDER_REVIEW') {
       return res.status(400).json({ success: false, message: 'Case is not pending review.' });
     }

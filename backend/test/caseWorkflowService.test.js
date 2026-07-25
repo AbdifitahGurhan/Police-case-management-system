@@ -10,6 +10,7 @@ const {
   mapObComplainant,
   withTransaction,
   lockAndAssertReferralAllowed,
+  assertCidTransition,
 } = require('../src/services/caseWorkflowService');
 
 test('accepts valid police transitions', () => {
@@ -63,6 +64,23 @@ test('validates court chronology', () => {
   assert.throws(
     () => validateCourtDates({ judgmentDate: '2026-07-02', closureDate: '2026-07-01' }),
     /Judgment decision/
+  );
+});
+
+test('requires CID stages to be completed in order', () => {
+  assert.equal(assertCidTransition('open', 'under_investigation'), true);
+  assert.equal(assertCidTransition('evidence_collection', 'witness_interviews'), true);
+  assert.throws(
+    () => assertCidTransition('open', 'evidence_collection'),
+    (error) => error.code === 'INVALID_CID_TRANSITION'
+  );
+  assert.throws(
+    () => assertCidTransition('supervisor_review', 'approved'),
+    (error) => error.code === 'CID_SUPERVISOR_REQUIRED'
+  );
+  assert.equal(
+    assertCidTransition('supervisor_review', 'approved', { supervisor: true }),
+    true
   );
 });
 

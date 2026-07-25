@@ -51,22 +51,10 @@ const friendlyStatus = {
 const getCourtPersonnel = async (req, res, next) => {
   try {
     const [rows] = await db.query(`
-      SELECT u.id, u.username, u.email, u.full_name, r.name AS role
-      FROM users u
-      JOIN roles r ON r.id = u.role_id
-      WHERE u.is_active = 1
-        AND COALESCE(u.status, 'ACTIVE') = 'ACTIVE'
-        AND r.name IN ('court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk')
-      ORDER BY
-        CASE r.name
-          WHEN 'judge' THEN 1
-          WHEN 'court' THEN 2
-          WHEN 'court_admin' THEN 3
-          WHEN 'prosecutor' THEN 4
-          WHEN 'prosecutor_liaison' THEN 5
-          ELSE 6
-        END,
-        u.full_name ASC
+      SELECT id, full_name, email, identification_number AS username, personnel_type AS role
+      FROM legal_personnel
+      WHERE status = 'active'
+      ORDER BY personnel_type, full_name
     `);
 
     const toOption = (row) => ({
@@ -78,12 +66,8 @@ const getCourtPersonnel = async (req, res, next) => {
       role: row.role,
     });
 
-    const judges = rows
-      .filter((row) => ['judge', 'court', 'court_admin'].includes(String(row.role).toLowerCase()))
-      .map(toOption);
-    const prosecutors = rows
-      .filter((row) => ['prosecutor', 'prosecutor_liaison', 'court', 'court_admin'].includes(String(row.role).toLowerCase()))
-      .map(toOption);
+    const judges = rows.filter((row) => row.role === 'judge').map(toOption);
+    const prosecutors = rows.filter((row) => row.role === 'prosecutor').map(toOption);
 
     res.json({ success: true, data: { judges, prosecutors, all: rows.map(toOption) } });
   } catch (err) { next(err); }

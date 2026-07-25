@@ -149,7 +149,9 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
       const response = await api.get('/notifications', { params: { limit: 15 } });
       setNotifications(response.data.data || []);
     } catch (error) {
-      console.error('Notifications failed to load', error);
+      // Notifications are a background enhancement. Keep the last successful
+      // list when the API briefly restarts; the polling interval retries it.
+      if (error.response?.status === 401) setNotifications([]);
     } finally {
       setNotificationLoading(false);
     }

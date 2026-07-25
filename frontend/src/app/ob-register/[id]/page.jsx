@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { App, Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
-import { ArrowLeftOutlined, FileAddOutlined } from '@ant-design/icons';
+import { App, Button, Card, Descriptions, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import { ArrowLeftOutlined, CheckCircleOutlined, DownloadOutlined, EyeOutlined, FileAddOutlined, PrinterOutlined, ReloadOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -12,6 +12,16 @@ import { useAuth } from '@/contexts/AuthContext';
 const { Title, Text, Paragraph } = Typography;
 
 const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
+const resolutionContexts = {
+  mediation: 'Kadib wada-hadal, labada dhinac waxay ku heshiiyeen:\n\n1. In khilaafka lagu soo afjaro nabad.\n2. In labada dhinac ixtiraamaan xuquuqda midba midka kale.\n3. In aan dib loo soo celin muranka.',
+  withdrawal: 'Kadib heshiis iyo wada-hadal, waxaan go’aansaday inaan ka noqdo cabashadii aan gudbiyay.\n\nGo’aankan waxaan ku gaaray rabitaankayga anigoon cadaadis lagu saarin.',
+  false_report: 'Waxaan caddeynayaa in warbixintii hore ay ahayd warbixin aan sax ahayn oo aan si buuxda uga tarjumayn xaqiiqada. Waxaan codsanayaa in la saxo diiwaanka arrintan.',
+};
+const resolutionDefaults = {
+  reconciliation: '1. In khilaafkii lagu dhammeeyo nabad iyo is-afgarad.\n2. In labada dhinac ay is cafiyeen.\n3. In aysan sameyn doonin wax kale oo khilaaf cusub keena.\n4. In heshiiskan lagu dhaqmo wixii maanta ka dambeeya.',
+  warning: 'Waxaa lagaa codsanayaa inaad joojiso fal kasta oo keeni kara khilaaf ama dhibaato kale.\n\nHaddii digniintan la iska indho tiro, waxaa la qaadi karaa tallaabo waafaqsan sharciga.',
+  general_agreement: 'Labada dhinac waxay ku heshiiyeen:\n\n1. In khilaafkii hore la soo afjaro.\n2. In mid kasta ixtiraamo kan kale.\n3. In aan la sameyn wax fal ah oo keena muran cusub.\n4. In wixii dhacay lagu xalliyo wada-hadal iyo sharci.',
+};
 
 export default function ObDetailPage() {
   const { id } = useParams();
@@ -21,6 +31,13 @@ export default function ObDetailPage() {
   const [ob, setOb] = useState(null);
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
+  const [resolveOpen, setResolveOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [resolveForm] = Form.useForm();
+  const [reopenForm] = Form.useForm();
+  const [previewHtml, setPreviewHtml] = useState('');
+  const resolutionMethod = Form.useWatch('resolution_method', resolveForm);
 
   const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
   const canReadCases = user && caseReadRoles.includes(user.role);
@@ -42,6 +59,31 @@ export default function ObDetailPage() {
   }, [id, loadOb]);
 
   const converted = ob?.linked_case_id || ['CONVERTED_TO_CASE', 'CASE_OPENED'].includes(ob?.status);
+  const resolutionStatuses=['CLOSED','RESOLVED_BY_RECONCILIATION','WARNING_ISSUED','MEDIATION_COMPLETED','COMPLAINT_WITHDRAWN','FALSE_REPORT_CORRECTED','GENERAL_AGREEMENT_COMPLETED'];
+  const closedAtOb = resolutionStatuses.includes(ob?.status) && !ob?.linked_case_id;
+
+  const resolveOb = async (values) => {
+    setActionLoading(true);
+    try {
+      await api.post(`/ob-entries/${id}/resolve`,{resolution_method:values.resolution_method,document_data:values.document_data||{}});
+      setResolveOpen(false); resolveForm.resetFields(); await loadOb();
+    } catch(error){message.error(error.response?.data?.message||'OB-ga lama xirin karin.')} finally{setActionLoading(false)}
+  };
+
+  const openDocument = async (document, print=false) => {
+    try { const response=await api.get(`/ob-entries/${id}/resolution-documents/${document.id}`); const html=response.data.data.official_html; if(print){const win=window.open('','_blank');win.document.write(html);win.document.close();setTimeout(()=>win.print(),300)}else setPreviewHtml(html); }
+    catch(error){message.error(error.response?.data?.message||'Warqadda lama furi karin.')}
+  };
+
+  const previewDraft = async () => {
+    try { const values=await resolveForm.validateFields(); const details=Object.entries(values.document_data||{}).map(([k,v])=>`<p><b>${k.replaceAll('_',' ')}:</b> ${String(v||'').replaceAll('\n','<br>')}</p>`).join(''); const fixed=(resolutionContexts[values.resolution_method]||'').replaceAll('\n','<br>'); setPreviewHtml(`<html><body style="font-family:Arial;padding:35px;line-height:1.65"><h2 style="text-align:center">${values.resolution_method.replaceAll('_',' ').toUpperCase()}</h2><p><b>OB Number:</b> ${ob.ob_number}</p><p><b>Dacwoodaha:</b> ${ob.reported_by} — ID: ${ob.reporter_id_number||'N/A'} — Tel: ${ob.reporter_phone||'N/A'}</p><p><b>Laga dacwooday:</b> ${ob.respondent_name||'N/A'} — ID: ${ob.respondent_id_number||'N/A'} — Tel: ${ob.respondent_phone||'N/A'}</p><hr>${fixed?`<p>${fixed}</p>`:''}${details}<p style="margin-top:50px">Saxiixa Dhinaca Koowaad: ____________________</p><p style="margin-top:35px">Saxiixa Dhinaca Labaad: ____________________</p><p style="margin-top:35px">Sarkaal/Markhaati: ____________________</p></body></html>`); } catch{}
+  };
+
+  const reopenOb = async (values) => {
+    setActionLoading(true);
+    try { await api.post(`/ob-entries/${id}/reopen`,values); setReopenOpen(false); reopenForm.resetFields(); await loadOb(); }
+    catch(error){message.error(error.response?.data?.message||'OB-ga dib looma furi karin.')} finally{setActionLoading(false)}
+  };
 
   const convertToCase = async () => {
     setConverting(true);
@@ -83,7 +125,8 @@ export default function ObDetailPage() {
           </Space>
           <Space wrap>
             {ob?.status && <Tag color={converted ? 'green' : 'blue'}>{ob.status}</Tag>}
-            {converted ? (
+            {closedAtOb && <Button icon={<ReloadOutlined/>} onClick={()=>setReopenOpen(true)}>Dib u fur OB</Button>}
+            {ob && !closedAtOb && (converted ? (
               ob?.linked_case_id && canReadCases ? (
                 <Link href={`/cases/${ob.linked_case_id}`}>
                   <Button type="primary">Open Linked Case</Button>
@@ -92,10 +135,16 @@ export default function ObDetailPage() {
                 <Button disabled>This OB has already been converted to a case.</Button>
               )
             ) : (
-              <Button type="primary" icon={<FileAddOutlined />} loading={converting} onClick={convertToCase}>
-                Convert to Case
-              </Button>
-            )}
+              <>
+                <Button icon={<CheckCircleOutlined/>} onClick={()=>setResolveOpen(true)}>Ku xalli OB-ga</Button>
+                <Link href={`/cases/new?ob_entry_id=${ob.id}`}>
+                  <Button icon={<FileAddOutlined />}>Detailed Case Form</Button>
+                </Link>
+                <Button type="primary" icon={<FileAddOutlined />} loading={converting} onClick={convertToCase}>
+                  Quick Convert
+                </Button>
+              </>
+            ))}
           </Space>
         </div>
 
@@ -114,7 +163,15 @@ export default function ObDetailPage() {
               <Descriptions.Item label="Registration Time">{ob.registration_time}</Descriptions.Item>
               <Descriptions.Item label="State">{ob.state_name}</Descriptions.Item>
               <Descriptions.Item label="Region">{ob.region_name}</Descriptions.Item>
-              <Descriptions.Item label="District / Police Station">{ob.district_police_station_name}</Descriptions.Item>
+              <Descriptions.Item label="District / Police Station" span={2}>{ob.district_police_station_name}</Descriptions.Item>
+
+              {closedAtOb && <>
+                <Descriptions.Item label="Habka Xalinta">{ob.resolution_method || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Xiray">{ob.resolved_by || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Waqtiga Xalinta">{ob.resolved_at || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Dhinacyada Heshiiyey">{ob.resolution_parties || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Qoraalka Xalinta" span={2}><Paragraph style={{margin:0}}>{ob.resolution_notes}</Paragraph></Descriptions.Item>
+              </>}
 
               <Descriptions.Item label="Short Description" span={2}>
                 <Paragraph style={{ marginBottom: 0 }}>{ob.description || 'No description recorded.'}</Paragraph>
@@ -122,6 +179,25 @@ export default function ObDetailPage() {
             </Descriptions>
           )}
         </Card>
+        {ob?.resolutionDocuments?.length>0 && <Card variant="none" title="Warqadaha Xalinta OB-ga"><Table rowKey="id" pagination={false} dataSource={ob.resolutionDocuments} columns={[{title:'Warqadda',dataIndex:'document_title'},{title:'Nooca',dataIndex:'document_type',render:v=><Tag color="blue">{v}</Tag>},{title:'Sameeyey',dataIndex:'created_by'},{title:'Taariikhda',dataIndex:'created_at'},{title:'Ficil',render:(_,record)=><Space><Button icon={<EyeOutlined/>} onClick={()=>openDocument(record)}>Preview</Button><Button icon={<PrinterOutlined/>} onClick={()=>openDocument(record,true)}>Print</Button><Button icon={<DownloadOutlined/>} onClick={()=>openDocument(record,true)}>Download PDF</Button></Space>}]} /></Card>}
+        <Modal title="Ku xalli oo xir OB-ga" open={resolveOpen} onCancel={()=>setResolveOpen(false)} footer={null}>
+          <Form form={resolveForm} layout="vertical" onFinish={resolveOb}>
+            <Form.Item name="resolution_method" label="Nooca warqadda" rules={[{required:true}]}><Select onChange={value=>resolveForm.setFieldValue('document_data',value==='warning'?{warning_reason:resolutionDefaults.warning}:resolutionDefaults[value]?{agreement_terms:resolutionDefaults[value]}:{})} options={[{value:'reconciliation',label:'Heshiis Dib-u-Heshiisiin'},{value:'warning',label:'Warqad Digniin'},{value:'mediation',label:'Warqad Dhexdhexaadin'},{value:'withdrawal',label:'Ka-Noqoshada Cabashada'},{value:'false_report',label:'Caddeyn Warbixin Qaldan'},{value:'general_agreement',label:'Heshiis Guud'}]}/></Form.Item>
+            {resolutionMethod&&resolutionContexts[resolutionMethod]&&<Card size="small" title="Qoraalka rasmiga ah ee warqadda" style={{marginBottom:16,background:'#fafafa'}}><Paragraph style={{whiteSpace:'pre-line',margin:0}}>{resolutionContexts[resolutionMethod]}</Paragraph></Card>}
+            {resolutionMethod==='reconciliation'&&<><Form.Item name={['document_data','agreement_terms']} label="Agreement terms" rules={[{required:true,min:10}]}><Input.TextArea rows={6}/></Form.Item><Form.Item name={['document_data','witnesses']} label="Magaca markhaatiga" rules={[{required:true}]}><Input/></Form.Item></>}
+            {resolutionMethod==='warning'&&<Form.Item name={['document_data','warning_reason']} label="Arrinta digniinta la xiriirta" rules={[{required:true,min:5}]}><Input.TextArea rows={4}/></Form.Item>}
+            {resolutionMethod==='mediation'&&<><Form.Item name={['document_data','mediator_name']} label="Magaca dhexdhexaadiyaha" rules={[{required:true}]}><Input/></Form.Item><Form.Item name={['document_data','disputed_issues']} label="Arrinta la isku hayay" rules={[{required:true,min:5}]}><Input.TextArea rows={4}/></Form.Item></>}
+            {resolutionMethod==='withdrawal'&&<Form.Item name={['document_data','withdrawal_reason']} label="Arrinta / sababta cabashada looga noqday" rules={[{required:true,min:5}]}><Input.TextArea rows={4}/></Form.Item>}
+            {resolutionMethod==='false_report'&&<><Form.Item name={['document_data','incorrect_information']} label="Warbixintii qaldanayd" rules={[{required:true,min:5}]}><Input.TextArea rows={3}/></Form.Item><Form.Item name={['document_data','corrected_information']} label="Xogta saxda ah" rules={[{required:true,min:5}]}><Input.TextArea rows={3}/></Form.Item></>}
+            {resolutionMethod==='general_agreement'&&<><Form.Item name={['document_data','agreement_terms']} label="Agreement terms" rules={[{required:true,min:10}]}><Input.TextArea rows={7}/></Form.Item><Form.Item name={['document_data','witness_1']} label="Magaca Markhaati 1" rules={[{required:true}]}><Input/></Form.Item><Form.Item name={['document_data','witness_2']} label="Magaca Markhaati 2" rules={[{required:true}]}><Input/></Form.Item></>}
+            {resolutionMethod&&<Tag color="gold" style={{marginBottom:16}}>Meelaha saxiixyada warqadda daabacan way bannaan yihiin si gacanta loogu saxiixo.</Tag>}
+            <Space style={{width:'100%',justifyContent:'flex-end'}}><Button onClick={()=>setResolveOpen(false)}>Jooji</Button><Button icon={<EyeOutlined/>} onClick={previewDraft}>Preview</Button><Button type="primary" htmlType="submit" loading={actionLoading}>Abuur Warqad & Xir</Button></Space>
+          </Form>
+        </Modal>
+        <Modal width={850} title="Preview Warqadda Xalinta" open={!!previewHtml} onCancel={()=>setPreviewHtml('')} footer={<Space><Button onClick={()=>setPreviewHtml('')}>Xir</Button><Button icon={<PrinterOutlined/>} onClick={()=>{const win=window.open('','_blank');win.document.write(previewHtml);win.document.close();setTimeout(()=>win.print(),300)}}>Print / Download PDF</Button></Space>}><iframe title="Resolution document preview" srcDoc={previewHtml} style={{width:'100%',height:'65vh',border:'1px solid #ddd'}}/></Modal>
+        <Modal title="Dib u fur OB-ga" open={reopenOpen} onCancel={()=>setReopenOpen(false)} footer={null}>
+          <Form form={reopenForm} layout="vertical" onFinish={reopenOb}><Form.Item name="reason" label="Sababta dib loogu furayo" rules={[{required:true,min:5}]}><Input.TextArea rows={4}/></Form.Item><Space style={{width:'100%',justifyContent:'flex-end'}}><Button onClick={()=>setReopenOpen(false)}>Jooji</Button><Button type="primary" htmlType="submit" loading={actionLoading}>Dib u fur</Button></Space></Form>
+        </Modal>
       </Space>
     </ProtectedRoute>
   );

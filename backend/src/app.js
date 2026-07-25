@@ -41,6 +41,9 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const searchRoutes = require('./routes/searchRoutes');
 const courtRoutes = require('./routes/courtRoutes');
 const cidRoutes = require('./routes/cidRoutes');
+const districtOperationsRoutes = require('./routes/districtOperationsRoutes');
+const legalPersonnelRoutes = require('./routes/legalPersonnelRoutes');
+const warrantRoutes = require('./routes/warrantRoutes');
 
 const app = express();
 
@@ -82,6 +85,9 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/court', courtRoutes);
 app.use('/api/cid', cidRoutes);
+app.use('/api/district-operations', districtOperationsRoutes);
+app.use('/api/legal-personnel', legalPersonnelRoutes);
+app.use('/api/warrants', warrantRoutes);
 
 // Root route
 app.get('/', (req, res) => {

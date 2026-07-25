@@ -166,13 +166,15 @@ export default function JailDashboard() {
     { title: 'Cell', render: (_, row) => row.cell_number ? `${row.block_name} / ${row.cell_number} (${row.cell_occupancy || 0}/${row.cell_capacity || '?'})` : 'Unassigned' },
     { title: 'Sentence', dataIndex: 'sentence_status', render: (value) => <Tag>{value}</Tag> },
     { title: 'Release', render: (_, row) => row.expected_release_date ? <Space orientation="vertical" size={0}><span>{dayjs(row.expected_release_date).format('DD MMM YYYY')}</span><Tag color={Number(row.days_remaining) <= 7 ? 'red' : Number(row.days_remaining) <= 30 ? 'orange' : 'blue'}>{row.days_remaining} days left</Tag></Space> : 'N/A' },
+    { title: 'Release workflow', render: (_, row) => row.release_approval_status ? <Tag color={row.release_approval_status === 'rejected' ? 'red' : row.release_approval_status === 'released' ? 'green' : 'gold'}>{row.release_approval_status.replaceAll('_', ' ')}</Tag> : 'Not requested' },
     { title: 'Last roll call', render: (_, row) => row.last_roll_status ? <Tag color={row.last_roll_status === 'present' ? 'green' : 'orange'}>{row.last_roll_status}</Tag> : 'Not recorded' },
     {
       title: 'Actions',
       render: (_, row) => <Space>
         <Button size="small" onClick={() => openAction('cell', row)}>Assign cell</Button>
         <Button size="small" type="primary" onClick={() => openAction('roll', row)}>Roll call</Button>
-        {row.expected_release_date && Number(row.days_remaining) <= 30 && <Button size="small" danger onClick={() => openAction('release', row)}>Release review</Button>}
+        {row.expected_release_date && Number(row.days_remaining) <= 30 && (!row.release_approval_status || ['rejected', 'released'].includes(row.release_approval_status))
+          && <Button size="small" danger onClick={() => openAction('release', row)}>Release review</Button>}
       </Space>,
     },
   ];

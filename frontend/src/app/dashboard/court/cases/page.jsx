@@ -29,6 +29,7 @@ import {
   BankOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
+  EditOutlined,
   EllipsisOutlined,
   FileDoneOutlined,
   FileTextOutlined,
@@ -170,9 +171,35 @@ export default function CourtCasesPage() {
     form.resetFields();
 
     const values = initial.values || {};
+    const assignedJudge = selected?.courtCase?.assigned_judge || selected?.courtCase?.judge_name || selected?.courtCase?.judge || '';
+    if (type === 'hearing') {
+      values.assigned_judge = assignedJudge;
+    }
+    if (type === 'judgment') {
+      values.judge_name = assignedJudge;
+      values.decision_date = dayjs();
+    }
     if (type === 'sentence') {
+      const sent = initial.sentence || (selected?.sentences?.length > 0 ? selected.sentences[0] : null);
+      if (sent) {
+        values.criminal_id = sent.criminal_id || values.criminal_id;
+        values.sentence_type = sent.sentence_type || 'imprisonment';
+        values.sentence_date = sent.sentence_date ? dayjs(sent.sentence_date) : dayjs();
+        values.fine_amount = sent.fine_amount !== undefined && sent.fine_amount !== null ? sent.fine_amount : values.fine_amount;
+        if (sent.duration) {
+          const parts = String(sent.duration).trim().split(' ');
+          if (parts.length >= 2 && !isNaN(Number(parts[0]))) {
+            values.duration_value = Number(parts[0]);
+            values.duration_unit = parts[1].toLowerCase();
+          }
+        }
+      } else {
+        values.sentence_type = values.sentence_type || 'imprisonment';
+        values.sentence_date = values.sentence_date ? dayjs(values.sentence_date) : dayjs();
+        values.duration_unit = values.duration_unit || 'sano';
+      }
       const suspects = selected?.suspects || [];
-      if (suspects.length === 1) {
+      if (!values.criminal_id && suspects.length === 1) {
         values.criminal_id = suspects[0].id;
         values.defendant_name = suspects[0].full_name;
       }
@@ -240,11 +267,20 @@ export default function CourtCasesPage() {
         });
       }
       if (modalType === 'sentence') {
-        const hasDuration = Boolean(String(values.duration || '').trim());
+        let durationStr = values.duration;
+        if ((values.sentence_type === 'imprisonment' || values.sentence_type === 'both') && values.duration_value) {
+          durationStr = `${values.duration_value} ${values.duration_unit || 'sano'}`;
+        }
+        const hasDuration = Boolean(String(durationStr || '').trim());
         const hasFine = Number(values.fine_amount) > 0;
         const sentenceType = hasDuration && hasFine ? 'both' : values.sentence_type;
         await api.post(`/court/cases/${id}/sentences`, {
           ...values,
+          duration: durationStr,
+          sentence_period_value: values.duration_value,
+          sentence_period_unit: values.duration_unit,
+          sentence_start_date: values.sentence_date ? formatDate(values.sentence_date) : null,
+          expected_release_date: values.expected_release_date ? formatDate(values.expected_release_date) : null,
           sentence_type: sentenceType,
           sentence_date: formatDate(values.sentence_date),
         }, {
@@ -457,6 +493,11 @@ export default function CourtCasesPage() {
                 })();
 
                 const overflowItems = [
+                  can('sentence') ? {
+                    key: 'sentence',
+                    label: selected?.sentences?.length > 0 ? 'Wax ka baddal Xukunka (Update Sentence)' : 'Xukun rid (Issue Sentence)',
+                    onClick: () => openModal('sentence'),
+                  } : null,
                   can('judgment') && !canRecordJudgment ? {
                     key: 'judgment',
                     label: "Duubaa Go'aanka Maxkamadda",
@@ -634,6 +675,14 @@ export default function CourtCasesPage() {
                                   { title: 'Muddada', dataIndex: 'duration', render: safe },
                                   { title: 'Ganaaxa', dataIndex: 'fine_amount', render: (v) => v === null || v === undefined ? 'N/A' : formatUSD(v) },
                                   { title: 'Taariikhda', dataIndex: 'sentence_date' },
+                                  {
+                                    title: 'Ficil',
+                                    render: (_, row) => can('sentence') && (
+                                      <Button size="small" icon={<EditOutlined />} onClick={() => openModal('sentence', { sentence: row })}>
+                                        Baddal Xukunka
+                                      </Button>
+                                    ),
+                                  },
                                 ]}
                               />
                             </div>
@@ -800,13 +849,26 @@ export default function CourtCasesPage() {
       layout="vertical"
       onFinish={submitModal}
       onValuesChange={(_, allValues) => {
-        if (
-          modalType === 'sentence'
-          && String(allValues.duration || '').trim()
-          && Number(allValues.fine_amount) > 0
-          && allValues.sentence_type !== 'both'
-        ) {
-          form.setFieldValue('sentence_type', 'both');
+        if (modalType === 'sentence') {
+          const periodVal = allValues.duration_value;
+          const periodUnit = allValues.duration_unit || 'sano';
+          const startDate = allValues.sentence_date;
+
+          if (periodVal && startDate) {
+            const num = Number(periodVal);
+            const start = dayjs.isDayjs(startDate) ? startDate : dayjs(startDate);
+            if (!isNaN(num) && num > 0 && start && typeof start.isValid === 'function' && start.isValid()) {
+              let expected;
+              const normUnit = String(periodUnit).toLowerCase();
+              if (normUnit === 'sano' || normUnit === 'years') expected = start.add(num, 'year');
+              else if (normUnit === 'bilood' || normUnit === 'months') expected = start.add(num, 'month');
+              else if (normUnit === 'cisho' || normUnit === 'days') expected = start.add(num, 'day');
+
+              if (expected && typeof expected.isValid === 'function' && expected.isValid()) {
+                form.setFieldValue('expected_release_date', expected);
+              }
+            }
+          }
         }
       }}
     >
@@ -941,14 +1003,87 @@ export default function CourtCasesPage() {
                 </Form.Item>
               )}
             </Col>
-            <Col span={12}><Form.Item name="sentence_type" label="Nooca Xukunka" rules={[{ required: true }]}><Select options={[
-              { value: 'imprisonment', label: 'Xabsi' },
-              { value: 'fine', label: 'Ganaax Lacageed' },
-              { value: 'both', label: 'Xabsi iyo Ganaax' },
+            <Col span={12}><Form.Item name="sentence_type" label="Nooca Xukunka" initialValue="imprisonment" rules={[{ required: true }]}><Select options={[
+              { value: 'imprisonment', label: 'Xabsi (Imprisonment)' },
+              { value: 'fine', label: 'Ganaax Lacageed (Fine)' },
+              { value: 'both', label: 'Xabsi iyo Ganaax (Both)' },
             ]} /></Form.Item></Col>
             <Col span={12}><Form.Item name="sentence_date" label="Taariikhda Xukunka"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="duration" label="Muddada Xukunka"><Input placeholder="tusaale. 2 sano, 6 bilood..." /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fine_amount" label="Cadadka Ganaaxa (USD)"><InputNumber min={0} precision={2} step={0.01} stringMode prefix="$" style={{ width: '100%' }} /></Form.Item></Col>
+
+            <Form.Item noStyle shouldUpdate={(prev, curr) => prev.sentence_type !== curr.sentence_type}>
+              {({ getFieldValue }) => {
+                const type = getFieldValue('sentence_type') || 'imprisonment';
+                const showImprisonment = type === 'imprisonment' || type === 'both';
+                const showFine = type === 'fine' || type === 'both';
+
+                return (
+                  <>
+                    {showImprisonment && (
+                      <>
+                        <Col span={showFine ? 12 : 12}>
+                          <Row gutter={8}>
+                            <Col span={14}>
+                              <Form.Item
+                                name="duration_value"
+                                label="Muddada Xabsiga"
+                                rules={[
+                                  { required: true, message: 'Geli nambar' },
+                                  {
+                                    validator: (_, val) => {
+                                      if (val === undefined || val === null || val === '') return Promise.resolve();
+                                      const num = Number(val);
+                                      if (isNaN(num) || num <= 0 || !Number.isInteger(num)) {
+                                        return Promise.reject(new Error('Geli nambar togan (tusaale: 2)'));
+                                      }
+                                      if (num > 100) {
+                                        return Promise.reject(new Error('Muddadu ma ka badan karto 100'));
+                                      }
+                                      return Promise.resolve();
+                                    }
+                                  }
+                                ]}
+                              >
+                                <InputNumber min={1} max={100} style={{ width: '100%' }} placeholder="tusaale. 2" />
+                              </Form.Item>
+                            </Col>
+                            <Col span={10}>
+                              <Form.Item
+                                name="duration_unit"
+                                label="Unugga"
+                                initialValue="sano"
+                                rules={[{ required: true, message: 'Dooro unug' }]}
+                              >
+                                <Select options={[
+                                  { value: 'sano', label: 'Sano (Years)' },
+                                  { value: 'bilood', label: 'Bilood (Months)' },
+                                  { value: 'cisho', label: 'Cisho (Days)' },
+                                ]} />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name="expected_release_date" label="Taariikhda Sii Daaynta (Expected Release Date)">
+                            <DatePicker style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </>
+                    )}
+                    {showFine && (
+                      <Col span={showImprisonment ? 12 : 24}>
+                        <Form.Item
+                          name="fine_amount"
+                          label="Cadadka Ganaaxa Lacageed (Fine Amount USD)"
+                          rules={[{ required: true, message: 'Fadlan geli cadadka ganaaxa lacageed' }]}
+                        >
+                          <InputNumber min={0} precision={2} step={0.01} stringMode prefix="$" style={{ width: '100%' }} placeholder="tusaale. $500.00" />
+                        </Form.Item>
+                      </Col>
+                    )}
+                  </>
+                );
+              }}
+            </Form.Item>
           </Row>
         );
       })()}

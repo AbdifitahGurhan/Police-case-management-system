@@ -395,7 +395,7 @@ const scheduleHearing = async (req, res, next) => {
     }
     const result = await withTransaction(async (connection) => {
       const [[courtCase]] = await connection.query(
-        'SELECT status, closure_date FROM court_cases WHERE id = ? FOR UPDATE',
+        'SELECT status, closure_date, assigned_judge FROM court_cases WHERE id = ? FOR UPDATE',
         [req.params.id]
       );
       if (!courtCase) throw new WorkflowError('Court case not found.', 404);
@@ -405,10 +405,11 @@ const scheduleHearing = async (req, res, next) => {
       if (courtCase.closure_date && hearing_date > String(courtCase.closure_date).slice(0, 10)) {
         throw new WorkflowError('Hearing date cannot be after Court Case closure.');
       }
+      const effectiveJudge = assigned_judge || courtCase.assigned_judge || null;
       const [insert] = await connection.query(
         `INSERT INTO court_hearings (court_case_id, hearing_type, hearing_date, hearing_time, court_room, assigned_judge, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [req.params.id, hearing_type, hearing_date, hearing_time, court_room || null, assigned_judge || null, actor(req)]
+        [req.params.id, hearing_type, hearing_date, hearing_time, court_room || null, effectiveJudge, actor(req)]
       );
       await connection.query(
         "UPDATE court_cases SET status = 'hearing_scheduled' WHERE id = ? AND status IN ('registered','awaiting_hearing')",
@@ -488,7 +489,7 @@ const saveJudgment = async (req, res, next) => {
     }
     const saved = await withTransaction(async (connection) => {
       const [[courtCase]] = await connection.query(
-        'SELECT police_case_id, status, closure_date FROM court_cases WHERE id = ? FOR UPDATE',
+        'SELECT police_case_id, status, closure_date, assigned_judge FROM court_cases WHERE id = ? FOR UPDATE',
         [req.params.id]
       );
       if (!courtCase) throw new WorkflowError('Court case not found.', 404);
@@ -499,10 +500,11 @@ const saveJudgment = async (req, res, next) => {
       if (courtCase.closure_date && effectiveDate > String(courtCase.closure_date).slice(0, 10)) {
         throw new WorkflowError('Judgment decision date cannot be after closure date.');
       }
+      const effectiveJudgeName = judge_name || courtCase.assigned_judge || req.user.full_name || req.user.username;
       const [insert] = await connection.query(
         `INSERT INTO court_judgments (court_case_id, judge_name, decision_date, decision_type, judgment_summary, created_by)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [req.params.id, judge_name || null, effectiveDate, decision_type, judgment_summary, actor(req)]
+        [req.params.id, effectiveJudgeName, effectiveDate, decision_type, judgment_summary, actor(req)]
       );
       await connection.query("UPDATE court_cases SET status = 'judgment_issued', final_outcome = ? WHERE id = ?", [decision_type, req.params.id]);
       await connection.query("UPDATE cases SET status = 'court_decided' WHERE id = ?", [courtCase.police_case_id]);
@@ -520,7 +522,20 @@ const saveJudgment = async (req, res, next) => {
 
 const issueSentence = async (req, res, next) => {
   try {
-    const { criminal_id, sentence_type, duration, fine_amount, sentence_date } = req.body;
+    const {
+      criminal_id,
+      sentence_type,
+      duration,
+      duration_value,
+      duration_unit,
+      sentence_period_value,
+      sentence_period_unit,
+      sentence_start_date,
+      expected_release_date,
+      fine_amount,
+      sentence_date
+    } = req.body;
+
     if (!criminal_id || !sentence_type) {
       return res.status(400).json({ success: false, message: 'criminal_id and sentence_type are required.' });
     }
@@ -549,19 +564,54 @@ const issueSentence = async (req, res, next) => {
         throw new WorkflowError('A conviction judgment is required before sentencing.');
       }
       validateJudgmentSentenceConsistency(judgment.judgment_summary, { sentence_type, duration, fine_amount });
+
+      const pVal = sentence_period_value ? Number(sentence_period_value) : (duration_value ? Number(duration_value) : null);
+      const pUnit = sentence_period_unit || duration_unit || 'days';
+      const sDate = sentence_start_date || sentence_date || new Date().toISOString().slice(0, 10);
+      let expRelease = expected_release_date || null;
+
+      if (!expRelease && pVal && sDate) {
+        const start = new Date(`${sDate}T00:00:00Z`);
+        if (!isNaN(start.getTime())) {
+          if (pUnit === 'days' || pUnit === 'cisho') start.setUTCDate(start.getUTCDate() + pVal);
+          else if (pUnit === 'months' || pUnit === 'bilood') start.setUTCMonth(start.getUTCMonth() + pVal);
+          else if (pUnit === 'years' || pUnit === 'sano') start.setUTCFullYear(start.getUTCFullYear() + pVal);
+          expRelease = start.toISOString().slice(0, 10);
+        }
+      }
+
+      const durationText = duration || (pVal ? `${pVal} ${pUnit}` : null);
+
       const [insert] = await connection.query(
         `INSERT INTO court_sentences
-          (court_case_id, criminal_id, sentence_type, duration, fine_amount, sentence_date, created_by)
-         VALUES (?, ?, ?, ?, ?, COALESCE(?, CURDATE()), ?)`,
-        [req.params.id, criminal_id, sentence_type, duration || null, fine_amount || null, sentence_date || null, actor(req)]
+          (court_case_id, criminal_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURDATE()), ?)`,
+        [
+          req.params.id,
+          criminal_id,
+          req.body.defendant_name || defendant.full_name,
+          sentence_type,
+          durationText,
+          fine_amount || null,
+          sDate,
+          actor(req)
+        ]
       );
       await connection.query("UPDATE court_cases SET status = 'sentenced' WHERE id = ? AND status = 'judgment_issued'", [req.params.id]);
+
       const [arrestUpdate] = await connection.query(
-        `UPDATE arrests SET court_decision = 'convicted', sentence_status = 'sentenced',
-          charges = CASE WHEN LOWER(COALESCE(charges,'')) IN ('','not charged','not_charged') THEN 'convicted by court' ELSE charges END
+        `UPDATE arrests
+         SET court_decision = 'convicted',
+             sentence_status = CASE WHEN ? IN ('imprisonment', 'both') THEN 'serving' ELSE sentence_status END,
+             sentence_period_value = COALESCE(?, sentence_period_value),
+             sentence_period_unit = COALESCE(?, sentence_period_unit),
+             sentence_start_date = COALESCE(?, sentence_start_date),
+             expected_release_date = COALESCE(?, expected_release_date),
+             charges = CASE WHEN LOWER(COALESCE(charges,'')) IN ('','not charged','not_charged') THEN 'convicted by court' ELSE charges END
          WHERE case_id = ? AND suspect_id = ?`,
-        [defendant.police_case_id, criminal_id]
+        [sentence_type, pVal, pUnit, sDate, expRelease, defendant.police_case_id, criminal_id]
       );
+
       if (arrestUpdate.affectedRows === 0 && ['imprisonment', 'both'].includes(sentence_type)) {
         const [[policeCase]] = await connection.query(
           'SELECT district_id FROM cases WHERE id = ?',
@@ -570,19 +620,22 @@ const issueSentence = async (req, res, next) => {
         await connection.query(
           `INSERT INTO arrests
             (case_id, suspect_id, police_station_id, arrested_by, arrest_date, arrest_location,
-             charges, court_decision, court_decision_notes, sentence_start_date,
+             charges, court_decision, court_decision_notes, sentence_start_date, sentence_period_value, sentence_period_unit, expected_release_date,
              sentence_status, bail_status, notes)
            VALUES (?, ?, ?, ?, COALESCE(?, CURDATE()), 'Court commitment',
-                   'convicted by court', 'convicted', ?, COALESCE(?, CURDATE()),
-                   'sentenced', 'no_bail', 'Automatically created from an imprisonment sentence.')`,
+                   'convicted by court', 'convicted', ?, COALESCE(?, CURDATE()), ?, ?, ?,
+                   'serving', 'no_bail', 'Automatically created from an imprisonment sentence.')`,
           [
             defendant.police_case_id,
             criminal_id,
             policeCase?.district_id || null,
             actor(req),
-            sentence_date || null,
+            sDate,
             judgment.judgment_summary,
-            sentence_date || null,
+            sDate,
+            pVal,
+            pUnit,
+            expRelease
           ]
         );
       }

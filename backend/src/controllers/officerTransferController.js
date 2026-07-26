@@ -13,23 +13,27 @@ exports.transferOfficer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    // Get current assignment
-    const [currentRows] = await connection.query('SELECT * FROM officer_assignments WHERE officer_id = ? AND is_current = 1', [officer_id]);
+    // 1. Get current active assignment for transfer history
+    const [currentRows] = await connection.query('SELECT * FROM officer_assignments WHERE officer_id = ? AND is_current = 1 ORDER BY assigned_at DESC LIMIT 1', [officer_id]);
     const currentAssignment = currentRows.length ? currentRows[0] : null;
 
-    if (currentAssignment) {
-      // Mark old as inactive
-      await connection.query('UPDATE officer_assignments SET is_current = 0 WHERE id = ?', [currentAssignment.id]);
-    }
+    // 2. Deactivate ALL previous active assignments for this officer to ensure single active location
+    await connection.query('UPDATE officer_assignments SET is_current = 0 WHERE officer_id = ?', [officer_id]);
 
-    // Create new assignment
-    const [newAssign] = await connection.query(
+    // 3. Clear this officer from being commander of any other station/unit across all tiers
+    await connection.query('UPDATE state_administrations SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
+    await connection.query('UPDATE regions SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
+    await connection.query('UPDATE cities SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
+    await connection.query('UPDATE districts SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
+
+    // 4. Create new single active assignment
+    await connection.query(
       `INSERT INTO officer_assignments (officer_id, assignment_type, assignment_id, is_current, assigned_by, remarks)
        VALUES (?, ?, ?, 1, ?, ?)`,
       [officer_id, to_assignment_type, to_assignment_id || null, req.user.username, remarks]
     );
 
-    // Record transfer
+    // 5. Record transfer in history
     await connection.query(
       `INSERT INTO officer_transfers (officer_id, from_assignment_type, from_assignment_id, to_assignment_type, to_assignment_id, transfer_reason, transferred_by, remarks)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -45,8 +49,7 @@ exports.transferOfficer = async (req, res, next) => {
       ]
     );
 
-    // Replace the commander on the new center profile
-    // Determine the table to update
+    // 6. Assign commander on the target center profile if applicable
     const tableMap = {
       'State Administration': 'state_administrations',
       'Region': 'regions',

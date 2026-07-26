@@ -57,7 +57,9 @@ export const positiveIntegerRule = (label = 'Value', min = 1, max = 120) => ({
 export const noFutureDateRule = (label = 'Date') => ({
   validator: (_, value) => {
     if (!value) return Promise.resolve();
-    if (dayjs(value).isAfter(dayjs(), 'day')) {
+    const d = dayjs.isDayjs(value) ? value : dayjs(value);
+    if (!d || typeof d.isValid !== 'function' || !d.isValid()) return Promise.resolve();
+    if (d.isAfter(dayjs(), 'day')) {
       return Promise.reject(new Error(`${label} cannot be in the future.`));
     }
     return Promise.resolve();
@@ -67,23 +69,31 @@ export const noFutureDateRule = (label = 'Date') => ({
 export const noFutureDateTimeRule = (label = 'Date/time') => ({
   validator: (_, value) => {
     if (!value) return Promise.resolve();
-    if (dayjs(value).isAfter(dayjs())) {
+    const d = dayjs.isDayjs(value) ? value : dayjs(value);
+    if (!d || typeof d.isValid !== 'function' || !d.isValid()) return Promise.resolve();
+    if (d.isAfter(dayjs())) {
       return Promise.reject(new Error(`${label} cannot be in the future.`));
     }
     return Promise.resolve();
   },
 });
 
-export const disabledFutureDate = (current) => current && current.isAfter(dayjs().endOf('day'));
+export const disabledFutureDate = (current) => {
+  if (!current || typeof current.isAfter !== 'function') return false;
+  return current.isAfter(dayjs().endOf('day'));
+};
 
-export const disabledUnder8DobDate = (current) => current && current.isAfter(dayjs().subtract(8, 'year').endOf('day'));
+export const disabledUnder8DobDate = (current) => {
+  if (!current || typeof current.isAfter !== 'function') return false;
+  return current.isAfter(dayjs().subtract(8, 'year').endOf('day'));
+};
 
 export const minimumAge8Rule = (label = 'Taariikhda dhalashada') => ({
   validator: (_, value) => {
     if (!value) return Promise.resolve();
-    const dob = dayjs(value);
-    if (!dob.isValid()) return Promise.resolve();
-    const age = dayjs().diff(dob, 'year');
+    const d = dayjs.isDayjs(value) ? value : dayjs(value);
+    if (!d || typeof d.isValid !== 'function' || !d.isValid()) return Promise.resolve();
+    const age = dayjs().diff(d, 'year');
     if (age < 8) {
       return Promise.reject(new Error(`Da'da eedaysanaha/dambiilaha la ma ogola inay ka yaraato 8 jir (Age must be at least 8 years old).`));
     }
@@ -91,10 +101,43 @@ export const minimumAge8Rule = (label = 'Taariikhda dhalashada') => ({
   },
 });
 
+export const somaliPhoneRule = {
+  validator: (_, value) => {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw) return Promise.resolve();
+    const cleaned = raw.replace(/[\s-]/g, '');
+    const somaliPhoneRegex = /^(\+?252|0)?(6[1-9]|7[7-9]|90)\d{7,8}$/;
+    if (!somaliPhoneRegex.test(cleaned)) {
+      return Promise.reject(new Error('Fadlan geli lambar teleefon oo Soomaali ah oo sax ah (tusaale: +25261XXXXXXX ama 061XXXXXXX).'));
+    }
+    return Promise.resolve();
+  },
+};
+
+export const disabledUnder18DobDate = (current) => {
+  if (!current || typeof current.isAfter !== 'function') return false;
+  return current.isAfter(dayjs().subtract(18, 'year').endOf('day'));
+};
+
+export const minimumAge18Rule = (label = 'Taariikhda dhalashada') => ({
+  validator: (_, value) => {
+    if (!value) return Promise.resolve();
+    const d = dayjs.isDayjs(value) ? value : dayjs(value);
+    if (!d || typeof d.isValid !== 'function' || !d.isValid()) return Promise.resolve();
+    const age = dayjs().diff(d, 'year');
+    if (age < 18) {
+      return Promise.reject(new Error(`Da'da saraakiisha waa inay ahaataa ugu yaraan 18 sano (Officer must be at least 18 years old).`));
+    }
+    return Promise.resolve();
+  },
+});
+
 export const nameRules = (label = 'Name') => [requiredRule(label), textLengthRule(label, 2, 150)];
 export const optionalNameRules = (label = 'Name') => [textLengthRule(label, 2, 150)];
-export const phoneRules = [phoneRule];
-export const requiredPhoneRules = [requiredRule('Phone number'), phoneRule];
+export const phoneRules = [somaliPhoneRule];
+export const requiredPhoneRules = [requiredRule('Phone number'), somaliPhoneRule];
+export const somaliPhoneRules = [somaliPhoneRule];
+export const requiredSomaliPhoneRules = [requiredRule('Phone number'), somaliPhoneRule];
 export const usernameRules = [requiredRule('Username'), usernameRule];
 export const passwordRules = [requiredRule('Password'), passwordRule];
 export const optionalPasswordRules = [passwordRule];
@@ -177,3 +220,21 @@ export const getEvidenceUploadConfig = (evidenceType = 'document') => {
     validate: () => null,
   };
 };
+
+export const validateOfficerImage = (file) => {
+  if (!file) return null;
+  const fileName = file.name || '';
+  const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : '';
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg'];
+  const isExtValid = allowedExts.includes(ext);
+  const isMimeValid = file.type ? file.type.startsWith('image/') : isExtValid;
+
+  if (!isExtValid || !isMimeValid) {
+    return 'Fadlan soo geli sawir oo keliya (.jpg, .jpeg, .png, .webp, .gif)';
+  }
+  if (file.size && file.size > 5 * 1024 * 1024) {
+    return 'Sawirka waa inuu ka yaraadaa 5MB.';
+  }
+  return null;
+};
+

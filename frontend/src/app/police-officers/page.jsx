@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, App, Upload, Avatar, Tag, DatePicker, Row, Col } from 'antd';
+import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, App, Upload, Avatar, Tag, DatePicker, Row, Col, Image } from 'antd';
 import { PlusOutlined, EditOutlined, UploadOutlined, SwapOutlined, EyeOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -8,17 +8,29 @@ import api from '@/services/api';
 import dayjs from 'dayjs';
 import {
   disabledFutureDate,
+  disabledUnder18DobDate,
   emailRule,
+  minimumAge18Rule,
   nameRules,
   noFutureDateRule,
   phoneRules,
   requiredRule,
   textLengthRule,
+  validateOfficerImage,
 } from '@/utils/validation';
 
 const { Title } = Typography;
 const { Option } = Select;
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+
+const getImageUrl = (pathStr) => {
+  if (!pathStr) return null;
+  if (pathStr.startsWith('http://') || pathStr.startsWith('https://') || pathStr.startsWith('data:')) {
+    return pathStr;
+  }
+  const cleanPath = pathStr.startsWith('/') ? pathStr : `/${pathStr}`;
+  return `${API_ORIGIN}${cleanPath}`;
+};
 
 export default function PoliceOfficersPage() {
   const { message } = App.useApp();
@@ -105,7 +117,8 @@ export default function PoliceOfficersPage() {
         ...record,
         date_of_birth: record.date_of_birth ? dayjs(record.date_of_birth) : null
       });
-      setFileList(record.profile_image ? [{ uid: '-1', name: 'photo.png', status: 'done', url: `${API_ORIGIN}${record.profile_image}` }] : []);
+      const imgUrl = getImageUrl(record.profile_image);
+      setFileList(imgUrl ? [{ uid: '-1', name: 'photo.png', status: 'done', url: imgUrl, thumbUrl: imgUrl }] : []);
     } else {
       form.resetFields();
       setFileList([]);
@@ -134,8 +147,14 @@ export default function PoliceOfficersPage() {
         }
       });
 
-      if (fileList.length > 0 && fileList[0].originFileObj) {
-        formData.append('profile_image', fileList[0].originFileObj);
+      const selectedFileObj = fileList.length > 0 ? (fileList[0].originFileObj || (fileList[0] instanceof File ? fileList[0] : null)) : null;
+      if (selectedFileObj) {
+        const errorMsg = validateOfficerImage(selectedFileObj);
+        if (errorMsg) {
+          message.error(errorMsg);
+          return;
+        }
+        formData.append('profile_image', selectedFileObj);
       }
 
       if (editingRecord) {
@@ -184,17 +203,47 @@ export default function PoliceOfficersPage() {
   };
 
   const uploadProps = {
-    onRemove: () => setFileList([]),
-    beforeUpload: (file) => {
-      setFileList([file]);
-      return false; // Prevent auto upload
-    },
+    accept: 'image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif',
     fileList,
     maxCount: 1,
+    listType: 'picture',
+    onRemove: () => setFileList([]),
+    beforeUpload: (file) => {
+      const errorMsg = validateOfficerImage(file);
+      if (errorMsg) {
+        message.error(errorMsg);
+        return Upload.LIST_IGNORE;
+      }
+      const previewUrl = URL.createObjectURL(file);
+      const fileObj = {
+        uid: file.uid || String(Date.now()),
+        name: file.name,
+        status: 'done',
+        url: previewUrl,
+        thumbUrl: previewUrl,
+        originFileObj: file,
+      };
+      setFileList([fileObj]);
+      return false; // Prevent auto upload
+    },
   };
 
   const columns = [
-    { title: 'Photo', dataIndex: 'profile_image', key: 'profile_image', render: i => <Avatar src={i ? `${API_ORIGIN}${i}` : `https://ui-avatars.com/api/?name=Officer`} /> },
+    {
+      title: 'Photo',
+      dataIndex: 'profile_image',
+      key: 'profile_image',
+      render: (i, record) => (
+        <Image
+          src={getImageUrl(i)}
+          alt={record.full_name}
+          width={44}
+          height={44}
+          style={{ objectFit: 'cover', borderRadius: '50%', border: '1px solid #e5e7eb' }}
+          fallback={`https://ui-avatars.com/api/?name=${encodeURIComponent(record.full_name || 'Officer')}&background=0D8ABC&color=fff`}
+        />
+      ),
+    },
     { title: 'Full Name', dataIndex: 'full_name', key: 'full_name' },
     { title: 'Force No.', dataIndex: 'force_number', key: 'force_number', render: f => <Tag color="blue">{f}</Tag> },
     { title: 'Rank', dataIndex: 'rank_name', key: 'rank_name' },
@@ -288,14 +337,14 @@ export default function PoliceOfficersPage() {
 
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="phone" label="Phone" rules={phoneRules}><Input /></Form.Item>
+                <Form.Item name="phone" label="Phone" rules={phoneRules}><Input placeholder="e.g. +252615555555" /></Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item name="email" label="Email" rules={[emailRule]}><Input type="email" /></Form.Item>
               </Col>
             </Row>
-            <Form.Item name="date_of_birth" label="Date of Birth" rules={[noFutureDateRule('Date of birth')]}>
-              <DatePicker style={{ width: '100%' }} disabledDate={disabledFutureDate} />
+            <Form.Item name="date_of_birth" label="Date of Birth" rules={[noFutureDateRule('Date of birth'), minimumAge18Rule('Date of birth')]}>
+              <DatePicker style={{ width: '100%' }} disabledDate={disabledUnder18DobDate} />
             </Form.Item>
           </Form>
         </Modal>

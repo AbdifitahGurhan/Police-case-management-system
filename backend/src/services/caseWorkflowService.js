@@ -77,8 +77,15 @@ const validateSentence = ({ sentence_type, duration, fine_amount }) => {
   if (!['imprisonment', 'fine', 'both'].includes(type)) {
     throw new WorkflowError('sentence_type must be imprisonment, fine, or both.', 400, 'INVALID_SENTENCE');
   }
-  if (['imprisonment', 'both'].includes(type) && !String(duration || '').trim()) {
-    throw new WorkflowError('Imprisonment requires a prison duration.', 400, 'INVALID_SENTENCE');
+  if (['imprisonment', 'both'].includes(type)) {
+    const durStr = String(duration || '').trim();
+    if (!durStr) {
+      throw new WorkflowError('Imprisonment requires a prison duration.', 400, 'INVALID_SENTENCE');
+    }
+    const match = durStr.match(/^(\d+)\s*(sano|bilood|cisho|years?|months?|days?)$/i);
+    if (!match || Number(match[1]) <= 0) {
+      throw new WorkflowError('Duration must specify a valid positive number and unit (e.g., "2 sano", "6 bilood", "10 days"). Plain unvalidated text is not allowed.', 400, 'INVALID_SENTENCE');
+    }
   }
   if (['fine', 'both'].includes(type) && !(Number(fine_amount) > 0)) {
     throw new WorkflowError('A fine requires a positive fine amount.', 400, 'INVALID_SENTENCE');

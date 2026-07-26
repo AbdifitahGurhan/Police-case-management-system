@@ -9,7 +9,7 @@ require('dotenv').config();
 const { testConnection, query } = require('./config/database');
 const { connectMongoDB } = require('./config/mongodb');
 const { syncAllCidCases } = require('./services/cidService');
-const { runOneTimeArrestStatusRepair } = require('./utils/dataRepair');
+const { runOneTimeArrestStatusRepair, runOneTimeOfficerAssignmentRepair } = require('./utils/dataRepair');
 const errorHandler = require('./middleware/errorHandler');
 
 // Route imports
@@ -105,6 +105,7 @@ const start = async () => {
     await testConnection();
     const db = require('./config/database');
     await runOneTimeArrestStatusRepair(db);
+    await runOneTimeOfficerAssignmentRepair(db);
     await connectMongoDB();
     try {
       console.log('🔄 Running initial CID dashboard cases synchronization...');

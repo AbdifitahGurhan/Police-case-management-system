@@ -331,15 +331,48 @@ export default function OffendersPage() {
     }
   };
 
+  const handleSentenceFormValuesChange = (changedValues, allValues) => {
+    const periodValue = allValues.sentence_period_value;
+    const periodUnit = allValues.sentence_period_unit;
+    const startDate = allValues.sentence_start_date;
+
+    if (periodValue && periodUnit && startDate) {
+      const val = Number(periodValue);
+      const start = dayjs.isDayjs(startDate) ? startDate : dayjs(startDate);
+
+      if (!isNaN(val) && val > 0 && start && typeof start.isValid === 'function' && start.isValid()) {
+        let expected;
+        if (periodUnit === 'days') expected = start.add(val, 'day');
+        else if (periodUnit === 'months') expected = start.add(val, 'month');
+        else if (periodUnit === 'years') expected = start.add(val, 'year');
+
+        if (expected && typeof expected.isValid === 'function' && expected.isValid()) {
+          sentenceForm.setFieldsValue({ expected_release_date: expected });
+        }
+      }
+    }
+  };
+
   const openSentence = (arrest) => {
     setSelectedArrest(arrest);
+    const startDate = arrest.sentence_start_date ? dayjs(arrest.sentence_start_date) : dayjs();
+    const periodValue = arrest.sentence_period_value ? Number(arrest.sentence_period_value) : null;
+    const periodUnit = arrest.sentence_period_unit || 'days';
+    let expectedRelease = arrest.expected_release_date ? dayjs(arrest.expected_release_date) : null;
+
+    if (!expectedRelease && periodValue && startDate && typeof startDate.isValid === 'function' && startDate.isValid()) {
+      if (periodUnit === 'days') expectedRelease = startDate.add(periodValue, 'day');
+      else if (periodUnit === 'months') expectedRelease = startDate.add(periodValue, 'month');
+      else if (periodUnit === 'years') expectedRelease = startDate.add(periodValue, 'year');
+    }
+
     sentenceForm.setFieldsValue({
       court_decision: arrest.court_decision || 'pending',
       court_decision_notes: arrest.court_decision_notes,
-      sentence_period_value: arrest.sentence_period_value,
-      sentence_period_unit: arrest.sentence_period_unit,
-      sentence_start_date: arrest.sentence_start_date ? dayjs(arrest.sentence_start_date) : null,
-      expected_release_date: arrest.expected_release_date ? dayjs(arrest.expected_release_date) : null,
+      sentence_period_value: periodValue,
+      sentence_period_unit: periodUnit,
+      sentence_start_date: startDate,
+      expected_release_date: expectedRelease,
       sentence_status: arrest.sentence_status || 'awaiting_trial',
       final_status: arrest.final_status,
       notes: arrest.notes,
@@ -828,17 +861,6 @@ export default function OffendersPage() {
               </Col>
               <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number" dependencies={['id_type']} rules={[dynamicIdNumberRule('id_type')]}><Input placeholder="14 digits (National ID) / 9 chars (Passport)" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="phone" label="Phone" rules={[{ pattern: /^[+\d][\d\s-]{6,24}$/, message: 'Use a valid phone number.' }]}><Input /></Form.Item></Col>
-              <Col xs={24} md={12}>
-                <Form.Item name="arrest_status" label="Arrest Status" initialValue="not_arrested" rules={[{ required: true }]}>
-                  <Select options={[
-                    { value: 'not_arrested', label: 'Not Arrested' },
-                    { value: 'arrested', label: 'Arrested' },
-                    { value: 'released', label: 'Released' },
-                    { value: 'wanted', label: 'Wanted' },
-                    { value: 'escaped', label: 'Escaped' },
-                  ]} />
-                </Form.Item>
-              </Col>
               <Col xs={24}><Form.Item name="address" label="Address"><Input /></Form.Item></Col>
               <Col xs={24}><Form.Item name="description" label="Profile Notes / Description"><TextArea rows={3} placeholder="Enter description or profile notes about the offender" /></Form.Item></Col>
 
@@ -1034,13 +1056,6 @@ export default function OffendersPage() {
                             { title: 'Progress', render: (_, row) => <Progress percent={row.sentence_progress_percent || 0} size="small" /> },
                             { title: 'Remaining', render: (_, row) => row.remaining_days === null ? 'N/A' : `${row.remaining_days} day(s)` },
                             { title: 'Status', dataIndex: 'sentence_status', render: (v) => <Tag color={['escaped', 'wanted'].includes(v) ? 'red' : 'blue'}>{(v || 'awaiting_trial').toUpperCase()}</Tag> },
-                            {
-                              title: 'Action',
-                              fixed: 'right',
-                              render: (_, row) => canManageSentence && (
-                                <Button size="small" icon={<EditOutlined />} onClick={() => openSentence(row)}>Update</Button>
-                              ),
-                            },
                           ]}
                         />
                       ),
@@ -1206,58 +1221,7 @@ export default function OffendersPage() {
           </Card>
         </Modal>
 
-        <Modal
-          title="Update Sentence / Prisoner Status"
-          open={sentenceOpen}
-          zIndex={1100}
-          onCancel={() => setSentenceOpen(false)}
-          onOk={() => sentenceForm.submit()}
-          confirmLoading={saving}
-          width={760}
-          destroyOnHidden
-          forceRender
-        >
-          <Form form={sentenceForm} layout="vertical" onFinish={handleSentenceUpdate}>
-            <Row gutter={16}>
-              <Col xs={24} md={12}>
-                <Form.Item name="court_decision" label="Court Decision" rules={[{ required: true }]}>
-                  <Select options={[
-                    { value: 'pending', label: 'Pending' },
-                    { value: 'convicted', label: 'Convicted' },
-                    { value: 'acquitted', label: 'Acquitted' },
-                    { value: 'dismissed', label: 'Dismissed' },
-                    { value: 'adjourned', label: 'Adjourned' },
-                  ]} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item name="sentence_status" label="Prisoner Status" rules={[{ required: true }]}>
-                  <Select options={[
-                    { value: 'awaiting_trial', label: 'Awaiting Trial' },
-                    { value: 'sentenced', label: 'Sentenced' },
-                    { value: 'serving', label: 'Serving' },
-                    { value: 'release_review', label: 'Release Review' },
-                    { value: 'completed', label: 'Completed' },
-                    { value: 'released', label: 'Released' },
-                    { value: 'wanted', label: 'Wanted' },
-                    { value: 'escaped', label: 'Escaped' },
-                    { value: 'acquitted', label: 'Acquitted' },
-                    { value: 'dismissed', label: 'Dismissed' },
-                  ]} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={8}><Form.Item name="sentence_period_value" label="Sentence Period"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="sentence_period_unit" label="Unit"><Select options={[{ value: 'days', label: 'Days' }, { value: 'months', label: 'Months' }, { value: 'years', label: 'Years' }]} /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="sentence_start_date" label="Start Date"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-              <Col xs={24} md={12}><Form.Item name="expected_release_date" label="Expected Release Date"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-              <Col xs={24} md={12}><Form.Item name="final_status" label="Final Outcome"><Input placeholder="Released, transferred, appeal pending..." /></Form.Item></Col>
-              <Col xs={24}><Form.Item name="court_decision_notes" label="Court Judgment Notes"><TextArea rows={3} /></Form.Item></Col>
-              <Col xs={24}><Form.Item name="notes" label="Officer/Admin Notes"><TextArea rows={3} /></Form.Item></Col>
-            </Row>
-          </Form>
-          <Divider />
-          <Text type="secondary">Set status to Wanted or Escaped when the prisoner leaves custody before completing the sentence.</Text>
-        </Modal>
+
 
         <Modal
           title={{

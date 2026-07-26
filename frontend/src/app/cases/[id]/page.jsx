@@ -4,13 +4,13 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
   Row, Col, Card, Typography, Space, Tag, Button, Tabs, Descriptions,
-  Timeline, Table, Modal, Form, Input, Select, Upload, Divider, App,
+  Timeline, Table, Modal, Form, Input, InputNumber, Select, Upload, Divider, App,
   DatePicker, Alert, Avatar
 } from 'antd';
 import {
   ArrowLeftOutlined, EditOutlined, ShareAltOutlined, PlusOutlined,
   UserAddOutlined, SolutionOutlined, FileAddOutlined, HistoryOutlined,
-  DownloadOutlined, TeamOutlined, UserOutlined
+  DownloadOutlined, TeamOutlined, UserOutlined, CheckCircleOutlined
 } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
@@ -54,7 +54,9 @@ export default function CaseDetailsPage() {
   const [isSuspectModalOpen, setIsSuspectModalOpen] = useState(false);
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
   const [isWitnessModalOpen, setIsWitnessModalOpen] = useState(false);
+  const [isVictimModalOpen, setIsVictimModalOpen] = useState(false);
   const [isArrestModalOpen, setIsArrestModalOpen] = useState(false);
+  const [isReleaseModalOpen, setIsReleaseModalOpen] = useState(false);
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [selectedSuspect, setSelectedSuspect] = useState(null);
   const [suspectFaceImage, setSuspectFaceImage] = useState('');
@@ -67,7 +69,9 @@ export default function CaseDetailsPage() {
   const [suspectForm] = Form.useForm();
   const [evidenceForm] = Form.useForm();
   const [witnessForm] = Form.useForm();
+  const [victimForm] = Form.useForm();
   const [arrestForm] = Form.useForm();
+  const [releaseSuspectForm] = Form.useForm();
   const [assignmentForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -164,10 +168,52 @@ export default function CaseDetailsPage() {
     }
   };
 
+  const handleOpenArrestModal = (suspect) => {
+    setSelectedSuspect(suspect);
+    arrestForm.resetFields();
+    arrestForm.setFieldsValue({
+      arrest_location: data.incident_location || data.district_name || data.station_name || '',
+      arrest_date: dayjs(),
+      bail_status: 'no_bail',
+      charges: ''
+    });
+    setIsArrestModalOpen(true);
+  };
+
+  const handleOpenReleaseModal = (suspect) => {
+    setSelectedSuspect(suspect);
+    releaseSuspectForm.resetFields();
+    releaseSuspectForm.setFieldsValue({
+      release_reason: 'Released on police bail',
+      release_notes: ''
+    });
+    setIsReleaseModalOpen(true);
+  };
+
+  const handleReleaseSuspect = async (values) => {
+    if (!selectedSuspect) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/criminals/${selectedSuspect.id}/release`, {
+        ...values,
+        case_id: id
+      });
+      message.success("Suspect has been released.");
+      setIsReleaseModalOpen(false);
+      releaseSuspectForm.resetFields();
+      fetchCaseDetails();
+    } catch (err) {
+      message.error(err.response?.data?.message || "Failed to release suspect.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleOpenEditSuspect = (suspect) => {
     setEditingSuspect(suspect);
     suspectForm.setFieldsValue({
       ...suspect,
+      date_of_birth: suspect.date_of_birth ? dayjs(suspect.date_of_birth) : null,
     });
     if (suspect.face_capture_image) {
       setSuspectFaceImage(suspect.face_capture_image);
@@ -354,9 +400,25 @@ export default function CaseDetailsPage() {
       await api.post('/witnesses', { ...values, case_id: id });
       message.success("Witness and statement recorded.");
       setIsWitnessModalOpen(false);
+      witnessForm.resetFields();
       fetchCaseDetails();
     } catch (err) {
-      message.error("Failed to record witness.");
+      message.error(err.response?.data?.message || "Failed to record witness.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleVictim = async (values) => {
+    setSubmitting(true);
+    try {
+      await api.post('/victims', { ...values, case_id: id });
+      message.success("Victim details recorded successfully.");
+      setIsVictimModalOpen(false);
+      victimForm.resetFields();
+      fetchCaseDetails();
+    } catch (err) {
+      message.error(err.response?.data?.message || "Failed to record victim.");
     } finally {
       setSubmitting(false);
     }
@@ -656,10 +718,15 @@ export default function CaseDetailsPage() {
             title: 'Action',
             key: 'action',
             render: (_, record) => (
-              <Space>
+              <Space wrap>
                 {canManageInvestigation && !caseEndedAtCourtReferral && !record.is_arrested && (
-                  <Button size="small" icon={<PlusOutlined />} onClick={() => { setSelectedSuspect(record); setIsArrestModalOpen(true); }}>
+                  <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => handleOpenArrestModal(record)}>
                     Record Arrest
+                  </Button>
+                )}
+                {canManageInvestigation && !caseEndedAtCourtReferral && (record.is_arrested === 1 || record.is_arrested === true || record.arrest_status === 'arrested') && (
+                  <Button size="small" type="primary" danger icon={<CheckCircleOutlined />} onClick={() => handleOpenReleaseModal(record)}>
+                    Release Suspect
                   </Button>
                 )}
                 {canManageInvestigation && !caseEndedAtCourtReferral && (
@@ -848,35 +915,55 @@ export default function CaseDetailsPage() {
                 </Button>
               )}
             </Card>
-            <Card title="Documents" variant="none" className="standard-panel" style={{ marginBottom: 24 }}>
-              <Space orientation="vertical" style={{ width: '100%' }}>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('case-summary')} block>Case summary</Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('arrest-warrant')} block>Arrest warrant</Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('court-referral')} block>Court referral</Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('release-certificate')} block>Release certificate</Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('evidence-receipt')} block>Evidence receipt</Button>
-              </Space>
-            </Card>
-
             <Card title="Victims & witnesses" variant="none" className="standard-panel">
               <Space orientation="vertical" style={{ width: '100%' }}>
-                <Text strong>Victims ({data.victims?.length || 0})</Text>
-                {(data.victims?.length || 0) === 0 ? <Text type="secondary" style={{ fontSize: 12 }}>No victims recorded</Text> :
-                  data.victims.map((v, index) => <Tag key={`victim-${v.id}-${index}`} className="status-tag status-tag--neutral">{v.full_name}</Tag>)}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text strong>Victims ({data.victims?.length || 0})</Text>
+                  {canAddWitness && !caseEndedAtCourtReferral && (
+                    <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => setIsVictimModalOpen(true)}>Add victim</Button>
+                  )}
+                </div>
+                {(data.victims?.length || 0) === 0 ? (
+                  <Text type="secondary" style={{ fontSize: 12 }}>No victims recorded</Text>
+                ) : (
+                  data.victims.map((v, index) => (
+                    <div key={`victim-${v.id || index}-${index}`} style={{ marginBottom: 8, padding: '8px 12px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text strong style={{ fontSize: 13 }}>{v.full_name}</Text>
+                        {v.phone && <Tag style={{ fontSize: 11 }}>{v.phone}</Tag>}
+                      </div>
+                      {v.injury_description && (
+                        <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ marginBottom: 0, fontSize: 12, marginTop: 4 }}>
+                          {v.injury_description}
+                        </Paragraph>
+                      )}
+                    </div>
+                  ))
+                )}
 
                 <Divider style={{ margin: '12px 0' }} />
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <Text strong>Witness statements ({data.witnesses?.length || 0})</Text>
-                  {canAddWitness && !caseEndedAtCourtReferral && <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => setIsWitnessModalOpen(true)}>Add statement</Button>}
+                  {canAddWitness && !caseEndedAtCourtReferral && (
+                    <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => setIsWitnessModalOpen(true)}>Add statement</Button>
+                  )}
                 </div>
-                {(data.witnesses?.length || 0) === 0 ? <Text type="secondary" style={{ fontSize: 12 }}>No statements taken</Text> :
+                {(data.witnesses?.length || 0) === 0 ? (
+                  <Text type="secondary" style={{ fontSize: 12 }}>No statements taken</Text>
+                ) : (
                   data.witnesses.map((w, index) => (
-                    <div key={`witness-${w.id}-${index}`} style={{ marginBottom: 8 }}>
-                      <Text strong style={{ fontSize: 13 }}>{w.full_name}</Text>
-                      <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ marginBottom: 0 }}>{w.statement}</Paragraph>
+                    <div key={`witness-${w.id || index}-${index}`} style={{ marginBottom: 8, padding: '8px 12px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text strong style={{ fontSize: 13 }}>{w.full_name}</Text>
+                        {w.statement_date && <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(w.statement_date).format('DD MMM YYYY')}</Text>}
+                      </div>
+                      <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ marginBottom: 0, fontSize: 12, marginTop: 4 }}>
+                        {w.statement}
+                      </Paragraph>
                     </div>
-                  ))}
+                  ))
+                )}
               </Space>
             </Card>
           </Col>
@@ -984,16 +1071,6 @@ export default function CaseDetailsPage() {
             </Col>
             <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number" dependencies={['id_type']} rules={[dynamicIdNumberRule('id_type')]}><Input placeholder="14 digits (National ID) / 9 chars (Passport)" /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="phone" label="Phone" rules={phoneRules}><Input /></Form.Item></Col>
-            <Col xs={24} md={12}>
-              <Form.Item name="arrest_status" label="Arrest Status" initialValue="not_arrested">
-                <Select>
-                  <Option value="not_arrested">Not Arrested</Option>
-                  <Option value="arrested">Arrested</Option>
-                  <Option value="released">Released</Option>
-                  <Option value="wanted">Wanted</Option>
-                </Select>
-              </Form.Item>
-            </Col>
             <Col xs={24} md={12}>
               <Form.Item name="role_in_case" label="Role in Case" rules={[requiredRule('Role in case')]}>
                 <Select placeholder="Select role">
@@ -1160,23 +1237,140 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title={`Record Arrest: ${selectedSuspect?.full_name}`} open={isArrestModalOpen} onCancel={() => setIsArrestModalOpen(false)} onOk={() => arrestForm.submit()} width={760}>
-        <Form form={arrestForm} onFinish={handleArrest} layout="vertical">
+      <Modal title="Record Victim Details (Diiwaangeli Dhibbanaha)" open={isVictimModalOpen} onCancel={() => setIsVictimModalOpen(false)} onOk={() => victimForm.submit()} width={700} confirmLoading={submitting}>
+        <Form form={victimForm} onFinish={handleVictim} layout="vertical" initialValues={{ gender: 'male', nationality: 'Somali' }}>
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Item name="arrest_location" label="Location" rules={[requiredRule('Arrest location'), textLengthRule('Arrest location', 3, 255)]}><Input /></Form.Item></Col>
-            <Col xs={24} md={12}><Form.Item name="arrest_date" label="Arrest Date" rules={[noFutureDateTimeRule('Arrest date')]}><DatePicker showTime style={{ width: '100%' }} disabledDate={disabledFutureDate} /></Form.Item></Col>
-            <Col xs={24}><Form.Item name="charges" label="Charges" rules={[requiredRule('Charges'), textLengthRule('Charges', 5, 2000)]}><TextArea rows={3} /></Form.Item></Col>
             <Col xs={24} md={12}>
-              <Form.Item name="bail_status" label="Bail Status" initialValue="no_bail">
-                <Select>
-                  <Option value="no_bail">No Bail</Option>
-                  <Option value="bail_pending">Bail Pending</Option>
-                  <Option value="bail_granted">Bail Granted</Option>
-                </Select>
+              <Form.Item name="full_name" label="Magaca Buuxa (Full Name)" rules={nameRules('Victim name')}>
+                <Input placeholder="Full name of victim" />
               </Form.Item>
             </Col>
-            <Col xs={24}><Form.Item name="notes" label="Custody Notes" rules={[textLengthRule('Custody notes', 3, 1000)]}><TextArea rows={2} /></Form.Item></Col>
+            <Col xs={12} md={6}>
+              <Form.Item name="gender" label="Jinsiga (Gender)">
+                <Select options={[{ value: 'male', label: 'Laba' }, { value: 'female', label: 'Dheddig' }]} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Item name="age" label="Da'da (Age)">
+                <InputNumber min={0} max={120} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="phone" label="Telefoonka (Phone)" rules={phoneRules}>
+                <Input placeholder="+252..." />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="address" label="Cinwaanka (Address)">
+                <Input placeholder="Address" />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="injury_description" label="Dhaawaca / Sharaxaad Dhibta (Injury / Impact Details)">
+                <Input.TextArea rows={3} placeholder="Faahfaahin ku saabsan dhibta ama dhaawaca gaaray..." />
+              </Form.Item>
+            </Col>
           </Row>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Record Arrest: ${selectedSuspect?.full_name || 'Suspect'}`}
+        open={isArrestModalOpen}
+        onCancel={() => setIsArrestModalOpen(false)}
+        onOk={() => arrestForm.submit()}
+        confirmLoading={submitting}
+        width={760}
+      >
+        <Card size="small" variant="none" style={{ marginBottom: 16, background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+          <Row gutter={[16, 8]}>
+            <Col xs={24} sm={12}>
+              <Text type="secondary" style={{ fontSize: 12 }}>Eedeysanaha (Suspect)</Text><br />
+              <Text strong style={{ fontSize: 14 }}>{selectedSuspect?.full_name}</Text> {selectedSuspect?.alias && <Tag color="blue">{selectedSuspect.alias}</Tag>}
+            </Col>
+            <Col xs={24} sm={12}>
+              <Text type="secondary" style={{ fontSize: 12 }}>Kiiska (Case)</Text><br />
+              <Text strong style={{ fontSize: 14 }}>{data.case_number || data.ob_number}</Text>
+            </Col>
+          </Row>
+        </Card>
+
+        <Form form={arrestForm} onFinish={handleArrest} layout="vertical" initialValues={{ bail_status: 'no_bail' }}>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item name="arrest_location" label="Goobta Qabashada (Arrest Location)" rules={[requiredRule('Arrest location'), textLengthRule('Arrest location', 3, 255)]}>
+                <Input placeholder="Location where suspect was apprehended" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="arrest_date" label="Taariikhda iyo Waqtiga (Arrest Date & Time)" rules={[noFutureDateTimeRule('Arrest date')]}>
+                <DatePicker showTime style={{ width: '100%' }} disabledDate={disabledFutureDate} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12}>
+              <Form.Item name="bail_status" label="Heerka Damaanadda (Bail Status)" initialValue="no_bail">
+                <Select
+                  options={[
+                    { value: 'no_bail', label: 'No Bail (Damaanad La\'aan)' },
+                    { value: 'bail_pending', label: 'Bail Pending (Sugaya Damaanad)' },
+                    { value: 'bail_granted', label: 'Bail Granted (La Siiyay Damaanad)' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col span={24}>
+              <Form.Item name="charges" label="Dambiyada Loo Haysto (Charges)" rules={[textLengthRule('Charges', 3, 2000)]}>
+                <TextArea rows={3} placeholder="Qrib dambiyada ama eedaha loo haysto..." />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24}>
+              <Form.Item name="notes" label="Sharaxaad Dheeraad ah / Xabsiga (Custody Notes)" rules={[textLengthRule('Custody notes', 3, 1000)]}>
+                <TextArea rows={2} placeholder="Warbixin dheeraad ah oo ku saabsan xiritaanka ama xabsiga..." />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Release Suspect: ${selectedSuspect?.full_name || 'Suspect'}`}
+        open={isReleaseModalOpen}
+        onCancel={() => setIsReleaseModalOpen(false)}
+        onOk={() => releaseSuspectForm.submit()}
+        confirmLoading={submitting}
+        width={600}
+      >
+        <Card size="small" variant="none" style={{ marginBottom: 16, background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+          <Row gutter={[16, 8]}>
+            <Col xs={24} sm={12}>
+              <Text type="secondary" style={{ fontSize: 12 }}>Eedeysanaha (Suspect)</Text><br />
+              <Text strong style={{ fontSize: 14 }}>{selectedSuspect?.full_name}</Text> {selectedSuspect?.alias && <Tag color="blue">{selectedSuspect.alias}</Tag>}
+            </Col>
+            <Col xs={24} sm={12}>
+              <Text type="secondary" style={{ fontSize: 12 }}>Kiiska (Case)</Text><br />
+              <Text strong style={{ fontSize: 14 }}>{data.case_number || data.ob_number}</Text>
+            </Col>
+          </Row>
+        </Card>
+
+        <Form form={releaseSuspectForm} onFinish={handleReleaseSuspect} layout="vertical">
+          <Form.Item name="release_reason" label="Sababta Sii Daaynta (Release Reason)" rules={[requiredRule('Release reason'), textLengthRule('Release reason', 3, 255)]}>
+            <Select
+              options={[
+                { value: 'Released on police bail', label: 'Released on police bail (Damaanad Saldhig)' },
+                { value: 'Insufficient evidence', label: 'Insufficient evidence (Caddeyn La\'aan)' },
+                { value: 'Complainant withdrew complaint', label: 'Complainant withdrew complaint (Cabashadii lagu soo celiyay)' },
+                { value: 'Reconciliation / Agreement reached', label: 'Reconciliation / Agreement reached (Heshiis La Gaaray)' },
+                { value: 'Authorized by station commander', label: 'Authorized by station commander (Oggolaansho Taliye)' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="release_notes" label="Sharaxaad Dheeraad ah (Release Notes)">
+            <Input.TextArea rows={3} placeholder="Faahfaahin ku saabsan sii daaynta eedeysanaha..." />
+          </Form.Item>
         </Form>
       </Modal>
 

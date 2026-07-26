@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, use, useCallback } from 'react';
-import { Card, Descriptions, Table, Typography, Tag, Space, Button, Modal, Form, Select, Input, App, Avatar, Row, Col, Divider } from 'antd';
+import { Card, Descriptions, Table, Typography, Tag, Space, Button, Modal, Form, Select, Input, App, Avatar, Row, Col, Divider, Image } from 'antd';
 import { SwapOutlined, ArrowLeftOutlined, AuditOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -13,6 +13,15 @@ import { useAuth } from '@/contexts/AuthContext';
 const { Title, Text } = Typography;
 const { Option } = Select;
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+
+const getImageUrl = (pathStr) => {
+  if (!pathStr) return null;
+  if (pathStr.startsWith('http://') || pathStr.startsWith('https://') || pathStr.startsWith('data:')) {
+    return pathStr;
+  }
+  const cleanPath = pathStr.startsWith('/') ? pathStr : `/${pathStr}`;
+  return `${API_ORIGIN}${cleanPath}`;
+};
 
 export default function OfficerDetailsPage({ params }) {
   const { message } = App.useApp();
@@ -145,7 +154,14 @@ export default function OfficerDetailsPage({ params }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <Space align="center" size="large">
               <Button icon={<ArrowLeftOutlined />} shape="circle" onClick={() => router.back()} />
-              <Avatar size={80} src={officer?.profile_image ? `${API_ORIGIN}${officer.profile_image}` : 'https://ui-avatars.com/api/?name=Officer'} />
+              <Image
+                src={getImageUrl(officer?.profile_image)}
+                alt={officer?.full_name}
+                width={84}
+                height={84}
+                style={{ objectFit: 'cover', borderRadius: '50%', border: '2px solid #1677ff' }}
+                fallback={`https://ui-avatars.com/api/?name=${encodeURIComponent(officer?.full_name || 'Officer')}&background=0D8ABC&color=fff&size=128`}
+              />
               <div>
                 <Title level={2} style={{ margin: 0 }}>{officer?.full_name}</Title>
                 <Text type="secondary"><Tag color="blue">{officer?.force_number}</Tag> {officer?.rank_name}</Text>

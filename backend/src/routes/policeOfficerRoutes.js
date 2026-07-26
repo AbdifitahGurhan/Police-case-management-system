@@ -24,13 +24,23 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only images are allowed'));
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg'];
+    const isExtAllowed = allowedExts.includes(ext);
+    const isMimeAllowed = file.mimetype ? file.mimetype.startsWith('image/') : false;
+
+    if (isExtAllowed && isMimeAllowed) {
+      return cb(null, true);
+    }
+    const err = new Error('Faylka la soo geliyay waa inuu sawir yahay (.jpg, .jpeg, .png, .webp, .gif)');
+    err.status = 400;
+    return cb(err);
   }
 });
 
 router.use(authMiddleware);
 
+router.get('/deployed', controller.getDeployedOfficers);
 router.get('/', controller.getAll);
 router.get('/:id', controller.getById);
 router.post('/', upload.single('profile_image'), controller.create);

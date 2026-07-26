@@ -572,18 +572,6 @@ function NewCaseWizardContent() {
                       />
                     </Form.Item>
                   </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item name="arrest_status" label="Heerka Xiritaanka (Arrest Status)" initialValue="not_arrested">
-                      <Select
-                        options={[
-                          { value: 'not_arrested', label: 'Aan Xirnayn (Not Arrested)' },
-                          { value: 'arrested', label: 'Xiran (Arrested)' },
-                          { value: 'released', label: 'Lagu Daayay (Released)' },
-                          { value: 'wanted', label: 'La Raadinayo (Wanted)' },
-                        ]}
-                      />
-                    </Form.Item>
-                  </Col>
 
                   <Col span={24}>
                     <Form.Item name="description" label="Faahfaahin / Note dheeraad ah" rules={[textLengthRule('Description', 3, 2000)]}>

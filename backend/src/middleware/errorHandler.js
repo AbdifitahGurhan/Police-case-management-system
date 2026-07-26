@@ -20,6 +20,14 @@ const errorHandler = (err, req, res, next) => {
     });
   }
 
+  // Multer & File upload errors
+  if (err.name === 'MulterError') {
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'Faylka la soo geliyay waa mid qaldan.',
+    });
+  }
+
   if (err.type === 'entity.too.large' || err.status === 413) {
     return res.status(413).json({
       success: false,

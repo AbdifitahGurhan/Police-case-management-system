@@ -67,4 +67,30 @@ const runOneTimeArrestStatusRepair = async (db) => {
   }
 };
 
-module.exports = { runOneTimeArrestStatusRepair };
+const runOneTimeOfficerAssignmentRepair = async (db) => {
+  console.log('Starting officer deployment single-station integrity repair...');
+  await db.query('START TRANSACTION');
+  try {
+    // Deactivate older active assignments for any officer having multiple active assignments
+    await db.query(`
+      UPDATE officer_assignments oa
+      JOIN (
+        SELECT officer_id, MAX(id) as max_id
+        FROM officer_assignments
+        WHERE is_current = 1
+        GROUP BY officer_id
+        HAVING COUNT(*) > 1
+      ) duplicates ON oa.officer_id = duplicates.officer_id AND oa.id < duplicates.max_id
+      SET oa.is_current = 0
+    `);
+
+    await db.query('COMMIT');
+    console.log('✅ Officer deployment single-station integrity repair completed successfully.');
+  } catch (err) {
+    await db.query('ROLLBACK');
+    console.error('❌ Officer deployment repair failed:', err.message);
+  }
+};
+
+module.exports = { runOneTimeArrestStatusRepair, runOneTimeOfficerAssignmentRepair };
+

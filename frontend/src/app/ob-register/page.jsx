@@ -18,6 +18,7 @@ const ObSection = ({ number, title, children }) => <Card size="small" title={<Sp
 
 export default function ObRegisterPage() {
   const { user } = useAuth();
+  const location = user?.location || {};
   const { message } = App.useApp();
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +26,65 @@ export default function ObRegisterPage() {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState([]);
   const [form] = Form.useForm();
+
+  const [deployedOfficers, setDeployedOfficers] = useState([]);
+  const [deployedOfficer, setDeployedOfficer] = useState(null);
+
+  const fetchDeployedOfficers = useCallback(async () => {
+    try {
+      const res = await api.get('/police-officers');
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        const allOfficers = res.data.data;
+        const userLocName = location.districtName || location.regionName || location.stateName || '';
+
+        // Filter officers matching the user's deployed location or active status
+        const matchedOfficers = allOfficers.filter(o => {
+          if (userLocName && o.current_assignment_name) {
+            return String(o.current_assignment_name).toLowerCase() === String(userLocName).toLowerCase();
+          }
+          return o.employment_status === 'Active';
+        });
+
+        const activeList = matchedOfficers.length > 0 ? matchedOfficers : allOfficers;
+        const primary = activeList.find(o => 
+          (user?.email && String(o.email).toLowerCase() === String(user.email).toLowerCase()) ||
+          (user?.fullName && String(o.full_name).toLowerCase() === String(user.fullName).toLowerCase())
+        ) || (activeList.length > 0 ? activeList[0] : null);
+
+        setDeployedOfficers(activeList);
+        setDeployedOfficer(primary);
+
+        if (primary) {
+          form.setFieldsValue({
+            registered_by_name: primary.full_name,
+            registered_by_rank: primary.rank_name || ''
+          });
+        } else {
+          form.setFieldsValue({
+            registered_by_name: user?.fullName || user?.username,
+            registered_by_rank: user?.rank || ''
+          });
+        }
+      } else {
+        form.setFieldsValue({
+          registered_by_name: user?.fullName || user?.username,
+          registered_by_rank: user?.rank || ''
+        });
+      }
+    } catch (err) {
+      form.setFieldsValue({
+        registered_by_name: user?.fullName || user?.username,
+        registered_by_rank: user?.rank || ''
+      });
+    }
+  }, [form, user, location]);
+
+  const handleOpenModal = () => {
+    form.resetFields();
+    setFiles([]);
+    fetchDeployedOfficers();
+    setOpen(true);
+  };
 
   const loadEntries = useCallback(async () => {
     setLoading(true);
@@ -65,7 +125,6 @@ export default function ObRegisterPage() {
   };
 
   const canCreate = ['admin', 'ob_staff', 'officer', 'district_admin', ...commanderRoles].includes(user?.role);
-  const location = user?.location || {};
 
   const columns = [
     { title: 'OB Number', dataIndex: 'ob_number', key: 'ob_number', render: (value) => <Text strong>{value}</Text> },
@@ -96,7 +155,7 @@ export default function ObRegisterPage() {
             <Text type="secondary">Every OB entry records who registered it, when it was registered, and where it was registered.</Text>
           </div>
           {canCreate && (
-            <Button type="primary" icon={<FileAddOutlined />} onClick={() => setOpen(true)}>
+            <Button type="primary" icon={<FileAddOutlined />} onClick={handleOpenModal}>
               Register OB Entry
             </Button>
           )}
@@ -133,7 +192,34 @@ export default function ObRegisterPage() {
             <ObSection number="3" title="Laga Dacwooday"><Col xs={24} md={12}><Form.Item name="respondent_name" label="Magaca oo buuxa" rules={nameRules('Magaca laga dacwooday')}><Input/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="respondent_id_type" label="Aqoonsiga"><Select options={['National ID','Passport'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="respondent_id_number" label="Lambarka aqoonsiga" dependencies={['respondent_id_type']} rules={[dynamicIdNumberRule('respondent_id_type')]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_phone" label="Telefoon" rules={phoneRules}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_email" label="Email" rules={[emailRule]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_address" label="Cinwaan"><Input/></Form.Item></Col></ObSection>
             <ObSection number="4" title="Faahfaahinta Dacwadda"><Col xs={24} md={12}><Form.Item name="incident_location" label="Goobta dhacdada" rules={[requiredRule('Goobta'),textLengthRule('Goobta',3,255)]}><Input/></Form.Item></Col><Col xs={24} md={12}><Form.Item name="incident_datetime" label="Taariikhda iyo waqtiga" rules={[requiredRule('Taariikhda'),noFutureDateTimeRule('Taariikhda')]}><DatePicker showTime style={{width:'100%'}} disabledDate={disabledFutureDate}/></Form.Item></Col><Col xs={24} md={12}><Form.Item name="claim_value" label="Qiimaha dacwadda (USD)" rules={[{validator:(_,v)=>v===undefined||v===null||v===''||Number(v)>=0?Promise.resolve():Promise.reject(new Error('Amount cannot be negative.'))}]}><InputNumber min={0} precision={2} step={0.01} stringMode prefix="$" style={{width:'100%'}}/></Form.Item></Col><Col span={24}><Form.Item name="description" label="Sharaxaad faahfaahsan" rules={[requiredRule('Sharaxaadda'),textLengthRule('Sharaxaadda',10,5000)]}><TextArea rows={5} showCount maxLength={5000}/></Form.Item></Col></ObSection>
             <ObSection number="5" title="Caddeymaha"><Col span={24}><Upload.Dragger multiple accept=".pdf,image/*,video/*" fileList={files} beforeUpload={file=>{if(file.size>10*1024*1024){message.error('File-ku waa inuu ka yaraadaa 10MB.');return Upload.LIST_IGNORE}setFiles(old=>[...old,{...file,originFileObj:file,status:'done'}]);return false}} onRemove={file=>setFiles(old=>old.filter(x=>x.uid!==file.uid))}><p className="ant-upload-drag-icon"><InboxOutlined/></p><p>PDF, sawir ama fiidiyow halkan ku jiid</p><p className="ant-upload-hint">Ugu badnaan 10 files, midkiiba 10MB</p></Upload.Dragger></Col></ObSection>
-            <ObSection number="6" title="Xogta Diiwaangelinta"><Col xs={24} md={6}><Form.Item label="Xafiiska"><Input readOnly value={location.districtName||location.regionName||'System'}/></Form.Item></Col><Col xs={24} md={6}><Form.Item label="Shaqaalaha"><Input readOnly value={user?.fullName||user?.username}/></Form.Item></Col><Col xs={24} md={6}><Form.Item label="Taariikhda"><Input readOnly value={dayjs().format('YYYY-MM-DD')}/></Form.Item></Col><Col xs={24} md={6}><Form.Item label="Waqtiga"><Input readOnly value={dayjs().format('HH:mm:ss')}/></Form.Item></Col></ObSection>
+            <ObSection number="6" title="Xogta Diiwaangelinta">
+              <Col xs={24} md={6}><Form.Item label="Xafiiska"><Input readOnly value={location.districtName||location.regionName||'System'}/></Form.Item></Col>
+              <Col xs={24} md={6}>
+                <Form.Item name="registered_by_name" label="Shaqaalaha / Sarkaal" rules={[requiredRule('Shaqaalaha')]}>
+                  {deployedOfficers.length > 1 ? (
+                    <Select
+                      showSearch
+                      placeholder="Dooro Sarkaalka Diiwaangelinaya"
+                      onChange={(val) => {
+                        const selected = deployedOfficers.find(o => o.full_name === val);
+                        if (selected) {
+                          form.setFieldsValue({ registered_by_rank: selected.rank_name || '' });
+                        }
+                      }}
+                      options={deployedOfficers.map(o => ({
+                        value: o.full_name,
+                        label: `${o.full_name}${o.rank_name ? ` (${o.rank_name})` : ''}${o.force_number ? ` - ${o.force_number}` : ''}`
+                      }))}
+                    />
+                  ) : (
+                    <Input placeholder="Sarkaalka Diiwaangelinaya" />
+                  )}
+                </Form.Item>
+              </Col>
+              <Form.Item name="registered_by_rank" hidden><Input /></Form.Item>
+              <Col xs={24} md={6}><Form.Item label="Taariikhda"><Input readOnly value={dayjs().format('YYYY-MM-DD')}/></Form.Item></Col>
+              <Col xs={24} md={6}><Form.Item label="Waqtiga"><Input readOnly value={dayjs().format('HH:mm:ss')}/></Form.Item></Col>
+            </ObSection>
             <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><Button onClick={()=>setOpen(false)}>Jooji</Button><Button icon={<DeleteOutlined/>} onClick={()=>{form.resetFields();setFiles([])}}>Nadiifi</Button><Button type="primary" htmlType="submit" loading={saving}>Kaydi</Button></div>
           </Form>
         </Modal>

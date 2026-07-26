@@ -272,7 +272,16 @@ const getCaseById = async (req, res, next) => {
        ORDER BY cs.linked_at DESC`,
       [caseId]
     );
-    const [victims] = await db.query(`SELECT v.* FROM victims v JOIN case_victims cv ON v.id = cv.victim_id WHERE cv.case_id = ?`, [caseId]);
+    let [victims] = await db.query(`SELECT v.*, cv.notes AS case_notes FROM victims v JOIN case_victims cv ON v.id = cv.victim_id WHERE cv.case_id = ?`, [caseId]);
+    if (victims.length === 0 && caseRow.complainant_name) {
+      victims = [{
+        id: `complainant-${caseRow.id}`,
+        full_name: caseRow.complainant_name,
+        phone: caseRow.complainant_phone || null,
+        injury_description: 'Complainant / Primary reporting victim',
+        is_complainant: true
+      }];
+    }
     const [evidence] = await db.query(`SELECT * FROM evidence WHERE case_id = ?`, [caseId]);
     const [actions] = await db.query(`SELECT * FROM case_actions WHERE case_id = ? ORDER BY created_at DESC`, [caseId]);
     const [referrals] = await db.query(`SELECT * FROM referrals WHERE case_id = ? ORDER BY referred_at DESC`, [caseId]);
@@ -281,7 +290,7 @@ const getCaseById = async (req, res, next) => {
        FROM witnesses w
        JOIN witness_statements ws ON w.id = ws.witness_id
        WHERE ws.case_id = ?
-       ORDER BY ws.created_at DESC`,
+       ORDER BY ws.statement_date DESC, ws.created_at DESC`,
       [caseId]
     );
 

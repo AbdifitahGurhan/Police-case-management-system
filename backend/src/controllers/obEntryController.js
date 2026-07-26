@@ -151,11 +151,73 @@ const reopenObEntry = async (req,res,next) => {
   }catch(err){next(err)}
 };
 
+const getDeployedOfficersForLocation = async (req, res, next) => {
+  try {
+    const location = await getUserLocation(req.user);
+    const params = [];
+    let whereClauses = [];
+
+    if (location.district_id) {
+      whereClauses.push("(oa.assignment_type IN ('District', 'District Station') AND oa.assignment_id = ?)");
+      params.push(location.district_id);
+    }
+    if (location.region_id) {
+      whereClauses.push("(oa.assignment_type = 'Region' AND oa.assignment_id = ?)");
+      params.push(location.region_id);
+    }
+    if (location.state_administration_id) {
+      whereClauses.push("(oa.assignment_type = 'State Administration' AND oa.assignment_id = ?)");
+      params.push(location.state_administration_id);
+    }
+
+    let sql = `
+      SELECT DISTINCT po.id, po.full_name, po.force_number, po.rank_id, r.rank_name
+      FROM police_officers po
+      LEFT JOIN ranks r ON po.rank_id = r.id
+      LEFT JOIN officer_assignments oa ON oa.officer_id = po.id AND oa.is_current = 1
+      WHERE po.employment_status = 'Active'
+    `;
+
+    if (whereClauses.length > 0) {
+      sql += ` AND (${whereClauses.join(' OR ')})`;
+    }
+
+    sql += ` ORDER BY oa.assigned_at DESC, po.full_name ASC`;
+
+    const [rows] = await db.query(sql, params);
+
+    // Also check if current user matches a police officer directly
+    const [[userOfficer]] = await db.query(
+      `SELECT po.id, po.full_name, po.force_number, r.rank_name 
+       FROM police_officers po 
+       LEFT JOIN ranks r ON po.rank_id = r.id 
+       WHERE LOWER(po.email) = LOWER(?) OR LOWER(po.full_name) = LOWER(?) OR po.force_number = ? LIMIT 1`,
+      [req.user.email || '', req.user.fullName || '', req.user.username || '']
+    );
+
+    let officerList = [...rows];
+    if (userOfficer && !officerList.some(o => o.id === userOfficer.id)) {
+      officerList.unshift(userOfficer);
+    }
+
+    let primaryDeployed = officerList.length > 0 ? officerList[0] : null;
+
+    res.json({
+      success: true,
+      deployedOfficer: primaryDeployed,
+      officers: officerList
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const createObEntry = async (req, res, next) => {
   try {
     const { incident_type, incident_location, description, reported_by, reporter_phone, case_title, case_type, case_level,
       reporter_id_type, reporter_id_number, reporter_email, reporter_address, respondent_name, respondent_id_type,
-      respondent_id_number, respondent_phone, respondent_email, respondent_address, incident_datetime, claim_value } = req.body;
+      respondent_id_number, respondent_phone, respondent_email, respondent_address, incident_datetime, claim_value,
+      registered_by_name, registered_by_rank } = req.body;
     if (!incident_type || !incident_location || !reported_by) {
       return res.status(400).json({ success: false, message: 'incident_type, incident_location, and reported_by are required.' });
     }
@@ -192,9 +254,9 @@ const createObEntry = async (req, res, next) => {
             respondent_name || null, respondent_id_type || null, respondent_id_number || null, respondent_phone || null,
             respondent_email || null, respondent_address || null,
             req.user.id,
-            req.user.fullName || req.user.username,
+            registered_by_name || req.user.fullName || req.user.username,
             req.user.roleCode || req.user.role,
-            req.user.rank || null,
+            registered_by_rank || req.user.rank || null,
             location.state_administration_id || null,
             location.region_id || null,
             location.district_id || null,
@@ -381,4 +443,4 @@ const convertObToCase = async (req, res, next) => {
   }
 };
 
-module.exports = { getObEntries, getObEntryById, createObEntry, convertObToCase, resolveObEntry, reopenObEntry, getResolutionDocument };
+module.exports = { getObEntries, getObEntryById, createObEntry, convertObToCase, resolveObEntry, reopenObEntry, getResolutionDocument, getDeployedOfficersForLocation };

@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
-const { getObEntries, getObEntryById, createObEntry, convertObToCase, resolveObEntry, reopenObEntry, getResolutionDocument } = require('../controllers/obEntryController');
+const { getObEntries, getObEntryById, createObEntry, convertObToCase, resolveObEntry, reopenObEntry, getResolutionDocument, getDeployedOfficersForLocation } = require('../controllers/obEntryController');
 const { COMMANDER_ROLES } = require('../utils/roleGroups');
 const multer = require('multer');
 const path = require('path');
@@ -31,6 +31,7 @@ const handleUpload = (req, res, next) => {
 };
 
 router.get('/', allowRoles(...OB_READ_ROLES), getObEntries);
+router.get('/deployed-officers', allowRoles(...OB_READ_ROLES), getDeployedOfficersForLocation);
 router.get('/:id', allowRoles(...OB_READ_ROLES), getObEntryById);
 router.post('/', allowRoles(...OB_WRITE_ROLES), handleUpload, createObEntry);
 router.post('/:id/convert-to-case', allowRoles(...OB_CONVERT_ROLES), convertObToCase);

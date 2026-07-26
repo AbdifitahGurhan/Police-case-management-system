@@ -4,6 +4,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const dayjs = require('dayjs');
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { parseFaceImage } = require('../utils/faceBiometric');
@@ -16,6 +17,17 @@ const normalizeOptional = (value) => {
   if (value === undefined || value === null) return null;
   const trimmed = String(value).trim();
   return trimmed || null;
+};
+
+const normalizeDate = (value) => {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  if (str.includes('T')) return str.split('T')[0];
+  if (str.includes(' ')) return str.split(' ')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  return !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : null;
 };
 
 const validateSuspectPayload = (body, { partial = false } = {}) => {
@@ -39,9 +51,17 @@ const validateSuspectPayload = (body, { partial = false } = {}) => {
     }
   }
   if (dob) {
-    const parsedDob = dayjs(dob);
-    if (parsedDob.isValid() && dayjs().diff(parsedDob, 'year') < 8) {
-      errors.push('Date of birth must correspond to an age of at least 8 years.');
+    const parsedDob = new Date(dob);
+    if (!isNaN(parsedDob.getTime())) {
+      const today = new Date();
+      let calculatedAge = today.getFullYear() - parsedDob.getFullYear();
+      const m = today.getMonth() - parsedDob.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < parsedDob.getDate())) {
+        calculatedAge--;
+      }
+      if (calculatedAge < 8) {
+        errors.push('Date of birth must correspond to an age of at least 8 years.');
+      }
     }
   }
   if (phone && !/^[+\d][\d\s-]{6,24}$/.test(phone)) {
@@ -352,7 +372,7 @@ const createSuspect = async (req, res, next) => {
         normalizeOptional(mother_name),
         normalizeOptional(alias),
         gender || 'male',
-        normalizeOptional(date_of_birth),
+        normalizeDate(date_of_birth),
         normalizeOptional(age),
         normalizeOptional(nationality) || 'Somali',
         normalizeOptional(id_type),
@@ -417,7 +437,7 @@ const updateSuspect = async (req, res, next) => {
       normalizeOptional(mother_name),
       normalizeOptional(alias),
       gender || 'male',
-      normalizeOptional(date_of_birth),
+      normalizeDate(date_of_birth),
       normalizeOptional(age),
       normalizeOptional(nationality) || 'Somali',
       normalizeOptional(id_type),
@@ -452,6 +472,20 @@ const updateSuspect = async (req, res, next) => {
 
     params.push(req.params.id);
     await db.query(`UPDATE criminals SET ${updates.join(', ')} WHERE id=?`, params);
+
+    const normStatus = String(arrest_status || '').toLowerCase();
+    if (isArrestedValue === 0 || ['released', 'not_arrested', 'released_by_police', 'completed', 'acquitted', 'dismissed'].includes(normStatus)) {
+      await db.query(
+        `UPDATE arrests
+         SET sentence_status = 'released',
+             actual_release_date = COALESCE(actual_release_date, CURDATE()),
+             final_status = COALESCE(final_status, 'Released via profile edit')
+         WHERE suspect_id = ?
+           AND sentence_status IN ('awaiting_trial', 'sentenced', 'serving', 'release_review')`,
+        [req.params.id]
+      );
+      await syncCriminalCustodyStatus(db, req.params.id);
+    }
     
     if (case_id && role_in_case) {
       await db.query(

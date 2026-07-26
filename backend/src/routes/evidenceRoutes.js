@@ -28,15 +28,39 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const extension = path.extname(file.originalname || '').toLowerCase();
-    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png']);
-    const allowedMimeTypes = new Set(['image/jpeg', 'image/png']);
-    if (!allowedExtensions.has(extension) || !allowedMimeTypes.has(file.mimetype)) {
-      const error = new Error('Evidence image must be JPG, JPEG, or PNG.');
-      error.status = 400;
-      return cb(error);
+    const type = (req.body?.type || 'document').toLowerCase();
+
+    if (type === 'document') {
+      const allowedDocExts = new Set(['.pdf', '.doc', '.docx', '.txt', '.xls', '.xlsx', '.csv', '.rtf']);
+      if (!allowedDocExts.has(extension)) {
+        const error = new Error('Nooca caddeynta ee Dokumiintiga ah wuxuu ogol yahay oo keliya faylasha PDF, DOC, DOCX, TXT, XLS, XLSX. Ma ogola fiidiyow ama sawir.');
+        error.status = 400;
+        return cb(error);
+      }
+    } else if (type === 'photo' || type === 'image') {
+      const allowedPhotoExts = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+      if (!allowedPhotoExts.has(extension)) {
+        const error = new Error('Nooca caddeynta ee Sawirka ah wuxuu ogol yahay oo keliya JPG, JPEG, PNG, ama WEBP.');
+        error.status = 400;
+        return cb(error);
+      }
+    } else if (type === 'video') {
+      const allowedVideoExts = new Set(['.mp4', '.mov', '.avi', '.webm', '.mkv']);
+      if (!allowedVideoExts.has(extension)) {
+        const error = new Error('Nooca caddeynta ee Fiidiyowga ah wuxuu ogol yahay oo keliya MP4, MOV, AVI, ama WEBM.');
+        error.status = 400;
+        return cb(error);
+      }
+    } else {
+      const allowedGeneralExts = new Set(['.pdf', '.doc', '.docx', '.txt', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.webp', '.mp4', '.zip', '.rar']);
+      if (!allowedGeneralExts.has(extension)) {
+        const error = new Error('Faylka caddeynta noocan ah la ma ogola.');
+        error.status = 400;
+        return cb(error);
+      }
     }
     return cb(null, true);
   },

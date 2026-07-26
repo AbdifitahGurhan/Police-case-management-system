@@ -76,7 +76,18 @@ const getUserLocation = async (user) => {
        WHERE u.id = ?`,
       [user.id]
     );
-    return row || {};
+    if (row && (row.state_administration_id || row.region_id || row.district_id)) {
+      return row;
+    }
+    const [[defaultDistrict]] = await db.query(
+      `SELECT d.id AS district_id, d.district_name, c.id AS city_id, c.city_name, r.id AS region_id, r.region_name, sa.id AS state_administration_id, sa.state_name
+       FROM districts d
+       LEFT JOIN cities c ON d.city_id = c.id
+       LEFT JOIN regions r ON c.region_id = r.id
+       LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id
+       ORDER BY d.id ASC LIMIT 1`
+    );
+    return defaultDistrict || row || {};
   }
 
   if (user.scopeType === 'state_administration') {

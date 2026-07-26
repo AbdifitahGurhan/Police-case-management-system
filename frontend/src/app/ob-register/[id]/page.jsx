@@ -2,12 +2,13 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { App, Button, Card, Descriptions, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
-import { ArrowLeftOutlined, CheckCircleOutlined, DownloadOutlined, EyeOutlined, FileAddOutlined, PrinterOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, CheckCircleOutlined, DownloadOutlined, EyeOutlined, FileAddOutlined, FileOutlined, PaperClipOutlined, PrinterOutlined, ReloadOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatUSD } from '@/utils/currency';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -112,93 +113,221 @@ export default function ObDetailPage() {
     }
   };
 
+  const getLevelTag = (level) => {
+    if (level === 'urgent') return <Tag color="orange">Degdeg (Urgent)</Tag>;
+    if (level === 'critical') return <Tag color="red">Halis (Critical)</Tag>;
+    return <Tag color="blue">Caadi (Normal)</Tag>;
+  };
+
   return (
     <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <Space orientation="vertical">
             <Link href="/ob-register">
-              <Button type="text" icon={<ArrowLeftOutlined />}>Back to OB Register</Button>
+              <Button type="text" icon={<ArrowLeftOutlined />}>Dib ugu laab OB Register</Button>
             </Link>
-            <Title level={2} style={{ margin: 0 }}>OB Detail: {ob?.ob_number || id}</Title>
-            <Text type="secondary">Review the original occurrence book record before creating a formal case.</Text>
+            <Title level={2} style={{ margin: 0 }}>Faahfaahinta OB-ga: {ob?.ob_number || id}</Title>
+            <Text type="secondary">Xogta dhammaystiran ee diiwaanka buugga dhacdooyinka (Occurrence Book).</Text>
           </Space>
           <Space wrap>
-            {ob?.status && <Tag color={converted ? 'green' : 'blue'}>{ob.status}</Tag>}
+            {ob?.status && <Tag color={converted ? 'green' : closedAtOb ? 'purple' : 'blue'}>{ob.status}</Tag>}
             {closedAtOb && <Button icon={<ReloadOutlined/>} onClick={()=>setReopenOpen(true)}>Dib u fur OB</Button>}
             {ob && !closedAtOb && (converted ? (
               ob?.linked_case_id && canReadCases ? (
                 <Link href={`/cases/${ob.linked_case_id}`}>
-                  <Button type="primary">Open Linked Case</Button>
+                  <Button type="primary">Faqidaad Kiiska Ku Xiran</Button>
                 </Link>
               ) : (
-                <Button disabled>This OB has already been converted to a case.</Button>
+                <Button disabled>OB-gan waxaa loo beddelay kiis.</Button>
               )
             ) : (
               <>
                 <Button icon={<CheckCircleOutlined/>} onClick={()=>setResolveOpen(true)}>Ku xalli OB-ga</Button>
                 <Link href={`/cases/new?ob_entry_id=${ob.id}`}>
-                  <Button icon={<FileAddOutlined />}>Detailed Case Form</Button>
+                  <Button icon={<FileAddOutlined />}>Foomka Kiiska Buuxa</Button>
                 </Link>
                 <Button type="primary" icon={<FileAddOutlined />} loading={converting} onClick={convertToCase}>
-                  Quick Convert
+                  U beddel Kiis
                 </Button>
               </>
             ))}
           </Space>
         </div>
 
-        <Card variant="none" loading={loading}>
-          {ob && (
-            <Descriptions bordered column={2}>
-              <Descriptions.Item label="OB Number">{ob.ob_number}</Descriptions.Item>
-              <Descriptions.Item label="Status"><Tag color={converted ? 'green' : 'blue'}>{ob.status}</Tag></Descriptions.Item>
-              <Descriptions.Item label="Incident Type">{ob.incident_type}</Descriptions.Item>
-              <Descriptions.Item label="Incident Location">{ob.incident_location}</Descriptions.Item>
-              <Descriptions.Item label="Reported By">{ob.reported_by}</Descriptions.Item>
-              <Descriptions.Item label="Reporter Phone">{ob.reporter_phone}</Descriptions.Item>
-              <Descriptions.Item label="Registered By OB Staff">{ob.registered_by_name}</Descriptions.Item>
-              <Descriptions.Item label="Registered Role">{ob.registered_by_role}</Descriptions.Item>
-              <Descriptions.Item label="Registration Date">{ob.registration_date}</Descriptions.Item>
-              <Descriptions.Item label="Registration Time">{ob.registration_time}</Descriptions.Item>
-              <Descriptions.Item label="State">{ob.state_name}</Descriptions.Item>
-              <Descriptions.Item label="Region">{ob.region_name}</Descriptions.Item>
-              <Descriptions.Item label="District / Police Station" span={2}>{ob.district_police_station_name}</Descriptions.Item>
+        {loading ? (
+          <Card variant="none" loading={true} />
+        ) : ob ? (
+          <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+            {/* Card 1: Xogta Dacwadda & Dhacdada */}
+            <Card variant="none" title="1. Xogta Dacwadda & Dhacdada (Case & Incident Information)">
+              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
+                <Descriptions.Item label="Lambarka OB (OB Number)"><Text strong>{ob.ob_number}</Text></Descriptions.Item>
+                <Descriptions.Item label="Heerka (Status)"><Tag color={converted ? 'green' : 'blue'}>{ob.status}</Tag></Descriptions.Item>
+                <Descriptions.Item label="Cinwaanka Dacwadda">{ob.case_title || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Nooca Dacwadda">{ob.case_type || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Heerka Muhiimada">{getLevelTag(ob.case_level)}</Descriptions.Item>
+                <Descriptions.Item label="Nooca Dhacdada"><Text strong>{ob.incident_type || 'N/A'}</Text></Descriptions.Item>
+                <Descriptions.Item label="Goobta Dhacdada">{ob.incident_location || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Taariikhda Dhacdada">{ob.incident_datetime || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Qiimaha Dacwadda (Claim USD)" span={2}>
+                  <Text strong style={{ color: '#2563EB', fontSize: 16 }}>
+                    {ob.claim_value != null ? formatUSD(ob.claim_value) : 'N/A'}
+                  </Text>
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
 
-              {closedAtOb && <>
-                <Descriptions.Item label="Habka Xalinta">{ob.resolution_method || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Xiray">{ob.resolved_by || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Waqtiga Xalinta">{ob.resolved_at || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Dhinacyada Heshiiyey">{ob.resolution_parties || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Qoraalka Xalinta" span={2}><Paragraph style={{margin:0}}>{ob.resolution_notes}</Paragraph></Descriptions.Item>
-              </>}
+            {/* Card 2: Dacwoodaha */}
+            <Card variant="none" title="2. Xogta Dacwoodaha (Complainant / Reporter)">
+              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
+                <Descriptions.Item label="Magaca Dacwoodaha"><Text strong>{ob.reported_by || 'N/A'}</Text></Descriptions.Item>
+                <Descriptions.Item label="Telefoonka">{ob.reporter_phone || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Nooca Aqoonsiga">{ob.reporter_id_type || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Lambarka Aqoonsiga">{ob.reporter_id_number || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Email-ka">{ob.reporter_email || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Cinwaanka">{ob.reporter_address || 'N/A'}</Descriptions.Item>
+              </Descriptions>
+            </Card>
 
-              <Descriptions.Item label="Short Description" span={2}>
-                <Paragraph style={{ marginBottom: 0 }}>{ob.description || 'No description recorded.'}</Paragraph>
-              </Descriptions.Item>
-            </Descriptions>
-          )}
-        </Card>
-        {ob?.resolutionDocuments?.length>0 && <Card variant="none" title="Warqadaha Xalinta OB-ga"><Table rowKey="id" pagination={false} dataSource={ob.resolutionDocuments} columns={[{title:'Warqadda',dataIndex:'document_title'},{title:'Nooca',dataIndex:'document_type',render:v=><Tag color="blue">{v}</Tag>},{title:'Sameeyey',dataIndex:'created_by'},{title:'Taariikhda',dataIndex:'created_at'},{title:'Ficil',render:(_,record)=><Space><Button icon={<EyeOutlined/>} onClick={()=>openDocument(record)}>Preview</Button><Button icon={<PrinterOutlined/>} onClick={()=>openDocument(record,true)}>Print</Button><Button icon={<DownloadOutlined/>} onClick={()=>openDocument(record,true)}>Download PDF</Button></Space>}]} /></Card>}
-        <Modal title="Ku xalli oo xir OB-ga" open={resolveOpen} onCancel={()=>setResolveOpen(false)} footer={null}>
+            {/* Card 3: Laga Dacwooday */}
+            <Card variant="none" title="3. Xogta Laga Dacwooday (Respondent / Accused)">
+              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
+                <Descriptions.Item label="Magaca Laga Dacwooday"><Text strong>{ob.respondent_name || 'N/A'}</Text></Descriptions.Item>
+                <Descriptions.Item label="Telefoonka">{ob.respondent_phone || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Nooca Aqoonsiga">{ob.respondent_id_type || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Lambarka Aqoonsiga">{ob.respondent_id_number || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Email-ka">{ob.respondent_email || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Cinwaanka">{ob.respondent_address || 'N/A'}</Descriptions.Item>
+              </Descriptions>
+            </Card>
+
+            {/* Card 4: Sharaxaadda Dhacdada */}
+            <Card variant="none" title="4. Sharaxaadda Faahfaahsan (Incident Description)">
+              <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0, fontSize: 14, lineHeight: 1.6 }}>
+                {ob.description || 'Lama diiwaangelin sharaxaad.'}
+              </Paragraph>
+            </Card>
+
+            {/* Card 5: Caddeymaha & Faylasha */}
+            {ob.attachments && ob.attachments.length > 0 && (
+              <Card variant="none" title={`5. Caddeymaha & Faylasha Ku Xiran (${ob.attachments.length})`}>
+                <Table
+                  rowKey="id"
+                  pagination={false}
+                  dataSource={ob.attachments}
+                  columns={[
+                    {
+                      title: 'Magaca Faylka',
+                      dataIndex: 'file_name',
+                      key: 'file_name',
+                      render: (text) => <Space><PaperClipOutlined /> <Text strong>{text}</Text></Space>,
+                    },
+                    { title: 'Nooca', dataIndex: 'mime_type', key: 'mime_type' },
+                    {
+                      title: 'Baaxadda (Size)',
+                      dataIndex: 'file_size',
+                      key: 'file_size',
+                      render: (size) => size ? `${(size / 1024).toFixed(1)} KB` : 'N/A',
+                    },
+                    { title: 'Kii Soo Upload-gareeyey', dataIndex: 'uploaded_by', key: 'uploaded_by' },
+                    {
+                      title: 'Ficil',
+                      key: 'action',
+                      render: (_, record) => (
+                        <Button
+                          icon={<EyeOutlined />}
+                          href={record.file_url ? `http://localhost:5000${record.file_url}` : '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Eeg / Soo Degso
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+              </Card>
+            )}
+
+            {/* Card 6: Xogta Diiwaangelinta & Location */}
+            <Card variant="none" title="6. Xogta Diiwaangelinta & Xafiiska (Registration Metadata)">
+              <Descriptions bordered column={{ xs: 1, sm: 2 }}>
+                <Descriptions.Item label="Sarkaalka Diiwaangeliyey">{ob.registered_by_name || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Doorka (Role)"><Tag color="blue">{ob.registered_by_role || 'N/A'}</Tag></Descriptions.Item>
+                <Descriptions.Item label="Darajada (Rank)">{ob.registered_by_rank || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Taariikhda Diiwaangelinta">{ob.registration_date} {ob.registration_time || ''}</Descriptions.Item>
+                <Descriptions.Item label="Dowlad Goboleedka (State)">{ob.state_name || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Gobolka (Region)">{ob.region_name || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Degmada / Saldhigga" span={2}>{ob.district_police_station_name || 'N/A'}</Descriptions.Item>
+              </Descriptions>
+            </Card>
+
+            {/* Card 7: Xogta Xalinta haddii la xiray */}
+            {closedAtOb && (
+              <Card variant="none" title="7. Xogta Xalinta & Xiritaanka OB-ga (Resolution Details)">
+                <Descriptions bordered column={{ xs: 1, sm: 2 }}>
+                  <Descriptions.Item label="Habka Xalinta">{ob.resolution_method || 'N/A'}</Descriptions.Item>
+                  <Descriptions.Item label="Sarkaalka Xiray">{ob.resolved_by || 'N/A'}</Descriptions.Item>
+                  <Descriptions.Item label="Waqtiga Xalinta">{ob.resolved_at || 'N/A'}</Descriptions.Item>
+                  <Descriptions.Item label="Dhinacyada Heshiiyey">{ob.resolution_parties || 'N/A'}</Descriptions.Item>
+                  <Descriptions.Item label="Qoraalka Xalinta" span={2}>
+                    <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{ob.resolution_notes || 'N/A'}</Paragraph>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            )}
+
+            {/* Warqadaha Xalinta (haddii ay jiraan) */}
+            {ob?.resolutionDocuments?.length > 0 && (
+              <Card variant="none" title="Warqadaha Rasmiga ah ee Xalinta OB-ga">
+                <Table
+                  rowKey="id"
+                  pagination={false}
+                  dataSource={ob.resolutionDocuments}
+                  columns={[
+                    { title: 'Warqadda', dataIndex: 'document_title' },
+                    { title: 'Nooca', dataIndex: 'document_type', render: (v) => <Tag color="blue">{v}</Tag> },
+                    { title: 'Sameeyey', dataIndex: 'created_by' },
+                    { title: 'Taariikhda', dataIndex: 'created_at' },
+                    {
+                      title: 'Ficil',
+                      render: (_, record) => (
+                        <Space>
+                          <Button icon={<EyeOutlined />} onClick={() => openDocument(record)}>Preview</Button>
+                          <Button icon={<PrinterOutlined />} onClick={() => openDocument(record, true)}>Print</Button>
+                          <Button icon={<DownloadOutlined />} onClick={() => openDocument(record, true)}>Download PDF</Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+              </Card>
+            )}
+          </Space>
+        ) : null}
+
+        {/* Modal-ada Resolution, Preview & Reopen */}
+        <Modal title="Ku xalli oo xir OB-ga" open={resolveOpen} onCancel={() => setResolveOpen(false)} footer={null}>
           <Form form={resolveForm} layout="vertical" onFinish={resolveOb}>
-            <Form.Item name="resolution_method" label="Nooca warqadda" rules={[{required:true}]}><Select onChange={value=>resolveForm.setFieldValue('document_data',value==='warning'?{warning_reason:resolutionDefaults.warning}:resolutionDefaults[value]?{agreement_terms:resolutionDefaults[value]}:{})} options={[{value:'reconciliation',label:'Heshiis Dib-u-Heshiisiin'},{value:'warning',label:'Warqad Digniin'},{value:'mediation',label:'Warqad Dhexdhexaadin'},{value:'withdrawal',label:'Ka-Noqoshada Cabashada'},{value:'false_report',label:'Caddeyn Warbixin Qaldan'},{value:'general_agreement',label:'Heshiis Guud'}]}/></Form.Item>
-            {resolutionMethod&&resolutionContexts[resolutionMethod]&&<Card size="small" title="Qoraalka rasmiga ah ee warqadda" style={{marginBottom:16,background:'#fafafa'}}><Paragraph style={{whiteSpace:'pre-line',margin:0}}>{resolutionContexts[resolutionMethod]}</Paragraph></Card>}
-            {resolutionMethod==='reconciliation'&&<><Form.Item name={['document_data','agreement_terms']} label="Agreement terms" rules={[{required:true,min:10}]}><Input.TextArea rows={6}/></Form.Item><Form.Item name={['document_data','witnesses']} label="Magaca markhaatiga" rules={[{required:true}]}><Input/></Form.Item></>}
-            {resolutionMethod==='warning'&&<Form.Item name={['document_data','warning_reason']} label="Arrinta digniinta la xiriirta" rules={[{required:true,min:5}]}><Input.TextArea rows={4}/></Form.Item>}
-            {resolutionMethod==='mediation'&&<><Form.Item name={['document_data','mediator_name']} label="Magaca dhexdhexaadiyaha" rules={[{required:true}]}><Input/></Form.Item><Form.Item name={['document_data','disputed_issues']} label="Arrinta la isku hayay" rules={[{required:true,min:5}]}><Input.TextArea rows={4}/></Form.Item></>}
-            {resolutionMethod==='withdrawal'&&<Form.Item name={['document_data','withdrawal_reason']} label="Arrinta / sababta cabashada looga noqday" rules={[{required:true,min:5}]}><Input.TextArea rows={4}/></Form.Item>}
-            {resolutionMethod==='false_report'&&<><Form.Item name={['document_data','incorrect_information']} label="Warbixintii qaldanayd" rules={[{required:true,min:5}]}><Input.TextArea rows={3}/></Form.Item><Form.Item name={['document_data','corrected_information']} label="Xogta saxda ah" rules={[{required:true,min:5}]}><Input.TextArea rows={3}/></Form.Item></>}
-            {resolutionMethod==='general_agreement'&&<><Form.Item name={['document_data','agreement_terms']} label="Agreement terms" rules={[{required:true,min:10}]}><Input.TextArea rows={7}/></Form.Item><Form.Item name={['document_data','witness_1']} label="Magaca Markhaati 1" rules={[{required:true}]}><Input/></Form.Item><Form.Item name={['document_data','witness_2']} label="Magaca Markhaati 2" rules={[{required:true}]}><Input/></Form.Item></>}
-            {resolutionMethod&&<Tag color="gold" style={{marginBottom:16}}>Meelaha saxiixyada warqadda daabacan way bannaan yihiin si gacanta loogu saxiixo.</Tag>}
-            <Space style={{width:'100%',justifyContent:'flex-end'}}><Button onClick={()=>setResolveOpen(false)}>Jooji</Button><Button icon={<EyeOutlined/>} onClick={previewDraft}>Preview</Button><Button type="primary" htmlType="submit" loading={actionLoading}>Abuur Warqad & Xir</Button></Space>
+            <Form.Item name="resolution_method" label="Nooca warqadda" rules={[{ required: true }]}><Select onChange={(value) => resolveForm.setFieldValue('document_data', value === 'warning' ? { warning_reason: resolutionDefaults.warning } : resolutionDefaults[value] ? { agreement_terms: resolutionDefaults[value] } : {})} options={[{ value: 'reconciliation', label: 'Heshiis Dib-u-Heshiisiin' }, { value: 'warning', label: 'Warqad Digniin' }, { value: 'mediation', label: 'Warqad Dhexdhexaadin' }, { value: 'withdrawal', label: 'Ka-Noqoshada Cabashada' }, { value: 'false_report', label: 'Caddeyn Warbixin Qaldan' }, { value: 'general_agreement', label: 'Heshiis Guud' }]} /></Form.Item>
+            {resolutionMethod && resolutionContexts[resolutionMethod] && <Card size="small" title="Qoraalka rasmiga ah ee warqadda" style={{ marginBottom: 16, background: '#fafafa' }}><Paragraph style={{ whiteSpace: 'pre-line', margin: 0 }}>{resolutionContexts[resolutionMethod]}</Paragraph></Card>}
+            {resolutionMethod === 'reconciliation' && <><Form.Item name={['document_data', 'agreement_terms']} label="Agreement terms" rules={[{ required: true, min: 10 }]}><Input.TextArea rows={6} /></Form.Item><Form.Item name={['document_data', 'witnesses']} label="Magaca markhaatiga" rules={[{ required: true }]}><Input /></Form.Item></>}
+            {resolutionMethod === 'warning' && <Form.Item name={['document_data', 'warning_reason']} label="Arrinta digniinta la xiriirta" rules={[{ required: true, min: 5 }]}><Input.TextArea rows={4} /></Form.Item>}
+            {resolutionMethod === 'mediation' && <><Form.Item name={['document_data', 'mediator_name']} label="Magaca dhexdhexaadiyaha" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name={['document_data', 'disputed_issues']} label="Arrinta la isku hayay" rules={[{ required: true, min: 5 }]}><Input.TextArea rows={4} /></Form.Item></>}
+            {resolutionMethod === 'withdrawal' && <Form.Item name={['document_data', 'withdrawal_reason']} label="Arrinta / sababta cabashada looga noqday" rules={[{ required: true, min: 5 }]}><Input.TextArea rows={4} /></Form.Item>}
+            {resolutionMethod === 'false_report' && <><Form.Item name={['document_data', 'incorrect_information']} label="Warbixintii qaldanayd" rules={[{ required: true, min: 5 }]}><Input.TextArea rows={3} /></Form.Item><Form.Item name={['document_data', 'corrected_information']} label="Xogta saxda ah" rules={[{ required: true, min: 5 }]}><Input.TextArea rows={3} /></Form.Item></>}
+            {resolutionMethod === 'general_agreement' && <><Form.Item name={['document_data', 'agreement_terms']} label="Agreement terms" rules={[{ required: true, min: 10 }]}><Input.TextArea rows={7} /></Form.Item><Form.Item name={['document_data', 'witness_1']} label="Magaca Markhaati 1" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name={['document_data', 'witness_2']} label="Magaca Markhaati 2" rules={[{ required: true }]}><Input /></Form.Item></>}
+            {resolutionMethod && <Tag color="gold" style={{ marginBottom: 16 }}>Meelaha saxiixyada warqadda daabacan way bannaan yihiin si gacanta loogu saxiixo.</Tag>}
+            <Space style={{ width: '100%', justifyContent: 'flex-end' }}><Button onClick={() => setResolveOpen(false)}>Jooji</Button><Button icon={<EyeOutlined />} onClick={previewDraft}>Preview</Button><Button type="primary" htmlType="submit" loading={actionLoading}>Abuur Warqad & Xir</Button></Space>
           </Form>
         </Modal>
-        <Modal width={850} title="Preview Warqadda Xalinta" open={!!previewHtml} onCancel={()=>setPreviewHtml('')} footer={<Space><Button onClick={()=>setPreviewHtml('')}>Xir</Button><Button icon={<PrinterOutlined/>} onClick={()=>{const win=window.open('','_blank');win.document.write(previewHtml);win.document.close();setTimeout(()=>win.print(),300)}}>Print / Download PDF</Button></Space>}><iframe title="Resolution document preview" srcDoc={previewHtml} style={{width:'100%',height:'65vh',border:'1px solid #ddd'}}/></Modal>
-        <Modal title="Dib u fur OB-ga" open={reopenOpen} onCancel={()=>setReopenOpen(false)} footer={null}>
-          <Form form={reopenForm} layout="vertical" onFinish={reopenOb}><Form.Item name="reason" label="Sababta dib loogu furayo" rules={[{required:true,min:5}]}><Input.TextArea rows={4}/></Form.Item><Space style={{width:'100%',justifyContent:'flex-end'}}><Button onClick={()=>setReopenOpen(false)}>Jooji</Button><Button type="primary" htmlType="submit" loading={actionLoading}>Dib u fur</Button></Space></Form>
+        <Modal width={850} title="Preview Warqadda Xalinta" open={!!previewHtml} onCancel={() => setPreviewHtml('')} footer={<Space><Button onClick={() => setPreviewHtml('')}>Xir</Button><Button icon={<PrinterOutlined />} onClick={() => { const win = window.open('', '_blank'); win.document.write(previewHtml); win.document.close(); setTimeout(() => win.print(), 300); }}>Print / Download PDF</Button></Space>}><iframe title="Resolution document preview" srcDoc={previewHtml} style={{ width: '100%', height: '65vh', border: '1px solid #ddd' }} /></Modal>
+        <Modal title="Dib u fur OB-ga" open={reopenOpen} onCancel={() => setReopenOpen(false)} footer={null}>
+          <Form form={reopenForm} layout="vertical" onFinish={reopenOb}><Form.Item name="reason" label="Sababta dib loogu furayo" rules={[{ required: true, min: 5 }]}><Input.TextArea rows={4} /></Form.Item><Space style={{ width: '100%', justifyContent: 'flex-end' }}><Button onClick={() => setReopenOpen(false)}>Jooji</Button><Button type="primary" htmlType="submit" loading={actionLoading}>Dib u fur</Button></Space></Form>
         </Modal>
       </Space>
     </ProtectedRoute>
   );
 }
+

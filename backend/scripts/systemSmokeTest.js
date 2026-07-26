@@ -198,11 +198,9 @@ const runStep = async (name, fn) => {
   });
 
   await runStep('Court can record judgment after case is approved for court', async () => {
-    await request(`/cases/${firstCase.caseId}`, {
-      method: 'PUT',
-      token: tokens.admin,
-      body: { status: 'approved_for_court' },
-    });
+    await request(`/cases/${firstCase.caseId}`, { method: 'PUT', token: tokens.admin, body: { status: 'registered' } });
+    await request(`/cases/${firstCase.caseId}`, { method: 'PUT', token: tokens.admin, body: { status: 'under_investigation' } });
+    await request(`/cases/${firstCase.caseId}`, { method: 'PUT', token: tokens.admin, body: { status: 'approved_for_court' } });
     const decision = await request(`/cases/${firstCase.caseId}/court-decision`, {
       method: 'POST',
       token: tokens.court,

@@ -24,18 +24,40 @@ const validateSuspectPayload = (body, { partial = false } = {}) => {
   const age = normalizeOptional(body.age);
   const phone = normalizeOptional(body.phone);
   const gender = normalizeOptional(body.gender);
+  const idType = normalizeOptional(body.id_type);
+  const idNumber = normalizeOptional(body.id_number);
+
+  const dob = normalizeOptional(body.date_of_birth);
 
   if (!partial && !fullName) errors.push('Full name is required.');
   if (fullName && fullName.length < 3) errors.push('Full name must be at least 3 characters.');
   if (gender && !VALID_GENDERS.has(gender)) errors.push('Gender must be male or female.');
   if (age !== null) {
     const parsedAge = Number(age);
-    if (!Number.isInteger(parsedAge) || parsedAge < 1 || parsedAge > 120) {
-      errors.push('Age must be a whole number between 1 and 120.');
+    if (!Number.isInteger(parsedAge) || parsedAge < 8 || parsedAge > 120) {
+      errors.push('Age must be a whole number between 8 and 120.');
+    }
+  }
+  if (dob) {
+    const parsedDob = dayjs(dob);
+    if (parsedDob.isValid() && dayjs().diff(parsedDob, 'year') < 8) {
+      errors.push('Date of birth must correspond to an age of at least 8 years.');
     }
   }
   if (phone && !/^[+\d][\d\s-]{6,24}$/.test(phone)) {
     errors.push('Phone number format is invalid.');
+  }
+
+  if (idNumber) {
+    if (idType === 'National ID') {
+      if (idNumber.length !== 14) {
+        errors.push('National ID must be exactly 14 characters/digits.');
+      }
+    } else if (idType === 'Passport') {
+      if (idNumber.length !== 9 || !/^[A-Za-z0-9]{9}$/.test(idNumber)) {
+        errors.push('Passport must be 9 characters (e.g. X99999999).');
+      }
+    }
   }
 
   return errors;

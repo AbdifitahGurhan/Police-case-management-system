@@ -3,7 +3,7 @@
 require('dotenv').config();
 const db = require('../src/config/database');
 
-const statements = [
+const createTables = [
   `CREATE TABLE IF NOT EXISTS legal_personnel (
     id INT PRIMARY KEY AUTO_INCREMENT,
     personnel_type ENUM('judge','prosecutor') NOT NULL,
@@ -20,13 +20,6 @@ const statements = [
     CONSTRAINT fk_legal_personnel_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_legal_personnel_type_status (personnel_type, status)
   )`,
-  `ALTER TABLE ob_entries MODIFY claim_value DECIMAL(15,2) NULL`,
-  `ALTER TABLE cases ADD COLUMN IF NOT EXISTS claim_value DECIMAL(15,2) NULL AFTER priority`,
-  `ALTER TABLE court_cases ADD COLUMN IF NOT EXISTS assigned_judge_id INT NULL AFTER assigned_judge`,
-  `ALTER TABLE court_cases ADD COLUMN IF NOT EXISTS assigned_prosecutor_id INT NULL AFTER assigned_prosecutor`,
-  `ALTER TABLE court_hearings ADD COLUMN IF NOT EXISTS assigned_judge_id INT NULL AFTER assigned_judge`,
-  `ALTER TABLE court_judgments ADD COLUMN IF NOT EXISTS judge_id INT NULL AFTER judge_name`,
-  `ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS police_station_id INT NULL AFTER entity_id`,
   `CREATE TABLE IF NOT EXISTS warrants (
     id INT PRIMARY KEY AUTO_INCREMENT,
     warrant_number VARCHAR(80) NOT NULL UNIQUE,
@@ -62,11 +55,38 @@ const statements = [
     INDEX idx_warrant_filters (status, warrant_type, police_station_id, issue_date),
     INDEX idx_warrant_case (case_id),
     INDEX idx_warrant_ob (ob_entry_id)
-  )`,
+  )`
+];
+
+const columnAdditions = [
+  { table: 'cases', column: 'claim_value', definition: 'DECIMAL(15,2) NULL AFTER priority' },
+  { table: 'court_cases', column: 'assigned_judge_id', definition: 'INT NULL AFTER assigned_judge' },
+  { table: 'court_cases', column: 'assigned_prosecutor_id', definition: 'INT NULL AFTER assigned_prosecutor' },
+  { table: 'court_hearings', column: 'assigned_judge_id', definition: 'INT NULL AFTER assigned_judge' },
+  { table: 'court_judgments', column: 'judge_id', definition: 'INT NULL AFTER judge_name' },
+  { table: 'audit_logs', column: 'police_station_id', definition: 'INT NULL AFTER entity_id' },
 ];
 
 async function run() {
-  for (const sql of statements) await db.query(sql);
+  for (const sql of createTables) await db.query(sql);
+
+  try {
+    await db.query(`ALTER TABLE ob_entries MODIFY claim_value DECIMAL(15,2) NULL`);
+  } catch (err) {
+    // Ignore if column definition mismatch
+  }
+
+  for (const { table, column, definition } of columnAdditions) {
+    const [[exists]] = await db.query(
+      `SELECT COUNT(*) AS total FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, column]
+    );
+    if (!Number(exists.total)) {
+      await db.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  }
+
   console.log('Legal personnel, USD, and warrants migration completed.');
   process.exit(0);
 }
@@ -75,3 +95,4 @@ run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+

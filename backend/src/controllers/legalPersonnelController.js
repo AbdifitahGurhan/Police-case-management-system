@@ -26,8 +26,31 @@ const options = async (req, res, next) => {
   try {
     const type = req.query.type;
     if (!validType(type)) return res.status(400).json({ success: false, message: 'type must be judge or prosecutor.' });
-    const [rows] = await db.query("SELECT id AS value, full_name AS label, court_or_office FROM legal_personnel WHERE personnel_type=? AND status='active' ORDER BY full_name", [type]);
-    res.json({ success: true, data: rows });
+
+    const [lpRows] = await db.query(
+      "SELECT id AS value, full_name AS label, court_or_office FROM legal_personnel WHERE personnel_type=? AND status='active' ORDER BY full_name",
+      [type]
+    );
+
+    const roleFilter = type === 'judge' ? ['judge', 'court', 'court_admin', 'court_clerk'] : ['prosecutor', 'prosecutor_liaison'];
+    const [userRows] = await db.query(
+      `SELECT u.id AS value, u.full_name AS label, 'Court / Legal System' AS court_or_office 
+       FROM users u 
+       JOIN roles r ON u.role_id = r.id 
+       WHERE LOWER(r.name) IN (?) AND u.is_active = 1 
+       ORDER BY u.full_name`,
+      [roleFilter]
+    );
+
+    const combinedMap = new Map();
+    for (const item of lpRows) combinedMap.set(item.label.toLowerCase(), item);
+    for (const item of userRows) {
+      if (!combinedMap.has(item.label.toLowerCase())) {
+        combinedMap.set(item.label.toLowerCase(), item);
+      }
+    }
+
+    res.json({ success: true, data: Array.from(combinedMap.values()) });
   } catch (error) { next(error); }
 };
 

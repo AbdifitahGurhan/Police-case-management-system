@@ -4,6 +4,7 @@
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { syncCriminalCustodyStatus } = require('../utils/custodyStatus');
+const { hasGlobalCidRead, normalizeRole } = require('../utils/locationScope');
 
 const SENTENCE_STATUSES = new Set([
   'awaiting_trial',
@@ -86,6 +87,8 @@ const canAccessCase = async (user, caseId) => {
     [caseId]
   );
   if (!caseRow) return false;
+  const role = normalizeRole(user?.role);
+  if (!user || role === 'admin' || role === 'jail' || hasGlobalCidRead(user)) return true;
   if (!user.scopeType) return true;
   const columnMap = {
     state_administration: 'state_administration_id',

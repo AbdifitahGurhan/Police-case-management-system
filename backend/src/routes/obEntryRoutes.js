@@ -23,9 +23,16 @@ const upload = multer({
   fileFilter: (req,file,cb) => cb(null, file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')),
 });
 
+const handleUpload = (req, res, next) => {
+  if (req.is('multipart/form-data')) {
+    return upload.any()(req, res, next);
+  }
+  next();
+};
+
 router.get('/', allowRoles(...OB_READ_ROLES), getObEntries);
 router.get('/:id', allowRoles(...OB_READ_ROLES), getObEntryById);
-router.post('/', allowRoles(...OB_WRITE_ROLES), upload.array('attachments', 10), createObEntry);
+router.post('/', allowRoles(...OB_WRITE_ROLES), handleUpload, createObEntry);
 router.post('/:id/convert-to-case', allowRoles(...OB_CONVERT_ROLES), convertObToCase);
 router.post('/:id/resolve', allowRoles(...OB_WRITE_ROLES), resolveObEntry);
 router.post('/:id/reopen', allowRoles(...OB_WRITE_ROLES), reopenObEntry);

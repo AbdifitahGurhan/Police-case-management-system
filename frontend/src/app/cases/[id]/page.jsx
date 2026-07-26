@@ -24,6 +24,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { compressImageFile } from '@/utils/imageCompression';
 import {
   disabledFutureDate,
+  disabledUnder8DobDate,
+  dynamicIdNumberRule,
+  getEvidenceUploadConfig,
+  minimumAge8Rule,
   nameRules,
   noFutureDateTimeRule,
   phoneRules,
@@ -210,6 +214,15 @@ export default function CaseDetailsPage() {
   };
 
   const handleFormValuesChange = async (changedValues, allValues) => {
+    if (changedValues.date_of_birth) {
+      const dob = dayjs(changedValues.date_of_birth);
+      if (dob.isValid()) {
+        const calculatedAge = dayjs().diff(dob, 'year');
+        if (calculatedAge >= 0) {
+          suspectForm.setFieldsValue({ age: calculatedAge });
+        }
+      }
+    }
     if (changedValues.id_number !== undefined || changedValues.id_type !== undefined) {
       const idType = allValues.id_type;
       const idNumber = allValues.id_number;
@@ -958,7 +971,8 @@ export default function CaseDetailsPage() {
                 <Select><Option value="male">Male</Option><Option value="female">Female</Option></Select>
               </Form.Item>
             </Col>
-            <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[positiveIntegerRule('Age', 1, 120)]}><Input type="number" /></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[positiveIntegerRule('Age', 8, 120)]}><Input type="number" min={8} max={120} /></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item name="date_of_birth" label="Date of Birth" rules={[minimumAge8Rule()]}><DatePicker style={{ width: '100%' }} disabledDate={disabledUnder8DobDate} /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="nationality" label="Nationality" initialValue="Somali" rules={[textLengthRule('Nationality', 2, 100)]}><Input /></Form.Item></Col>
             <Col xs={24} md={12}>
               <Form.Item name="id_type" label="ID Type" rules={[requiredRule('ID type')]}>
@@ -968,7 +982,7 @@ export default function CaseDetailsPage() {
                 </Select>
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number" rules={[textLengthRule('ID number', 2, 100)]}><Input /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number" dependencies={['id_type']} rules={[dynamicIdNumberRule('id_type')]}><Input placeholder="14 digits (National ID) / 9 chars (Passport)" /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="phone" label="Phone" rules={phoneRules}><Input /></Form.Item></Col>
             <Col xs={24} md={12}>
               <Form.Item name="arrest_status" label="Arrest Status" initialValue="not_arrested">
@@ -1077,31 +1091,64 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title="Add Evidence" open={isEvidenceModalOpen} onCancel={() => setIsEvidenceModalOpen(false)} onOk={() => evidenceForm.submit()}>
-        <Form form={evidenceForm} onFinish={handleEvidence} layout="vertical">
-          <Form.Item name="title" label="Title" rules={[requiredRule('Evidence title'), textLengthRule('Evidence title', 3, 255)]}><Input /></Form.Item>
-          <Form.Item name="type" label="Type" initialValue="document"><Select><Option value="document">Document</Option><Option value="physical">Physical</Option></Select></Form.Item>
+      <Modal title="Add Evidence (Ku dar Caddeyn)" open={isEvidenceModalOpen} onCancel={() => setIsEvidenceModalOpen(false)} onOk={() => evidenceForm.submit()} confirmLoading={submitting}>
+        <Form form={evidenceForm} onFinish={handleEvidence} layout="vertical" initialValues={{ type: 'document' }}>
+          <Form.Item name="title" label="Cinwaanka Caddeynta (Evidence Title)" rules={[requiredRule('Evidence title'), textLengthRule('Evidence title', 3, 255)]}>
+            <Input placeholder="e.g. Heshiis, Warqad, ama Sawir" />
+          </Form.Item>
+          <Form.Item name="type" label="Nooca Caddeynta (Type)" rules={[requiredRule('Type')]}>
+            <Select
+              options={[
+                { value: 'document', label: 'Dokumiinti (PDF, DOC, DOCX, TXT, XLS)' },
+                { value: 'photo', label: 'Sawir (JPG, JPEG, PNG, WEBP)' },
+                { value: 'video', label: 'Fiidiyow (MP4, MOV, AVI, WEBM)' },
+                { value: 'physical', label: 'Physical Evidence (Fayl Guud)' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="location_found" label="Goobta laga helay (Location Found)" rules={[textLengthRule('Location found', 2, 255)]}>
+            <Input placeholder="Location found" />
+          </Form.Item>
+          <Form.Item name="collection_date" label="Taariikhda la soo helay (Collection Date)">
+            <DatePicker showTime style={{ width: '100%' }} disabledDate={disabledFutureDate} />
+          </Form.Item>
+          <Form.Item name="description" label="Sharaxaadda Caddeynta">
+            <Input.TextArea rows={3} placeholder="Faahfaahin ku saabsan caddeynta" />
+          </Form.Item>
+
           <Form.Item
-            name="file"
-            label="Image (JPG, JPEG, PNG)"
-            valuePropName="fileList"
-            getValueFromEvent={(event) => event?.fileList || []}
-            rules={[{ required: true, message: 'Fadlan dooro sawirka caddeynta.' }]}
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.type !== currentValues.type}
           >
-            <Upload
-              beforeUpload={(file) => {
-                const allowed = ['image/jpeg', 'image/png'].includes(file.type);
-                if (!allowed) {
-                  message.error('Waxaa la oggol yahay JPG, JPEG, ama PNG oo keliya.');
-                  return Upload.LIST_IGNORE;
-                }
-                return false;
-              }}
-              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-              maxCount={1}
-            >
-              <Button icon={<PlusOutlined />}>Select Image</Button>
-            </Upload>
+            {({ getFieldValue }) => {
+              const currentType = getFieldValue('type') || 'document';
+              const config = getEvidenceUploadConfig(currentType);
+
+              return (
+                <Form.Item
+                  name="file"
+                  label={config.label}
+                  valuePropName="fileList"
+                  getValueFromEvent={(event) => event?.fileList || []}
+                  rules={[{ required: true, message: 'Fadlan dooro ama soo xaree faylka caddeynta.' }]}
+                >
+                  <Upload
+                    beforeUpload={(file) => {
+                      const errorMsg = config.validate(file);
+                      if (errorMsg) {
+                        message.error(errorMsg);
+                        return Upload.LIST_IGNORE;
+                      }
+                      return false;
+                    }}
+                    accept={config.accept}
+                    maxCount={1}
+                  >
+                    <Button icon={<PlusOutlined />}>{config.buttonText}</Button>
+                  </Upload>
+                </Form.Item>
+              );
+            }}
           </Form.Item>
         </Form>
       </Modal>

@@ -83,16 +83,46 @@ async function validateReferences(data, station) {
 
 const create = async (req, res, next) => {
   try {
-    const data = req.body; const station = await stationIdFor(req, data.police_station_id);
+    const data = req.body;
+
+    // Auto-generate warrant_number if not provided
+    if (!data.warrant_number) {
+      const year = new Date().getFullYear();
+      const [[maxRow]] = await db.query("SELECT MAX(id) as maxId FROM warrants");
+      const nextId = (maxRow?.maxId || 0) + 1;
+      data.warrant_number = `WRT-${year}-${String(nextId).padStart(5, '0')}`;
+    }
+
+    // Auto-resolve police station from ob_entry_id if needed
+    if (!data.police_station_id && data.ob_entry_id) {
+      const [[obRow]] = await db.query("SELECT district_id FROM ob_entries WHERE id=?", [data.ob_entry_id]);
+      if (obRow?.district_id) {
+        data.police_station_id = obRow.district_id;
+      }
+    }
+
+    const station = await stationIdFor(req, data.police_station_id);
     if (!station) return res.status(400).json({ success: false, message: 'Police station is required.' });
-    if (!data.warrant_number || !TYPES.includes(data.warrant_type) || !data.subject_name || !data.reason) return res.status(400).json({ success: false, message: 'Warrant number, type, subject, and reason are required.' });
+    if (!TYPES.includes(data.warrant_type) || !data.subject_name || !data.reason) {
+      return res.status(400).json({ success: false, message: 'Warrant type, subject name, and reason are required.' });
+    }
+
     const dateError = validateWarrantDates({ issueDate: data.issue_date, expiryDate: data.expiry_date });
     if (dateError) return res.status(400).json({ success: false, message: dateError });
-    const refError = await validateReferences(data, station); if (refError) return res.status(400).json({ success: false, message: refError });
-    if (data.status && !['draft','pending','issued'].includes(data.status)) return res.status(400).json({ success: false, message: 'A new warrant can only be Draft, Pending, or Issued.' });
+
+    const refError = await validateReferences(data, station);
+    if (refError) return res.status(400).json({ success: false, message: refError });
+
+    if (data.status && !['draft','pending','issued'].includes(data.status)) {
+      return res.status(400).json({ success: false, message: 'A new warrant can only be Draft, Pending, or Issued.' });
+    }
+
     const attachment = req.file ? `/uploads/warrants/${req.file.filename}` : null;
-    const [result] = await db.query(`INSERT INTO warrants (warrant_number,warrant_type,case_id,ob_entry_id,criminal_id,subject_name,reason,issued_by_judge_id,requested_by_prosecutor_id,requested_by_officer_id,police_station_id,issue_date,expiry_date,status,attachment_url,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [data.warrant_number,data.warrant_type,data.case_id||null,data.ob_entry_id||null,data.criminal_id||null,data.subject_name,data.reason,data.issued_by_judge_id||null,data.requested_by_prosecutor_id||null,data.requested_by_officer_id||null,station,data.issue_date,data.expiry_date,data.status||'draft',attachment,req.user.id]);
+    const [result] = await db.query(
+      `INSERT INTO warrants (warrant_number,warrant_type,case_id,ob_entry_id,criminal_id,subject_name,reason,issued_by_judge_id,requested_by_prosecutor_id,requested_by_officer_id,police_station_id,issue_date,expiry_date,status,attachment_url,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [data.warrant_number,data.warrant_type,data.case_id||null,data.ob_entry_id||null,data.criminal_id||null,data.subject_name,data.reason,data.issued_by_judge_id||null,data.requested_by_prosecutor_id||null,data.requested_by_officer_id||null,station,data.issue_date,data.expiry_date,data.status||'issued',attachment,req.user.id]
+    );
+
     const [[created]] = await db.query('SELECT * FROM warrants WHERE id=?',[result.insertId]);
     await writeAuditLog({ ...meta(req), policeStationId: station, action: created.status === 'issued' ? 'ISSUE_WARRANT' : 'CREATE_WARRANT', entityType: 'warrants', entityId: result.insertId, newData: created });
     res.status(201).json({ success: true, data: created });

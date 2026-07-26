@@ -264,7 +264,11 @@ const convertObToCase = async (req, res, next) => {
              city_id = COALESCE(?, city_id),
              district_id = COALESCE(?, district_id),
              complainant_name = COALESCE(complainant_name, ?),
-             complainant_phone = COALESCE(complainant_phone, ?)
+             complainant_phone = COALESCE(complainant_phone, ?),
+             case_type = COALESCE(case_type, ?),
+             incident_date = COALESCE(incident_date, ?),
+             case_title = COALESCE(case_title, title, ?),
+             title = COALESCE(title, case_title, ?)
          WHERE id = ?`,
         [
           ob.id,
@@ -274,6 +278,10 @@ const convertObToCase = async (req, res, next) => {
           ob.district_id || null,
           ob.reported_by || null,
           ob.reporter_phone || null,
+          ob.case_type || null,
+          ob.incident_datetime || null,
+          ob.case_title || ob.incident_type || null,
+          ob.case_title || ob.incident_type || null,
           existingCase.id,
         ]
       );
@@ -292,19 +300,24 @@ const convertObToCase = async (req, res, next) => {
     const caseStatus = status || 'under_investigation';
     const [result] = await db.query(
       `INSERT INTO cases
-        (case_number, case_title, title, ob_number, ob_entry_id, original_ob_staff_id, original_ob_staff_name,
-         incident_type, description, incident_location, status, priority, state_administration_id, region_id, city_id,
-         district_id, assigned_officer_id, created_by, complainant_name, complainant_phone)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (case_number, case_title, title, case_type, case_level, ob_number, ob_entry_id, original_ob_staff_id, original_ob_staff_name,
+         incident_type, incident_date, claim_value, description, incident_location, status, priority, state_administration_id, region_id, city_id,
+         district_id, assigned_officer_id, created_by, complainant_name, complainant_phone,
+         complainant_id_type, complainant_id_number, complainant_email, complainant_address)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         caseNumber,
-        ob.incident_type,
-        ob.incident_type,
+        ob.case_title || ob.incident_type || 'General',
+        ob.case_title || ob.incident_type || 'General',
+        ob.case_type || 'General',
+        ob.case_level || 'normal',
         ob.ob_number,
         ob.id,
         ob.registered_by_user_id,
         ob.registered_by_name,
-        ob.incident_type,
+        ob.incident_type || 'General',
+        ob.incident_datetime || ob.created_at || new Date(),
+        ob.claim_value || null,
         ob.description,
         ob.incident_location,
         caseStatus,
@@ -317,6 +330,10 @@ const convertObToCase = async (req, res, next) => {
         req.user.username,
         ob.reported_by || null,
         ob.reporter_phone || null,
+        ob.reporter_id_type || null,
+        ob.reporter_id_number || null,
+        ob.reporter_email || null,
+        ob.reporter_address || null,
       ]
     );
 

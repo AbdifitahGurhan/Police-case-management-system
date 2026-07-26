@@ -9,7 +9,15 @@ const dateOnly = (value) => {
   return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized ? null : normalized;
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const now = new Date();
+  const utcDate = now.toISOString().slice(0, 10);
+  const localYear = now.getFullYear();
+  const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const localDay = String(now.getDate()).padStart(2, '0');
+  const localDate = `${localYear}-${localMonth}-${localDay}`;
+  return localDate > utcDate ? localDate : utcDate;
+};
 const after = (left, right) => left && right && left > right;
 const before = (left, right) => left && right && left < right;
 

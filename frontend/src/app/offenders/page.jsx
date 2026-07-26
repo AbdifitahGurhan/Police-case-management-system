@@ -47,6 +47,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import { compressImageFile } from '@/utils/imageCompression';
+import { disabledUnder8DobDate, dynamicIdNumberRule, minimumAge8Rule } from '@/utils/validation';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -227,6 +228,15 @@ export default function OffendersPage() {
   };
 
   const handleFormValuesChange = async (changedValues, allValues) => {
+    if (changedValues.date_of_birth) {
+      const dob = dayjs(changedValues.date_of_birth);
+      if (dob.isValid()) {
+        const calculatedAge = dayjs().diff(dob, 'year');
+        if (calculatedAge >= 0) {
+          form.setFieldsValue({ age: calculatedAge });
+        }
+      }
+    }
     if (changedValues.id_number !== undefined || changedValues.id_type !== undefined) {
       const idType = allValues.id_type;
       const idNumber = allValues.id_number;
@@ -801,12 +811,12 @@ export default function OffendersPage() {
               <Col xs={24} md={12}><Form.Item name="mother_name" label="Mother's Name"><Input /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="alias" label="Alias"><Input /></Form.Item></Col>
               <Col xs={24} md={12}>
-                <Form.Item name="date_of_birth" label="Date of Birth">
-                  <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" placeholder="Select DOB" />
+                <Form.Item name="date_of_birth" label="Date of Birth" rules={[minimumAge8Rule()]}>
+                  <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" placeholder="Select DOB" disabledDate={disabledUnder8DobDate} />
                 </Form.Item>
               </Col>
               <Col xs={24} md={8}><Form.Item name="gender" label="Gender" initialValue="male" rules={[{ required: true }]}><Select options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }]} /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[{ type: 'number', min: 1, max: 120 }]}><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+              <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[{ type: 'number', min: 8, max: 120, message: "Da'da waa in ay ahaataa ugu yaraan 8 jir." }]}><InputNumber style={{ width: '100%' }} min={8} max={120} /></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="nationality" label="Nationality" initialValue="Somali"><Input /></Form.Item></Col>
               <Col xs={24} md={12}>
                 <Form.Item name="id_type" label="ID Type" rules={[{ required: true, message: 'ID Type is required.' }]}>
@@ -816,7 +826,7 @@ export default function OffendersPage() {
                   </Select>
                 </Form.Item>
               </Col>
-              <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number"><Input /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number" dependencies={['id_type']} rules={[dynamicIdNumberRule('id_type')]}><Input placeholder="14 digits (National ID) / 9 chars (Passport)" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="phone" label="Phone" rules={[{ pattern: /^[+\d][\d\s-]{6,24}$/, message: 'Use a valid phone number.' }]}><Input /></Form.Item></Col>
               <Col xs={24} md={12}>
                 <Form.Item name="arrest_status" label="Arrest Status" initialValue="not_arrested" rules={[{ required: true }]}>

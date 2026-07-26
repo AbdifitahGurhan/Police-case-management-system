@@ -1,7 +1,7 @@
 // src/app/dashboard/jail/page.jsx
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Alert, App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Tag, Upload } from 'antd';
 import {
   DatabaseOutlined,
@@ -20,7 +20,7 @@ const CELL_OPTIONS = Array.from({ length: 20 }, (_, index) => {
   return { value, label: `Cell ${value}` };
 });
 
-export default function JailDashboard() {
+function JailDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message } = App.useApp();
@@ -281,5 +281,13 @@ export default function JailDashboard() {
       </Form>
     </Modal>
     </>
+  );
+}
+
+export default function JailDashboard() {
+  return (
+    <Suspense fallback={null}>
+      <JailDashboardContent />
+    </Suspense>
   );
 }

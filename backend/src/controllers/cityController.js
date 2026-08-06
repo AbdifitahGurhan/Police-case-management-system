@@ -5,8 +5,10 @@ const bcrypt = require('bcryptjs');
 exports.getAll = async (req, res, next) => {
   try { 
     let query = `
-      SELECT c.id, c.city_name, c.city_code, c.username, c.commander_officer_id, c.region_id, p.full_name as commander_name
+      SELECT c.id, c.city_name, c.city_code, c.username, c.commander_officer_id, c.region_id, r.region_name, s.state_code, p.full_name as commander_name
       FROM cities c
+      LEFT JOIN regions r ON r.id = c.region_id
+      LEFT JOIN state_administrations s ON s.id = r.state_administration_id
       LEFT JOIN police_officers p ON c.commander_officer_id = p.id
       WHERE 1=1
     `;

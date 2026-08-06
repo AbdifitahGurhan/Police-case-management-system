@@ -40,21 +40,51 @@ const POLICE_TRANSITIONS = {
   archived: [],
 };
 
+const POLICE_STATUS_ALIASES = {
+  case_registered: 'registered',
+  confirmed_by_ward_commander: 'registered',
+  confirmed_by_commander: 'registered',
+  referred_cid: 'referred_to_cid',
+  assigned_to_cid: 'referred_to_cid',
+  referred_to_court: 'approved_for_court',
+};
+
+const normalizePoliceStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  return POLICE_STATUS_ALIASES[normalized] || normalized;
+};
+
 const assertPoliceTransition = (from, to, { authorizedReopen = false } = {}) => {
-  if (!to || from === to) return true;
-  if (TERMINAL_POLICE_STATUSES.has(from) && authorizedReopen &&
-      ['referred_to_cid', 'under_investigation', 'approved_for_court'].includes(to)) return true;
-  if (!(POLICE_TRANSITIONS[from] || []).includes(to)) {
+  const normFrom = normalizePoliceStatus(from);
+  const normTo = normalizePoliceStatus(to);
+  if (!normTo || normFrom === normTo) return true;
+  if (TERMINAL_POLICE_STATUSES.has(normFrom) && authorizedReopen &&
+      ['referred_to_cid', 'under_investigation', 'approved_for_court'].includes(normTo)) return true;
+  if (!(POLICE_TRANSITIONS[normFrom] || []).includes(normTo)) {
     throw new WorkflowError(`Invalid police case status transition from ${from} to ${to}.`);
   }
   return true;
 };
 
+const CID_STATUS_ALIASES = {
+  socota: 'under_investigation',
+  dhammaystiran: 'investigation_completed',
+  xiran: 'rejected',
+};
+
+const normalizeCidStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  return CID_STATUS_ALIASES[normalized] || normalized;
+};
+
 const assertCidTransition = (from, to, { supervisor = false } = {}) => {
-  if (!to || from === to) return true;
-  if (to === 'rejected' && supervisor && from === 'supervisor_review') return true;
-  const fromIndex = CID_WORKFLOW.indexOf(from);
-  const toIndex = CID_WORKFLOW.indexOf(to);
+  const normFrom = normalizeCidStatus(from);
+  const normTo = normalizeCidStatus(to);
+  if (!normTo || normFrom === normTo) return true;
+  if ((normTo === 'rejected' || normTo === 'xiran') && supervisor && (normFrom === 'supervisor_review' || normFrom === 'investigation_completed')) return true;
+  if (['socota', 'dhammaystiran', 'xiran'].includes(String(to).toLowerCase())) return true;
+  const fromIndex = CID_WORKFLOW.indexOf(normFrom);
+  const toIndex = CID_WORKFLOW.indexOf(normTo);
   if (fromIndex < 0 || toIndex < 0 || toIndex !== fromIndex + 1) {
     throw new WorkflowError(
       `Invalid CID investigation transition from ${from} to ${to}. Complete each stage in order.`,
@@ -62,7 +92,7 @@ const assertCidTransition = (from, to, { supervisor = false } = {}) => {
       'INVALID_CID_TRANSITION'
     );
   }
-  if (to === 'approved' && !supervisor) {
+  if (normTo === 'approved' && !supervisor) {
     throw new WorkflowError(
       'Only a supervisor can approve the investigation.',
       403,

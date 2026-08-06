@@ -53,7 +53,7 @@ export default function EvidenceBrowserPage() {
     { title: 'Collected By', dataIndex: 'collected_by_name', key: 'collected_by_name' },
     { title: 'Collection Date', dataIndex: 'collection_date', key: 'collection_date', render: d => dayjs(d).format('DD/MM/YYYY') },
     {
-      title: 'Action',
+      title: 'Ficilka',
       key: 'action',
       render: (_, record) => (
         <Space>
@@ -73,7 +73,7 @@ export default function EvidenceBrowserPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'officer', 'cid', 'court', 'jail', 'district_admin']} requiredPermissions={['evidence.manage']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <Breadcrumb items={[{ title: 'Home' }, { title: 'Evidence Records' }]} />
         

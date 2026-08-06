@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/services/api';
 import StandardDashboard from '@/components/dashboard/StandardDashboard';
+import { useAuth } from '@/contexts/AuthContext';
 
 const BLOCK_OPTIONS = ['Block A', 'Block B', 'Block C', 'Block D'].map((value) => ({ value, label: value }));
 const CELL_OPTIONS = Array.from({ length: 20 }, (_, index) => {
@@ -21,6 +22,10 @@ const CELL_OPTIONS = Array.from({ length: 20 }, (_, index) => {
 });
 
 function JailDashboardContent() {
+  const { user } = useAuth();
+  const hasPermission = key => user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes(key);
+  const canIntake = hasPermission('station_jail.intake');
+  const canAssignCell = hasPermission('station_jail.assign_cell');
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message } = App.useApp();
@@ -34,6 +39,7 @@ function JailDashboardContent() {
   const [bulkStatuses, setBulkStatuses] = useState({});
   const [modalType, setModalType] = useState(null);
   const [selectedAdmission, setSelectedAdmission] = useState(null);
+  const [custodyHistory, setCustodyHistory] = useState(null);
   const [form] = Form.useForm();
   const selectedBlock = Form.useWatch('block_name', form);
   const selectedFacility = Form.useWatch('facility', form);
@@ -76,8 +82,19 @@ function JailDashboardContent() {
     setPhotoFiles([]);
     setWarrantFiles([]);
     if (type === 'cell' && admission) form.setFieldsValue({ facility: admission.facility });
+    if (type === 'transfer' && admission) form.setFieldsValue({ arrest_id: admission.arrest_id, from_facility: admission.facility, transfer_date: dayjs(), status: 'completed' });
     if (type === 'roll') form.setFieldsValue({ roll_date: dayjs(), shift: 'morning', status: 'present' });
     if (type === 'bulk_roll') form.setFieldsValue({ roll_date: dayjs(), shift: 'morning' });
+  };
+
+  const openHistory = async (admission) => {
+    try {
+      const response = await api.get(`/custody/criminals/${admission.suspect_id}`);
+      setSelectedAdmission(admission);
+      setCustodyHistory(response.data.data);
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Taariikhda maxbuuska lama soo qaadi karin.');
+    }
   };
 
   useEffect(() => {
@@ -98,8 +115,10 @@ function JailDashboardContent() {
       if (modalType === 'admit') {
         const data = new FormData();
         Object.entries(values).forEach(([key, value]) => {
-          if (value !== undefined && value !== null && key !== 'admission_date') data.append(key, value);
+          if (value !== undefined && value !== null && !['admission_date','property_inventory'].includes(key)) data.append(key, value);
         });
+        const inventory = String(values.property_inventory || '').split(/[,\n]/).map(value => value.trim()).filter(Boolean);
+        data.append('property_inventory', JSON.stringify(inventory));
         if (values.admission_date) data.append('admission_date', values.admission_date.format('YYYY-MM-DD HH:mm:ss'));
         if (photoFiles[0]) data.append('photo', photoFiles[0]);
         if (warrantFiles[0]) data.append('commitment_warrant', warrantFiles[0]);
@@ -127,6 +146,13 @@ function JailDashboardContent() {
         await api.post(`/custody/criminals/${selectedAdmission.suspect_id}/release-approvals`, {
           arrest_id: selectedAdmission.arrest_id,
           request_reason: values.request_reason,
+        });
+      }
+      if (modalType === 'transfer') {
+        await api.post(`/custody/criminals/${selectedAdmission.suspect_id}/transfers`, {
+          ...values,
+          arrest_id: selectedAdmission.arrest_id,
+          transfer_date: values.transfer_date?.format('YYYY-MM-DD HH:mm:ss'),
         });
       }
       message.success('Jail record saved successfully.');
@@ -159,22 +185,25 @@ function JailDashboardContent() {
     })), [cells, selectedFacility, selectedBlock]);
 
   const admissionColumns = [
-    { title: 'Prison #', dataIndex: 'prison_number' },
+    { title: 'Lambarka Xabsiga', dataIndex: 'prison_number' },
     { title: 'Maxbuuska', dataIndex: 'full_name' },
-    { title: 'Case', dataIndex: 'case_number' },
-    { title: 'Facility', dataIndex: 'facility' },
-    { title: 'Cell', render: (_, row) => row.cell_number ? `${row.block_name} / ${row.cell_number} (${row.cell_occupancy || 0}/${row.cell_capacity || '?'})` : 'Unassigned' },
+    { title: 'Kiiska', dataIndex: 'case_number' },
+    { title: 'Xabsiga', dataIndex: 'facility' },
+    { title: 'Xaaladda', dataIndex: 'status', render: value => <Tag color={value === 'admitted' ? 'green' : 'default'}>{value === 'admitted' ? 'Ku jira' : 'Laga saaray'}</Tag> },
+    { title: 'Qolka', render: (_, row) => row.cell_number ? `${row.block_name} / ${row.cell_number} (${row.cell_occupancy || 0}/${row.cell_capacity || '?'})` : 'Looma qoondeyn' },
     { title: 'Sentence', dataIndex: 'sentence_status', render: (value) => <Tag>{value}</Tag> },
     { title: 'Release', render: (_, row) => row.expected_release_date ? <Space orientation="vertical" size={0}><span>{dayjs(row.expected_release_date).format('DD MMM YYYY')}</span><Tag color={Number(row.days_remaining) <= 7 ? 'red' : Number(row.days_remaining) <= 30 ? 'orange' : 'blue'}>{row.days_remaining} days left</Tag></Space> : 'N/A' },
     { title: 'Release workflow', render: (_, row) => row.release_approval_status ? <Tag color={row.release_approval_status === 'rejected' ? 'red' : row.release_approval_status === 'released' ? 'green' : 'gold'}>{row.release_approval_status.replaceAll('_', ' ')}</Tag> : 'Not requested' },
     { title: 'Last roll call', render: (_, row) => row.last_roll_status ? <Tag color={row.last_roll_status === 'present' ? 'green' : 'orange'}>{row.last_roll_status}</Tag> : 'Not recorded' },
     {
-      title: 'Actions',
+      title: 'Ficillada',
       render: (_, row) => <Space>
-        <Button size="small" onClick={() => openAction('cell', row)}>Assign cell</Button>
-        <Button size="small" type="primary" onClick={() => openAction('roll', row)}>Roll call</Button>
-        {row.expected_release_date && Number(row.days_remaining) <= 30 && (!row.release_approval_status || ['rejected', 'released'].includes(row.release_approval_status))
-          && <Button size="small" danger onClick={() => openAction('release', row)}>Release review</Button>}
+        {canAssignCell && <Button size="small" onClick={() => openAction('cell', row)}>Qol U Qoondee</Button>}
+        {canIntake && <Button size="small" onClick={() => openAction('transfer', row)}>Wareeji</Button>}
+        <Button size="small" onClick={() => openHistory(row)}>Taariikhda</Button>
+        <Button size="small" type="primary" onClick={() => openAction('roll', row)}>Tiro-koob</Button>
+        {canIntake && (!row.release_approval_status || ['rejected', 'released'].includes(row.release_approval_status))
+          && <Button size="small" danger onClick={() => openAction('release', row)}>Codso Sii-dayn</Button>}
       </Space>,
     },
   ];
@@ -182,10 +211,10 @@ function JailDashboardContent() {
   return (
     <>
     <StandardDashboard
-      allowedRoles={['jail', 'admin']}
-      eyebrow="Jail Operations"
-      title="Jail Dashboard"
-      subtitle="View incarcerated person records, related cases, evidence, and jail reports."
+      allowedRoles={['jail', 'station_jail', 'admin']}
+      eyebrow="Hawlaha Xabsiga Saldhigga"
+      title="Maamulka Station Jail"
+      subtitle="Eedaysanayaasha kiisaska, qaabilaadda, qolalka, wareejinta, sii-daynta iyo taariikhda xabsiga."
       loading={loading}
       metrics={[
         { title: 'Incarcerated Offenders', value: offenders.length, icon: <LockOutlined />, tone: 'red', note: 'Marked for detention' },
@@ -193,8 +222,8 @@ function JailDashboardContent() {
         { title: 'Total Cases', value: caseData?.total || 0, icon: <DatabaseOutlined />, tone: 'purple', note: 'Cases available for review' },
         { title: 'Offender Records', value: offenders.length, icon: <IdcardOutlined />, tone: 'green', note: 'Custody data' },
       ]}
-      tableTitle="Active Prison Admissions"
-      tableSubtitle="Admissions, cell assignments, sentence dates, and daily roll calls"
+      tableTitle="Maxaabiista Hadda Ku Jira"
+      tableSubtitle="Qaabilaadda, qolalka, muddada iyo tiro-koobka maalinlaha ah"
       tableColumns={admissionColumns}
       tableData={admissions}
       sidePanel={{
@@ -207,7 +236,7 @@ function JailDashboardContent() {
       }}
     />
     <Modal
-      title={modalType === 'admit' ? 'Prison Admission' : modalType === 'cell' ? 'Cell Assignment' : modalType === 'capacity' ? 'Cell Capacity' : modalType === 'bulk_roll' ? 'Bulk Daily Roll Call' : modalType === 'release' ? 'Release Approval Request' : 'Daily Roll Call'}
+      title={modalType === 'admit' ? 'Qaabilaadda Maxbuuska' : modalType === 'cell' ? 'Qol U Qoondee' : modalType === 'capacity' ? 'Awoodda Qolka' : modalType === 'bulk_roll' ? 'Tiro-koobka Maalinlaha' : modalType === 'release' ? 'Codsiga Sii-daynta' : modalType === 'transfer' ? 'Wareejinta Maxbuuska' : 'Tiro-koobka Maalinlaha'}
       open={Boolean(modalType)}
       onCancel={() => setModalType(null)}
       onOk={() => form.submit()}
@@ -278,7 +307,23 @@ function JailDashboardContent() {
           <Alert type="warning" showIcon title={`${selectedAdmission?.full_name || 'Prisoner'} has ${selectedAdmission?.days_remaining ?? '?'} days remaining.`} style={{ marginBottom: 16 }} />
           <Form.Item name="request_reason" label="Release review reason" rules={[{ required: true }]}><Input.TextArea rows={4} placeholder="Sentence completion review and supporting details" /></Form.Item>
         </>}
+        {modalType === 'transfer' && <>
+          <Form.Item name="from_facility" label="Xabsiga Laga Wareejinayo"><Input disabled /></Form.Item>
+          <Form.Item name="to_facility" label="Xabsiga Loo Wareejinayo" rules={[{ required: true, message: 'Geli xabsiga loo wareejinayo.' }]}><Input /></Form.Item>
+          <Form.Item name="transfer_reason" label="Sababta Wareejinta" rules={[{ required: true, message: 'Geli sababta wareejinta.' }]}><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item name="transfer_date" label="Taariikhda Wareejinta" rules={[{ required: true }]}><DatePicker showTime style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="notes" label="Faahfaahin Dheeraad ah"><Input.TextArea rows={2} /></Form.Item>
+        </>}
       </Form>
+    </Modal>
+    <Modal title={`Taariikhda Xabsiga · ${selectedAdmission?.full_name || ''}`} open={Boolean(custodyHistory)} onCancel={() => setCustodyHistory(null)} footer={null} width={780}>
+      <Space orientation="vertical" style={{width:'100%'}} size="large">
+        <div><strong>Qaabilaadaha Xabsiga</strong>{custodyHistory?.admissions?.length ? custodyHistory.admissions.map(item => <div key={item.id}>{dayjs(item.admission_date).format('YYYY-MM-DD HH:mm')} · {item.prison_number} · {item.facility} · <Tag>{item.status}</Tag> · Kiis {item.case_number}</div>) : <div>Qaabilaad hore ma jiro.</div>}</div>
+        <div><strong>Qolalka Loo Qoondeeyey</strong>{custodyHistory?.cellAssignments?.length ? custodyHistory.cellAssignments.map(item => <div key={item.id}>{dayjs(item.assigned_at).format('YYYY-MM-DD HH:mm')} · {item.facility} / {item.block_name} / {item.cell_number}{item.released_at ? ` · Laga saaray ${dayjs(item.released_at).format('YYYY-MM-DD HH:mm')}` : ' · Hadda ku jira'}</div>) : <div>Qol hore looma qoondeyn.</div>}</div>
+        <div><strong>Wareejinnada</strong>{custodyHistory?.transfers?.length ? custodyHistory.transfers.map(item => <div key={item.id}>{dayjs(item.transfer_date).format('YYYY-MM-DD HH:mm')} · {item.from_facility || 'Bilow'} → {item.to_facility} · {item.transfer_reason}</div>) : <div>Wax wareejin ah ma jiro.</div>}</div>
+        <div><strong>Codsiyada Sii-daynta</strong>{custodyHistory?.releaseApprovals?.length ? custodyHistory.releaseApprovals.map(item => <div key={item.id}>{dayjs(item.requested_at).format('YYYY-MM-DD HH:mm')} · <Tag>{item.status}</Tag> · {item.request_reason}</div>) : <div>Codsi sii-dayn ah ma jiro.</div>}</div>
+        <div><strong>Diiwaannada Caafimaadka</strong>{custodyHistory?.medical?.length ? custodyHistory.medical.map(item => <div key={item.id}>{dayjs(item.record_date).format('YYYY-MM-DD')} · {item.condition_summary}</div>) : <div>Diiwaan caafimaad ma jiro.</div>}</div>
+      </Space>
     </Modal>
     </>
   );

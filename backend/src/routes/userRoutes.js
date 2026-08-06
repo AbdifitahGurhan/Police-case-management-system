@@ -6,9 +6,10 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { getUsers, getUserById, createUser, updateUser, updateMyProfile, updateMyProfileImage, deleteUser, getRoles } = require('../controllers/userController');
+const { getUsers, getUserById, createUser, updateUser, updateMyProfile, updateMyProfileImage, deleteUser, getRoles, getAssignableOfficers } = require('../controllers/userController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -35,13 +36,14 @@ const upload = multer({
 
 router.use(authMiddleware);
 
-router.get('/', allowRoles('admin', 'region_admin'), getUsers);
-router.get('/roles', allowRoles('admin', 'region_admin'), getRoles);
+router.get('/', requirePermission('users.manage'), getUsers);
+router.get('/roles', requirePermission('users.manage'), getRoles);
+router.get('/assignable-officers', requirePermission('users.manage'), getAssignableOfficers);
 router.put('/me', updateMyProfile);
 router.post('/me/profile-image', upload.single('profile_image'), updateMyProfileImage);
-router.get('/:id', allowRoles('admin', 'region_admin'), getUserById);
-router.post('/', allowRoles('admin', 'region_admin'), createUser);
-router.put('/:id', allowRoles('admin', 'region_admin'), updateUser);
-router.delete('/:id', allowRoles('admin', 'region_admin'), deleteUser);
+router.get('/:id', requirePermission('users.manage'), getUserById);
+router.post('/', requirePermission('users.manage'), createUser);
+router.put('/:id', requirePermission('users.manage'), updateUser);
+router.delete('/:id', requirePermission('users.manage'), deleteUser);
 
 module.exports = router;

@@ -6,6 +6,7 @@ import { Table, Card, Typography, Space, Button, Tag, Modal, Form, Input, Select
 import { UserAddOutlined, EditOutlined, DeleteOutlined, LockOutlined, EyeOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { emailRule, nameRules, optionalPasswordRules, passwordRules, phoneRules, requiredRule, textLengthRule, usernameRules } from '@/utils/validation';
 
 const { Title, Text } = Typography;
@@ -14,12 +15,14 @@ const { Option } = Select;
 
 
 export default function UserManagementPage() {
+  const { user } = useAuth();
   const { message } = App.useApp();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [states, setStates] = useState([]);
   const [regions, setRegions] = useState([]);
   const [districts, setDistricts] = useState([]);
+  const [assignableOfficers,setAssignableOfficers]=useState([]);
 
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -27,6 +30,18 @@ export default function UserManagementPage() {
   const [viewingUser, setViewingUser] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [form] = Form.useForm();
+  const [regionalForm] = Form.useForm();
+  const [regionalOpen,setRegionalOpen]=useState(false);
+  const regionalRoleId=Form.useWatch('role_id',regionalForm);
+  const selectedRegionalRole=roles.find(role=>role.id===regionalRoleId);
+  const isDistrictCreate = user?.role === 'district_admin' && !editingUser;
+
+  const operationalRoleLabel = (role) => ({
+    personnel_registry: 'Diiwaanka Ciidanka',
+    ob_staff: 'OB Register',
+    investigator: 'Baare',
+    station_jail: 'Station Jail',
+  }[String(role?.name || '').toLowerCase()] || role?.name);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -46,13 +61,14 @@ export default function UserManagementPage() {
       setStates(stateRes.status === 'fulfilled' ? stateRes.value.data.data : []);
       setRegions(regionRes.status === 'fulfilled' ? regionRes.value.data.data : []);
       setDistricts(districtRes.status === 'fulfilled' ? districtRes.value.data.data : []);
+      if(user?.role==='district_admin'){const officers=await api.get('/users/assignable-officers');setAssignableOfficers(officers.data.data||[])}
     } catch (err) {
       console.error(err);
       message.error("Failed to load user data.");
     } finally {
       setLoading(false);
     }
-  }, [message]);
+  }, [message,user?.role]);
 
   useEffect(() => {
     fetchData();
@@ -105,6 +121,9 @@ export default function UserManagementPage() {
     form.resetFields();
     setIsModalOpen(true);
   };
+
+  const roleLabel=role=>String(role?.name).toLowerCase()==='jail'?'Jail-ka Sare':String(role?.name).toLowerCase()==='district_admin'?'District Administration':'Diiwaanka Ciidanka';
+  const saveRegionalAccount=async values=>{try{const role=roles.find(r=>r.id===values.role_id);await api.post('/users',values);message.success(`${roleLabel(role)} waa la abuuray.`);setRegionalOpen(false);regionalForm.resetFields();fetchData()}catch(error){message.error(error.response?.data?.message||'Account-ka lama abuuri karin.')}};
 
   const handleSave = async (values) => {
     try {
@@ -184,7 +203,7 @@ export default function UserManagementPage() {
 
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', render: (a) => a ? <Tag color="success">ACTIVE</Tag> : <Tag color="error">INACTIVE</Tag> },
     {
-      title: 'Actions',
+      title: 'Ficillada',
       key: 'actions',
       render: (_, record) => (
         <Space>
@@ -199,21 +218,21 @@ export default function UserManagementPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'region_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'region_admin', 'district_admin']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', marginBottom: '8px' }}>
           <div style={{ minWidth: '280px', flex: '1 1 auto' }}>
             <Title level={2} style={{ margin: 0 }}>Access Control Center</Title>
             <Typography.Text type="secondary">Manage police staff, assigned ranks, and system access levels.</Typography.Text>
           </div>
-          <Button 
+          {user?.role==='region_admin'?<Button type="primary" icon={<UserAddOutlined/>} onClick={()=>{regionalForm.resetFields();setRegionalOpen(true)}}>Abuur User Gobol</Button>:<Button 
             type="primary" 
             icon={<UserAddOutlined />} 
             onClick={handleOpenAdd}
             style={{ flex: '0 0 auto' }}
           >
-            Add New Staff
-          </Button>
+            {user?.role === 'district_admin' ? 'Abuur User Degmo' : 'Add New Staff'}
+          </Button>}
         </div>
 
         <Card variant="none">
@@ -286,17 +305,40 @@ export default function UserManagementPage() {
             </div>
           )}
         </Modal>
+        <Modal title="Abuur User-ka Gobolka" open={regionalOpen} onCancel={()=>setRegionalOpen(false)} footer={null}>
+          <Form form={regionalForm} layout="vertical" onFinish={saveRegionalAccount}>
+            <Form.Item name="role_id" label="Role-ka" rules={[{required:true,message:'Dooro role-ka.'}]}><Select options={roles.map(role=>({value:role.id,label:roleLabel(role)}))}/></Form.Item>
+            {String(selectedRegionalRole?.name).toLowerCase()==='district_admin'&&<Form.Item name="district_id" label="Degmada uu Maamulayo" rules={[{required:true,message:'Dooro degmada.'}]}><Select showSearch optionFilterProp="label" options={districts.filter(d=>!d.region_id||Number(d.region_id)===Number(user?.location?.regionId)).map(d=>({value:d.id,label:d.district_name}))}/></Form.Item>}
+            <Form.Item name="username" label="Username" rules={usernameRules}><Input/></Form.Item>
+            <Form.Item name="password" label="Password" rules={passwordRules}><Input.Password/></Form.Item>
+            <Typography.Text type="secondary">Magaca iyo gobolka system-ka ayaa si otomaatig ah u gelinaya.</Typography.Text>
+            <Space style={{width:'100%',justifyContent:'flex-end',marginTop:16}}><Button onClick={()=>setRegionalOpen(false)}>Jooji</Button><Button type="primary" htmlType="submit">Abuur Account</Button></Space>
+          </Form>
+        </Modal>
 
         {/* Create/Edit Modal */}
         <Modal 
-          title={editingUser ? "Edit Staff Profile" : "Onboard New Staff"} 
+          title={editingUser ? "Wax ka Beddel User-ka" : isDistrictCreate ? "Abuur User Degmo" : "Onboard New Staff"} 
           open={isModalOpen} 
           onCancel={() => setIsModalOpen(false)} 
           onOk={() => form.submit()}
+          okText={editingUser ? 'Kaydi' : 'Abuur Account'}
+          cancelText="Jooji"
           width={600}
         >
           <Form form={form} layout="vertical" onFinish={handleSave}>
-            <Row gutter={16}>
+            {isDistrictCreate && <>
+              <Form.Item name="police_officer_id" label="Sarkaalka State Administration Ansixiyey" rules={[{required:true,message:'Dooro sarkaalka.'}]}>
+                <Select showSearch optionFilterProp="label" placeholder="Dooro sarkaalka" options={assignableOfficers.map(o=>({value:o.id,label:`${o.full_name} · ${o.rank_name||'Darajo la’aan'} · ${o.force_number}`}))}/>
+              </Form.Item>
+              <Form.Item name="role_id" label="Role-ka Shaqada" rules={[{required:true,message:'Dooro role-ka shaqada.'}]}>
+                <Select placeholder="Dooro role-ka" options={roles.map(role=>({value:role.id,label:operationalRoleLabel(role)}))}/>
+              </Form.Item>
+              <Form.Item name="username" label="Username" rules={usernameRules}><Input /></Form.Item>
+              <Form.Item name="password" label="Password" rules={passwordRules}><Input.Password /></Form.Item>
+              <Typography.Text type="secondary">Magaca, darajada iyo degmada uu ka hawlgalayo system-ka ayaa si otomaatig ah uga qaadanaya xogta sarkaalka.</Typography.Text>
+            </>}
+            {!isDistrictCreate && <Row gutter={16}>
               <Col xs={24} sm={12}>
                 <Form.Item name="full_name" label="Full Name" rules={nameRules('Full name')}>
                   <Input />
@@ -392,7 +434,7 @@ export default function UserManagementPage() {
                   </Form.Item>
                 </Col>
               )}
-            </Row>
+            </Row>}
           </Form>
         </Modal>
       </Space>

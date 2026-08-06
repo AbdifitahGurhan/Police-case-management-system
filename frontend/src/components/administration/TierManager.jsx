@@ -4,6 +4,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { App, Table, Card, Typography, Space, Button, Modal, Form, Input, Select, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, UserOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { codeRules, passwordRules, requiredRule, textLengthRule, usernameRules } from '@/utils/validation';
 
 const { Title } = Typography;
@@ -17,8 +18,13 @@ export default function TierManager({
   parentEndpoint, // e.g. "/state-administrations" (optional, for dropdowns)
   parentLabel, // e.g. "State Administration"
   parentNameKey, // e.g. "state_name"
-  entityKey // Optional: manual override for field prefix e.g. "state"
+  entityKey, // Optional: manual override for field prefix e.g. "state"
+  autoParentRoles = [],
+  nameOptionsByParent = null,
+  nameOptionsParentKey = null,
+  generatedCode = false,
 }) {
+  const { user } = useAuth();
   const { message } = App.useApp();
   const [data, setData] = useState([]);
   const [officers, setOfficers] = useState([]);
@@ -27,8 +33,16 @@ export default function TierManager({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
   const [form] = Form.useForm();
+  const selectedParentId = Form.useWatch(parentKey || '__unused_parent__', form);
   
   const safeEntityKey = entityKey || entityName.toLowerCase();
+  const autoParent = Boolean(parentKey && autoParentRoles.includes(user?.role));
+  const selectedParent = parents.find(parent => Number(parent.id) === Number(selectedParentId));
+  const entityNameOptions = nameOptionsByParent
+    ? (nameOptionsByParent[selectedParent?.[nameOptionsParentKey]] || nameOptionsByParent[selectedParent?.state_code] || nameOptionsByParent[selectedParent?.[parentNameKey]] || [])
+    : [];
+  const normalizedNameOptions = entityNameOptions.map(option => typeof option === 'string' ? { name: option } : option);
+  const hasGeneratedOptions = normalizedNameOptions.length > 0;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -63,6 +77,7 @@ export default function TierManager({
       form.setFieldsValue(record);
     } else {
       form.resetFields();
+      if (autoParent && user?.scopeId) form.setFieldValue(parentKey, Number(user.scopeId));
     }
     setIsModalOpen(true);
   };
@@ -89,7 +104,7 @@ export default function TierManager({
     { title: 'Account Username', dataIndex: 'username', key: 'username' },
     { title: 'Commander', dataIndex: 'commander_name', key: 'commander_name', render: (t) => t ? <><UserOutlined/> {t}</> : <Tag>Unassigned</Tag> },
     {
-      title: 'Action',
+      title: 'Ficilka',
       key: 'action',
       render: (_, record) => <Button icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />,
     },
@@ -118,9 +133,20 @@ export default function TierManager({
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           
-          {parentEndpoint && (
+          {parentEndpoint && autoParent && (
+            <>
+              <Form.Item name={parentKey} hidden rules={[requiredRule(parentLabel || 'Parent level')]}><Input /></Form.Item>
+              <Form.Item label={parentLabel || 'Parent Level'}>
+                <Input value={selectedParent?.[parentNameKey] || 'Si otomaatig ah ayaa loo qaatay'} readOnly />
+              </Form.Item>
+            </>
+          )}
+
+          {parentEndpoint && !autoParent && (
             <Form.Item name={parentKey} label={parentLabel || `Parent Level`} rules={[requiredRule(parentLabel || 'Parent level')]}>
-              <Select placeholder={`Select ${parentLabel || 'Parent Entity'}`}>
+              <Select placeholder={`Select ${parentLabel || 'Parent Entity'}`} onChange={() => {
+                if (nameOptionsByParent) form.setFieldsValue({ [`${safeEntityKey}_name`]: undefined, [`${safeEntityKey}_code`]: undefined });
+              }}>
                 {parents.map(p => (
                   <Select.Option key={p.id} value={p.id}>{parentNameKey ? p[parentNameKey] : (p[`${parentEndpoint.replace('/', '').replace('-administrations', '_name').replace(/s$/, '')}_name`] || p.name || `ID: ${p.id}`)}</Select.Option>
                 ))}
@@ -131,14 +157,26 @@ export default function TierManager({
           {formItems}
 
           <Form.Item name={`${safeEntityKey}_name`} label={`${entityName} Name`} rules={[requiredRule(`${entityName} name`), textLengthRule(`${entityName} name`, 2, 150)]}>
-            <Input placeholder={`e.g. Central ${entityName}`} />
+            {nameOptionsByParent && hasGeneratedOptions ? (
+              <Select
+                placeholder={selectedParentId ? `Select ${entityName}` : `Select ${parentLabel} first`}
+                disabled={!selectedParentId}
+                options={normalizedNameOptions.map(option => ({ value: option.name, label: option.name }))}
+                onChange={(name) => {
+                  const option = normalizedNameOptions.find(item => item.name === name);
+                  if (generatedCode) form.setFieldValue(`${safeEntityKey}_code`, option?.code);
+                }}
+              />
+            ) : (
+              <Input placeholder={`e.g. Central ${entityName}`} />
+            )}
           </Form.Item>
           
           <Form.Item name={`${safeEntityKey}_code`} label={`${entityName} Code`} rules={codeRules(`${entityName} code`)}>
-            <Input placeholder="e.g. REG-01" disabled={!!editingRecord} />
+            <Input placeholder={generatedCode && hasGeneratedOptions ? 'Si otomaatig ah ayaa loo dhalinayaa' : 'e.g. REG-01'} disabled={(generatedCode && hasGeneratedOptions) || !!editingRecord} />
           </Form.Item>
           
-          <Form.Item name="username" label="Login Username" rules={usernameRules}>
+          <Form.Item name="username" label="Username-ka Login-ka" rules={usernameRules}>
             <Input placeholder={`e.g. ${entityName.toLowerCase()}_user`} />
           </Form.Item>
 

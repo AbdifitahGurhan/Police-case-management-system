@@ -53,8 +53,17 @@ const getCustodyProfile = async (req, res, next) => {
     const [medical] = await db.query('SELECT * FROM prisoner_medical_records WHERE suspect_id = ? ORDER BY record_date DESC', [suspectId]);
     const [visitors] = await db.query('SELECT * FROM prisoner_visitor_logs WHERE suspect_id = ? ORDER BY visit_date DESC', [suspectId]);
     const [releaseApprovals] = await db.query('SELECT * FROM release_approvals WHERE suspect_id = ? ORDER BY requested_at DESC', [suspectId]);
+    const [admissions] = await db.query(`SELECT pa.*,a.case_id,c.case_number,c.ob_number
+      FROM prison_admissions pa JOIN arrests a ON a.id=pa.arrest_id JOIN cases c ON c.id=a.case_id
+      WHERE pa.suspect_id=? ORDER BY pa.admission_date DESC`, [suspectId]);
+    const [cellAssignments] = await db.query(`SELECT pca.*,pa.prison_number
+      FROM prison_cell_assignments pca JOIN prison_admissions pa ON pa.id=pca.admission_id
+      WHERE pa.suspect_id=? ORDER BY pca.assigned_at DESC`, [suspectId]);
+    const [rollCalls] = await db.query(`SELECT pr.*,pa.prison_number
+      FROM prison_roll_calls pr JOIN prison_admissions pa ON pa.id=pr.admission_id
+      WHERE pa.suspect_id=? ORDER BY pr.roll_date DESC,pr.recorded_at DESC LIMIT 100`, [suspectId]);
 
-    res.json({ success: true, data: { suspect, biometrics, documents, transfers, medical, visitors, releaseApprovals } });
+    res.json({ success: true, data: { suspect, admissions, cellAssignments, rollCalls, biometrics, documents, transfers, medical, visitors, releaseApprovals } });
   } catch (err) { next(err); }
 };
 
@@ -118,6 +127,15 @@ const addTransfer = async (req, res, next) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [suspectId, normalizeOptional(arrest_id), normalizeOptional(from_facility), to_facility, transfer_reason, transfer_date || new Date(), actor(req), status || 'completed', normalizeOptional(notes)]
     );
+
+    if ((status || 'completed') === 'completed' && arrest_id) {
+      await db.query(`UPDATE prison_admissions SET facility=?
+        WHERE arrest_id=? AND suspect_id=? AND status='admitted'`, [to_facility, arrest_id, suspectId]);
+      await db.query(`UPDATE prison_cell_assignments pca
+        JOIN prison_admissions pa ON pa.id=pca.admission_id
+        SET pca.released_at=NOW()
+        WHERE pa.arrest_id=? AND pa.suspect_id=? AND pca.released_at IS NULL`, [arrest_id, suspectId]);
+    }
 
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'ADD_PRISON_TRANSFER', entityType: 'prison_transfers', entityId: result.insertId, newData: req.body });
     res.status(201).json({ success: true, message: 'Prison transfer recorded.', id: result.insertId });
@@ -288,6 +306,9 @@ const generateReleaseCertificate = async (req, res, next) => {
       [`Released with certificate ${certificateNumber}`, approval.arrest_id]
     );
     await db.query('UPDATE criminals SET is_arrested = 0 WHERE id = ?', [approval.suspect_id]);
+    await db.query("UPDATE prison_admissions SET status='discharged' WHERE arrest_id=? AND status='admitted'", [approval.arrest_id]);
+    await db.query(`UPDATE prison_cell_assignments pca JOIN prison_admissions pa ON pa.id=pca.admission_id
+      SET pca.released_at=NOW() WHERE pa.arrest_id=? AND pca.released_at IS NULL`, [approval.arrest_id]);
 
     await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'GENERATE_RELEASE_CERTIFICATE', entityType: 'release_approvals', entityId: Number(req.params.id), oldData: approval, newData: { certificateNumber, notes } });
     res.json({
@@ -357,9 +378,70 @@ const getWantedEscaped = async (_req, res, next) => {
   } catch (err) { next(err); }
 };
 
-const getPrisonAdmissions=async(_req,res,next)=>{try{const [rows]=await db.query(`SELECT pa.*,s.full_name,a.expected_release_date,pca.block_name,pca.cell_number FROM prison_admissions pa JOIN criminals s ON s.id=pa.suspect_id JOIN arrests a ON a.id=pa.arrest_id LEFT JOIN prison_cell_assignments pca ON pca.admission_id=pa.id AND pca.released_at IS NULL ORDER BY pa.admission_date DESC`);res.json({success:true,data:rows})}catch(err){next(err)}};
-const admitPrisoner=async(req,res,next)=>{try{const {arrest_id,suspect_id,facility,notes,property_inventory}=req.body;if(!arrest_id||!suspect_id||!facility)return res.status(400).json({success:false,message:'arrest_id, suspect_id, and facility are required.'});let inventory=[];try{inventory=property_inventory?JSON.parse(property_inventory):[]}catch{return res.status(400).json({success:false,message:'Property inventory must be valid JSON.'})}if(!Array.isArray(inventory))return res.status(400).json({success:false,message:'Property inventory must be a list.'});const prisonNumber=`PR-${new Date().getFullYear()}-${String(Date.now()).slice(-7)}`;const [result]=await db.query(`INSERT INTO prison_admissions(arrest_id,suspect_id,prison_number,facility,admitted_by,notes,photo_url,commitment_warrant_url,property_inventory,confirmed_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())`,[arrest_id,suspect_id,prisonNumber,facility,req.user.username,notes||null,req.files?.photo?.[0]?`/uploads/prisoner-documents/${req.files.photo[0].filename}`:null,req.files?.commitment_warrant?.[0]?`/uploads/prisoner-documents/${req.files.commitment_warrant[0].filename}`:null,JSON.stringify(inventory)]);res.status(201).json({success:true,message:'Prison admission confirmed.',id:result.insertId,prison_number:prisonNumber})}catch(err){next(err)}};
-const getPrisonCells=async(_req,res,next)=>{try{const [rows]=await db.query(`SELECT pc.*,COUNT(pca.id) occupied,pc.capacity-COUNT(pca.id) available FROM prison_cells pc LEFT JOIN prison_cell_assignments pca ON pca.facility=pc.facility AND pca.block_name=pc.block_name AND pca.cell_number=pc.cell_number AND pca.released_at IS NULL GROUP BY pc.id ORDER BY pc.facility,pc.block_name,pc.cell_number`);res.json({success:true,data:rows})}catch(err){next(err)}};
+const getPrisonAdmissions = async (req, res, next) => {
+  try {
+    const districtId = req.user?.scopeType === 'district' ? Number(req.user.scopeId) : null;
+    const scopeSql = districtId ? ' AND c.district_id = ?' : '';
+    const params = districtId ? [districtId] : [];
+    const [rows] = await db.query(`
+      SELECT pa.*, s.full_name, a.case_id, a.expected_release_date, a.sentence_status,
+             c.case_number, c.ob_number, d.district_name,
+             pca.block_name, pca.cell_number,
+             pc.capacity AS cell_capacity,
+             (SELECT COUNT(*) FROM prison_cell_assignments x
+               WHERE x.facility=pca.facility AND x.block_name=pca.block_name
+                 AND x.cell_number=pca.cell_number AND x.released_at IS NULL) AS cell_occupancy,
+             (SELECT status FROM release_approvals ra WHERE ra.arrest_id=a.id ORDER BY ra.requested_at DESC LIMIT 1) AS release_approval_status,
+             (SELECT status FROM prison_roll_calls pr WHERE pr.admission_id=pa.id ORDER BY pr.roll_date DESC,pr.recorded_at DESC LIMIT 1) AS last_roll_status
+        FROM prison_admissions pa
+        JOIN criminals s ON s.id=pa.suspect_id
+        JOIN arrests a ON a.id=pa.arrest_id
+        JOIN cases c ON c.id=a.case_id
+        LEFT JOIN districts d ON d.id=c.district_id
+        LEFT JOIN prison_cell_assignments pca ON pca.admission_id=pa.id AND pca.released_at IS NULL
+        LEFT JOIN prison_cells pc ON pc.facility=pca.facility AND pc.block_name=pca.block_name AND pc.cell_number=pca.cell_number
+       WHERE 1=1 ${scopeSql}
+       ORDER BY pa.admission_date DESC`, params);
+    const [eligible] = await db.query(`
+      SELECT a.id AS arrest_id, a.suspect_id, s.full_name, c.case_number, c.ob_number,
+             c.district_id, d.district_name, a.arrest_date, a.arrest_location
+        FROM arrests a
+        JOIN criminals s ON s.id=a.suspect_id
+        JOIN cases c ON c.id=a.case_id
+        LEFT JOIN districts d ON d.id=c.district_id
+       WHERE a.sentence_status NOT IN ('released','acquitted','dismissed')
+         AND NOT EXISTS (SELECT 1 FROM prison_admissions pa WHERE pa.arrest_id=a.id AND pa.status='admitted')
+         ${scopeSql}
+       ORDER BY a.arrest_date DESC`, params);
+    res.json({success:true,data:rows,eligible});
+  } catch(err) { next(err); }
+};
+
+const admitPrisoner = async (req,res,next) => {
+  let connection;
+  try {
+    const {arrest_id,facility,block_name,cell_number,admission_date,notes,property_inventory}=req.body;
+    if(!arrest_id||!facility)return res.status(400).json({success:false,message:'Dooro eedaysanaha iyo xabsiga lagu qaabilayo.'});
+    let inventory=[];
+    try{inventory=property_inventory?JSON.parse(property_inventory):[]}catch{return res.status(400).json({success:false,message:'Liiska hantida maxbuuska qaab sax ah uma qorna.'})}
+    if(!Array.isArray(inventory))return res.status(400).json({success:false,message:'Hantida maxbuusku waa inay noqotaa liis.'});
+    const districtId=req.user?.scopeType==='district'?Number(req.user.scopeId):null;
+    const [[arrest]]=await db.query(`SELECT a.id,a.suspect_id,c.district_id FROM arrests a JOIN cases c ON c.id=a.case_id WHERE a.id=?`,[arrest_id]);
+    if(!arrest|| (districtId&&Number(arrest.district_id)!==districtId))return res.status(404).json({success:false,message:'Eedaysanahan lagama helin kiisaska degmadaada.'});
+    const prisonNumber=`PR-${new Date().getFullYear()}-${String(Date.now()).slice(-7)}`;
+    connection=await db.pool.getConnection(); await connection.beginTransaction();
+    const [result]=await connection.query(`INSERT INTO prison_admissions(arrest_id,suspect_id,prison_number,facility,admission_date,admitted_by,notes,photo_url,commitment_warrant_url,property_inventory,confirmed_at) VALUES(?,?,?,?,COALESCE(?,NOW()),?,?,?,?,?,NOW())`,[arrest_id,arrest.suspect_id,prisonNumber,facility,admission_date||null,req.user.username,notes||null,req.files?.photo?.[0]?`/uploads/prisoner-documents/${req.files.photo[0].filename}`:null,req.files?.commitment_warrant?.[0]?`/uploads/prisoner-documents/${req.files.commitment_warrant[0].filename}`:null,JSON.stringify(inventory)]);
+    if(block_name&&cell_number){
+      const [[cell]]=await connection.query(`SELECT pc.capacity,COUNT(pca.id) occupied FROM prison_cells pc LEFT JOIN prison_cell_assignments pca ON pca.facility=pc.facility AND pca.block_name=pc.block_name AND pca.cell_number=pc.cell_number AND pca.released_at IS NULL WHERE pc.facility=? AND pc.block_name=? AND pc.cell_number=? GROUP BY pc.id`,[facility,block_name,cell_number]);
+      if(!cell||Number(cell.occupied)>=Number(cell.capacity))throw Object.assign(new Error('Qolka la doortay ma bannaana.'),{status:409});
+      await connection.query(`INSERT INTO prison_cell_assignments(admission_id,facility,block_name,cell_number,assigned_by,notes) VALUES(?,?,?,?,?,?)`,[result.insertId,facility,block_name,cell_number,req.user.username,'Waxaa la qoondeeyey markii la qaabilay.']);
+    }
+    await connection.commit();
+    await writeAuditLog({userId:actor(req),userEmail:req.user.email||req.user.username,action:'PRISON_ADMISSION',entityType:'prison_admissions',entityId:result.insertId,newData:{arrest_id,prisonNumber,facility,block_name,cell_number}});
+    res.status(201).json({success:true,message:'Eedaysanaha xabsiga waa lagu qaabilay.',id:result.insertId,prison_number:prisonNumber});
+  }catch(err){if(connection)await connection.rollback();if(err.status)return res.status(err.status).json({success:false,message:err.message});next(err)}finally{if(connection)connection.release()}
+};
+const getPrisonCells=async(_req,res,next)=>{try{const [rows]=await db.query(`SELECT pc.*,COUNT(pca.id) occupancy,pc.capacity-COUNT(pca.id) available FROM prison_cells pc LEFT JOIN prison_cell_assignments pca ON pca.facility=pc.facility AND pca.block_name=pc.block_name AND pca.cell_number=pc.cell_number AND pca.released_at IS NULL GROUP BY pc.id ORDER BY pc.facility,pc.block_name,pc.cell_number`);res.json({success:true,data:rows})}catch(err){next(err)}};
 const savePrisonCell=async(req,res,next)=>{try{const {facility,block_name,cell_number,capacity}=req.body;if(!facility||!block_name||!cell_number||Number(capacity)<1)return res.status(400).json({success:false,message:'facility, block_name, cell_number, and capacity are required.'});await db.query(`INSERT INTO prison_cells(facility,block_name,cell_number,capacity) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE capacity=VALUES(capacity),is_active=1`,[facility,block_name,cell_number,capacity]);res.json({success:true,message:'Prison cell saved.'})}catch(err){next(err)}};
 const assignPrisonCell=async(req,res,next)=>{try{const {facility,block_name,cell_number,notes}=req.body;const [[cell]]=await db.query(`SELECT pc.*,COUNT(pca.id) occupied FROM prison_cells pc LEFT JOIN prison_cell_assignments pca ON pca.facility=pc.facility AND pca.block_name=pc.block_name AND pca.cell_number=pc.cell_number AND pca.released_at IS NULL WHERE pc.facility=? AND pc.block_name=? AND pc.cell_number=? GROUP BY pc.id`,[facility,block_name,cell_number]);if(!cell)return res.status(404).json({success:false,message:'Cell not found.'});if(Number(cell.occupied)>=Number(cell.capacity))return res.status(409).json({success:false,message:'Cell is full.'});await db.query('UPDATE prison_cell_assignments SET released_at=NOW() WHERE admission_id=? AND released_at IS NULL',[req.params.id]);await db.query(`INSERT INTO prison_cell_assignments(admission_id,facility,block_name,cell_number,assigned_by,notes) VALUES(?,?,?,?,?,?)`,[req.params.id,facility,block_name,cell_number,req.user.username,notes||null]);res.json({success:true,message:'Cell assigned.'})}catch(err){next(err)}};
 const recordRollCall=async(req,res,next)=>{try{const {roll_date,shift,status,notes}=req.body;if(!roll_date||!shift||!status)return res.status(400).json({success:false,message:'roll_date, shift, and status are required.'});await db.query(`INSERT INTO prison_roll_calls(admission_id,roll_date,shift,status,notes,recorded_by) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status),notes=VALUES(notes),recorded_by=VALUES(recorded_by)`,[req.params.id,roll_date,shift,status,notes||null,req.user.username]);res.json({success:true,message:'Roll call recorded.'})}catch(err){next(err)}};

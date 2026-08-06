@@ -11,7 +11,10 @@ const { Text, Title } = Typography;
 const number = (value) => Number(value || 0);
 const statusColor = (status) => ({ present: 'green', absent: 'red', leave: 'gold', patrol: 'blue', critical: 'red', high: 'orange' }[String(status).toLowerCase()] || 'default');
 
-export default function DistrictOperationsDashboard({ user }) {
+export default function DistrictOperationsDashboard({ user, mode = 'summary' }) {
+  const hasPermission = key => user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes(key);
+  const canInvestigate = hasPermission('cases.investigate');
+  const canManageOfficers = hasPermission('officers.update');
   const { message } = App.useApp();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -121,11 +124,18 @@ export default function DistrictOperationsDashboard({ user }) {
   ];
 
   const caseColumns = [
-    { title: 'Case', dataIndex: 'case_number', render: (v, r) => <><Text strong>{v || r.ob_number}</Text><br/><Text type="secondary">{r.title}</Text></> },
-    { title: 'Priority', dataIndex: 'priority', render: v => <Tag color={statusColor(v)}>{v}</Tag> },
-    { title: 'Status', dataIndex: 'status', render: v => <Tag>{v}</Tag> },
-    { title: 'Officer', dataIndex: 'assigned_officer', render: v => v || <Tag color="red">Unassigned</Tag> },
-    { title: 'Action', render: (_, row) => <Space><Button size="small" onClick={() => setAssignCase(row)} icon={<UserSwitchOutlined />}>Assign</Button>{data?.pendingCases?.some(c => c.id === row.id) && <Button size="small" type="primary" onClick={() => setReviewCase(row)}>Review</Button>}</Space> },
+    { title: 'Kiiska', dataIndex: 'case_number', render: (v, r) => <><Text strong>{v || r.ob_number}</Text><br/><Text type="secondary">{r.title}</Text></> },
+    { title: 'Mudnaanta', dataIndex: 'priority', render: v => <Tag color={statusColor(v)}>{v}</Tag> },
+    { title: 'Xaaladda', dataIndex: 'status', render: v => <Tag>{v}</Tag> },
+    { title: 'Sarkaalka', dataIndex: 'assigned_officer', render: v => v || <Tag color="red">Lama xilsaarin</Tag> },
+    { title: 'Ficil', render: (_, row) => canInvestigate ? <Space><Button size="small" onClick={() => setAssignCase(row)} icon={<UserSwitchOutlined />}>Xil Saar</Button>{data?.pendingCases?.some(c => c.id === row.id) && <Button size="small" type="primary" onClick={() => setReviewCase(row)}>Dib u Eeg</Button>}</Space> : '—' },
+  ];
+  const investigatorColumns = [
+    { title: 'Kiiska', render: (_,r) => <><Text strong>{r.case_number || r.ob_number}</Text><br/><Text type="secondary">{r.title}</Text></> },
+    { title: 'Hawsha', dataIndex: 'reason' },
+    { title: 'Baaraha', dataIndex: 'assigned_investigator', render: value => value || <Tag color="orange">Lama xilsaarin</Tag> },
+    { title: 'Xaaladda', dataIndex: 'status', render: value => <Tag>{value}</Tag> },
+    { title: 'Taariikhda', dataIndex: 'referred_at', render: value => value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—' },
   ];
   const officerColumns = [
     { title: 'Officer', dataIndex: 'full_name', render: (v,r) => <><Text strong>{v}</Text><br/><Text type="secondary">{r.force_number} · {r.rank_name || ''}</Text></> },
@@ -140,7 +150,7 @@ export default function DistrictOperationsDashboard({ user }) {
     { title: 'Priority', dataIndex: 'priority', render: v => <Tag color={statusColor(v)}>{v}</Tag> },
     { title: 'Status', dataIndex: 'status', render: (v,r) => <><Tag color={r.overdue ? 'red' : 'blue'}>{v}</Tag>{r.overdue ? <Tag color="red">OVERDUE</Tag> : null}</> },
     { title: 'Officer', dataIndex: 'assigned_officer', render: v => v || <Tag>Unassigned</Tag> },
-    { title: 'Action', render: (_,r) => <Button size="small" onClick={() => openManageComplaint(r)}>Manage</Button> },
+    { title: 'Ficilka', render: (_,r) => <Button size="small" onClick={() => openManageComplaint(r)}>Maamul</Button> },
   ];
   const filteredHotspots = (data?.hotspots || []).filter(h => crimeFilter === 'all' || String(h.categories || '').toLowerCase().includes(crimeFilter));
   const hotspotCategories = [...new Set((data?.hotspots || []).flatMap(h => String(h.categories || '').split(', ').filter(Boolean)))];
@@ -151,26 +161,29 @@ export default function DistrictOperationsDashboard({ user }) {
 
   if (loading && !data) return <div style={{ padding: 60, textAlign: 'center' }}><Spin size="large" /></div>;
   const tabs = [
-    { key: 'reviews', label: `Commander Review (${data?.pendingCases?.length || 0})`, children: <Table rowKey="id" columns={caseColumns} dataSource={data?.pendingCases || []} scroll={{ x: 800 }} /> },
-    { key: 'workload', label: 'Officer Workload', children: <Table rowKey="id" columns={officerColumns} dataSource={data?.officers || []} scroll={{ x: 700 }} /> },
-    { key: 'attendance', label: `Shift & Attendance (${data?.attendance?.length || 0})`, children: <><Button type="primary" onClick={openAttendance} style={{ marginBottom: 16 }}>Qaado Attendance</Button><Table rowKey="id" dataSource={data?.attendance || []} columns={[{title:'Officer',dataIndex:'full_name'},{title:'Force #',dataIndex:'force_number'},{title:'Date',dataIndex:'attendance_date'},{title:'Shift',dataIndex:'shift'},{title:'Status',dataIndex:'status',render:v=><Tag color={statusColor(v)}>{v}</Tag>}]} /></> },
+    { key: 'reviews', label: `Dib-u-eegista Taliyaha (${data?.pendingCases?.length || 0})`, children: <Table rowKey="id" columns={caseColumns} dataSource={data?.pendingCases || []} scroll={{ x: 800 }} /> },
+    { key: 'investigators', label: `Hawlaha Baarayaasha (${data?.investigatorTasks?.length || 0})`, children: <Table rowKey="id" columns={investigatorColumns} dataSource={data?.investigatorTasks || []} scroll={{ x: 800 }} /> },
+    { key: 'workload', label: 'Shaqada Askarta', children: <Table rowKey="id" columns={officerColumns} dataSource={data?.officers || []} scroll={{ x: 700 }} /> },
+    { key: 'attendance', label: `Shift & Xaadirinta (${data?.attendance?.length || 0})`, children: <>{canManageOfficers && <Button type="primary" onClick={openAttendance} style={{ marginBottom: 16 }}>Qaado Xaadirinta</Button>}<Table rowKey="id" dataSource={data?.attendance || []} columns={[{title:'Sarkaalka',dataIndex:'full_name'},{title:'Lambarka Ciidanka',dataIndex:'force_number'},{title:'Taariikhda',dataIndex:'attendance_date'},{title:'Shift-ka',dataIndex:'shift'},{title:'Xaaladda',dataIndex:'status',render:v=><Tag color={statusColor(v)}>{v}</Tag>}]} /></> },
     { key: 'alerts', label: 'District Alerts', children: <Row gutter={[12,12]}>{alerts.map(a => <Col xs={24} md={12} xl={8} key={a.label}><Alert type={a.count ? 'warning' : 'success'} showIcon title={a.label} description={`${a.count} record(s)`} /></Col>)}</Row> },
-    { key: 'cases', label: 'Case Assignment', children: <Table rowKey="id" columns={caseColumns} dataSource={data?.activeCases || []} scroll={{ x: 800 }} /> },
+    { key: 'cases', label: 'Xil-saarista Kiisaska', children: <Table rowKey="id" columns={caseColumns} dataSource={data?.activeCases || []} scroll={{ x: 800 }} /> },
     { key: 'crime-map', label: `Crime Map (${data?.hotspots?.length || 0})`, children: <div><Space wrap style={{marginBottom:16}}><Text strong>Crime category:</Text><Select style={{width:220}} value={crimeFilter} onChange={setCrimeFilter} options={[{value:'all',label:'All crime categories'},...hotspotCategories.map(v=>({value:v.toLowerCase(),label:v}))]} /></Space><Row gutter={[16,16]}><Col xs={24} lg={16}><div style={{height:420,position:'relative',overflow:'hidden',borderRadius:16,background:'linear-gradient(145deg,#dce9db,#eef3e9)',border:'1px solid #c8d6c5'}}><div style={{position:'absolute',inset:0,opacity:.35,backgroundImage:'linear-gradient(28deg, transparent 48%, #94a89a 49%, #94a89a 51%, transparent 52%),linear-gradient(118deg, transparent 48%, #b1c1b5 49%, #b1c1b5 51%, transparent 52%)',backgroundSize:'90px 70px'}} />{filteredHotspots.map((h,i)=><div key={h.location} title={`${h.location}: ${h.total} cases`} style={{...pinPosition(h.location,i),position:'absolute',transform:'translate(-50%,-50%)',width:Math.min(58,28+number(h.total)*6),height:Math.min(58,28+number(h.total)*6),borderRadius:'50%',background:number(h.serious)>0?'rgba(220,38,38,.82)':'rgba(245,158,11,.82)',color:'#fff',display:'grid',placeItems:'center',fontWeight:800,border:'3px solid rgba(255,255,255,.85)',boxShadow:'0 5px 16px rgba(0,0,0,.25)',zIndex:2}}>{h.total}</div>)}<Tag color="green" style={{position:'absolute',left:14,top:14}}>District hotspot map</Tag></div></Col><Col xs={24} lg={8}><Card size="small" title="Hotspot ranking" style={{height:420,overflow:'auto'}}>{filteredHotspots.length ? filteredHotspots.map((h,i)=><div key={h.location} style={{padding:'10px 0',borderBottom:'1px solid #eee'}}><Space style={{justifyContent:'space-between',width:'100%'}}><Text strong>{i+1}. {h.location}</Text><Tag color={number(h.serious)?'red':'orange'}>{h.total} cases</Tag></Space><Text type="secondary">{h.categories || 'Uncategorized'}</Text></div>) : <Text type="secondary">No mapped crime locations.</Text>}</Card></Col></Row></div> },
-    { key: 'complaints', label: `Complaints Desk (${data?.complaints?.length || 0})`, children: <><Button type="primary" onClick={() => setComplaintOpen(true)} style={{marginBottom:16}}>Register Complaint</Button><Table rowKey="id" columns={complaintColumns} dataSource={data?.complaints || []} scroll={{x:1000}} /></> },
+    { key: 'complaints', label: `Miiska Cabashooyinka (${data?.complaints?.length || 0})`, children: <>{canInvestigate && <Button type="primary" onClick={() => setComplaintOpen(true)} style={{marginBottom:16}}>Diiwaangeli Cabasho</Button>}<Table rowKey="id" columns={complaintColumns} dataSource={data?.complaints || []} scroll={{x:1000}} /></> },
     { key: 'reports', label: 'Station Reports', children: <Space wrap><Button icon={<PrinterOutlined />} onClick={() => window.print()}>Daily Situation PDF</Button><Button icon={<PrinterOutlined />} onClick={() => window.print()}>Weekly Crime Summary</Button><Button icon={<DownloadOutlined />} onClick={() => exportCsv('cases')}>Arrest/Case Report Excel</Button><Button icon={<DownloadOutlined />} onClick={() => exportCsv('officers')}>Officer Activity Excel</Button></Space> },
   ];
 
-  return <ProtectedRoute allowedRoles={['district_admin','district_commander','police_station_commander','admin']}>
+  return <ProtectedRoute allowedRoles={['district_admin','district_commander','police_station_commander','admin']} requiredPermissions={['cases.view']}>
     <div className="standard-dashboard">
-      <div className="standard-dashboard-hero"><div><Text className="dashboard-eyebrow">District Operations Dashboard</Text><Title level={2}>{data?.district?.district_name || user?.fullName || 'District'}</Title><Text type="secondary">Cases, reviews, officers, shifts, alerts iyo station reports.</Text></div><Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button></div>
-      <Row gutter={[16,16]}>
+      <div className="standard-dashboard-hero"><div><Text className="dashboard-eyebrow">Dashboard-ka Maamulka Degmada</Text><Title level={2}>{data?.district?.district_name || user?.fullName || 'Degmada'}</Title><Text type="secondary">OB-yada, kiisaska, askarta, maxaabiista, baarayaasha iyo users-ka degmada.</Text></div><Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Cusboonaysii</Button></div>
+      {mode === 'summary' && <Row gutter={[16,16]}>
         {[
-          ['Total Cases',metrics.total_cases,<FolderOpenOutlined key="total" />],['Open Cases',metrics.open_cases,<ClockCircleOutlined key="open" />],['Closed Cases',metrics.closed_cases,<CheckCircleOutlined key="closed" />],['Overdue',metrics.overdue_cases,<AlertOutlined key="overdue" />],
-          ['OB Today',metrics.ob_today,<FileDoneOutlined key="ob" />],['Arrests',metrics.arrests,<SafetyCertificateOutlined key="arrests" />],['Released',metrics.released,<CheckCircleOutlined key="released" />],['Wanted',metrics.wanted,<TeamOutlined key="wanted" />],
+          ['OB-yada Degmada',metrics.total_ob,<FileDoneOutlined key="ob" />],['Kiisaska Degmada',metrics.total_cases,<FolderOpenOutlined key="total" />],
+          ['Askarta Degmada',metrics.total_officers,<TeamOutlined key="officers" />],['Maxaabiista Station Jail',metrics.station_prisoners,<SafetyCertificateOutlined key="jail" />],
+          ['Hawlaha Baarayaasha',metrics.investigator_tasks,<ClockCircleOutlined key="tasks" />],['Users-ka Degmada',metrics.district_users,<TeamOutlined key="users" />],
+          ['Kiisaska Furan',metrics.open_cases,<ClockCircleOutlined key="open" />],['Kiisaska Xiran',metrics.closed_cases,<CheckCircleOutlined key="closed" />],
         ].map(([title,val,icon]) => <Col xs={12} md={6} xl={3} key={title}><Card variant="none" className="standard-metric-card"><div className="standard-metric-icon">{icon}</div><Statistic title={title} value={number(val)} /></Card></Col>)}
-      </Row>
-      <Card variant="none" className="standard-panel"><Tabs items={tabs} /></Card>
+      </Row>}
+      {mode === 'operations' && <Card variant="none" className="standard-panel"><Tabs items={tabs} /></Card>}
     </div>
 
     <Modal title={`${reviewCase?.case_number || ''} - Commander Review`} open={!!reviewCase} onCancel={() => setReviewCase(null)} onOk={review} confirmLoading={saving} okText="Save Review">

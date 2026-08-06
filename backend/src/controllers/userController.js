@@ -7,15 +7,27 @@ const { writeAuditLog } = require('../utils/auditLogger');
 const { normalizeRole } = require('../utils/locationScope');
 
 const REGION_ASSIGNABLE_ROLES = new Set([
-  'staff',
-  'ob_staff',
-  'officer',
-  'district_admin',
-  'district_commander',
-  'police_station_commander'
+  'personnel_registry',
+  'jail',
+  'district_admin'
 ]);
 
 const REGION_ASSIGNABLE_USER_TYPES = new Set(['OB_STAFF', 'STAFF', 'COMMANDER']);
+const DISTRICT_OPERATIONAL_ROLES = new Set(['personnel_registry','ob_staff','investigator','station_jail']);
+
+const HIERARCHY_PROFILE_TARGETS = {
+  state_administration: { table: 'state_administrations', nameColumn: 'profile_name' },
+  region: { table: 'regions', nameColumn: 'profile_name' },
+  city: { table: 'cities', nameColumn: 'profile_name' },
+  district: { table: 'districts', nameColumn: 'profile_name' },
+};
+
+const selfProfileUser = (req, values = {}) => ({
+  ...req.user,
+  role: normalizeRole(req.user.role),
+  fullName: values.fullName ?? req.user.fullName,
+  profileImage: values.profileImage ?? req.user.profileImage,
+});
 
 const ensureRegionAssignableRole = async (roleId) => {
   const [[role]] = await db.query('SELECT id, name FROM roles WHERE id = ?', [roleId]);
@@ -64,7 +76,8 @@ const getUsers = async (req, res, next) => {
     if (req.user.scopeType === 'region') {
       where += ' AND u.region_id = ?';
       params.push(req.user.scopeId);
-    } else if (req.user.role !== 'admin') {
+    } else if (req.user.scopeType === 'district') { where += ' AND u.district_id = ?'; params.push(req.user.scopeId); }
+    else if (req.user.role !== 'admin' && !(req.user.permissions || []).includes('users.manage')) {
       where += ' AND 1=0';
     }
 
@@ -121,17 +134,34 @@ const createUser = async (req, res, next) => {
     let {
       role_id, username, full_name, email, password, phone, rank, user_type,
       assigned_level, state_administration_id, region_id, district_id,
-      is_commander
+      is_commander, police_officer_id
     } = req.body;
-    if (!full_name || !password || !role_id) {
-      return res.status(400).json({ success: false, message: 'full_name, password, and role_id are required.' });
+    if (!password || !role_id) {
+      return res.status(400).json({ success: false, message: 'password and role_id are required.' });
     }
     if (req.user.scopeType === 'region') {
       region_id = req.user.scopeId;
-      if (!REGION_ASSIGNABLE_USER_TYPES.has(user_type || 'STAFF')) {
-        return res.status(403).json({ success: false, message: 'Region admins can only create regional staff accounts.' });
+      const selectedRole=await ensureRegionAssignableRole(role_id); const roleName=normalizeRole(selectedRole.name);
+      state_administration_id=req.user.location?.stateId||state_administration_id||null;
+      if(roleName==='district_admin'){
+        if(!district_id)return res.status(400).json({success:false,message:'Dooro degmada District Administration-ku maamulayo.'});
+        const [[district]]=await db.query(`SELECT d.id,d.district_name FROM districts d JOIN cities c ON c.id=d.city_id WHERE d.id=? AND c.region_id=?`,[district_id,req.user.scopeId]);
+        if(!district)return res.status(403).json({success:false,message:'Degmada la doortay kama tirsana gobolkaaga.'});
+        full_name=`${district.district_name} Administration`;assigned_level='DISTRICT_POLICE_STATION';user_type='COMMANDER';is_commander=1;
+      }else{
+        full_name=roleName==='personnel_registry'?'Diiwaanka Ciidanka':'Jail-ka Sare';assigned_level='REGION';user_type='STAFF';district_id=null;
       }
-      await ensureRegionAssignableRole(role_id);
+    }
+    if (req.user.scopeType === 'district') {
+      district_id=req.user.scopeId; assigned_level='DISTRICT_POLICE_STATION';
+      const [[role]]=await db.query('SELECT id,name FROM roles WHERE id=?',[role_id]);
+      const roleName=normalizeRole(role?.name);
+      if(!DISTRICT_OPERATIONAL_ROLES.has(roleName))return res.status(403).json({success:false,message:'Degmadu waxay abuuri kartaa oo keliya Diiwaanka Ciidanka, OB Register, Baare ama Station Jail.'});
+      if(!police_officer_id)return res.status(400).json({success:false,message:'Dooro sarkaal State Administration ansixiyey.'});
+      const [[officer]]=await db.query(`SELECT po.*,r.rank_name FROM police_officers po LEFT JOIN ranks r ON r.id=po.rank_id LEFT JOIN users u ON u.police_officer_id=po.id WHERE po.id=? AND po.district_id=? AND po.approval_status='APPROVED' AND LOWER(po.employment_status)='active' AND u.id IS NULL`,[police_officer_id,district_id]);
+      if(!officer)return res.status(409).json({success:false,message:'Sarkaalka lama heli karo, lama ansixin, ama user kale ayaa loo qoondeeyey.'});
+      full_name=officer.full_name; rank=officer.rank_name; state_administration_id=officer.state_administration_id;
+      user_type=roleName==='ob_staff'?'OB_STAFF':'STAFF';
     }
     await ensureCommanderAssignment({ role_id, user_type, is_commander, district_id, state_administration_id });
     const hash = await bcrypt.hash(password, 12);
@@ -139,8 +169,8 @@ const createUser = async (req, res, next) => {
       `INSERT INTO users
         (role_id, username, full_name, email, phone, \`rank\`, user_type, assigned_level,
          state_administration_id, region_id, district_id,
-         is_commander, password_hash, is_active, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?)`,
+         is_commander, password_hash, is_active, status, created_by,police_officer_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?, ?)`,
       [
         role_id,
         (username || email?.toLowerCase().split('@')[0] || full_name.toLowerCase().replace(/\s+/g, '.')).trim().toLowerCase(),
@@ -155,7 +185,7 @@ const createUser = async (req, res, next) => {
         district_id || null,
         is_commander ? 1 : 0,
         hash,
-        req.user.username || req.user.id,
+        req.user.username || req.user.id, police_officer_id||null,
       ]
     );
     await writeAuditLog({
@@ -244,21 +274,22 @@ const updateUser = async (req, res, next) => {
 /** POST /api/users/me/profile-image — Update signed-in user's profile photo */
 const updateMyProfileImage = async (req, res, next) => {
   try {
-    if (req.user.scopeType) {
-      return res.status(403).json({
-        success: false,
-        message: 'Profile image upload is available for system users only.'
-      });
-    }
-
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Please upload an image file.' });
     }
 
     const profileImage = `/uploads/profiles/${req.file.filename}`;
-    await db.query('UPDATE users SET profile_image = ? WHERE id = ?', [profileImage, req.user.id]);
+    const hierarchyTarget = HIERARCHY_PROFILE_TARGETS[req.user.scopeType];
+    if (hierarchyTarget) {
+      await db.query(
+        `UPDATE ${hierarchyTarget.table} SET profile_image = ? WHERE id = ?`,
+        [profileImage, req.user.scopeId]
+      );
+    } else {
+      await db.query('UPDATE users SET profile_image = ? WHERE id = ?', [profileImage, req.user.id]);
+    }
 
-    const [rows] = await db.query(
+    const [rows] = hierarchyTarget ? [[{ id: req.user.id }]] : await db.query(
       `SELECT u.id, u.username, u.email, u.full_name, u.profile_image, r.name AS role
        FROM users u
        JOIN roles r ON u.role_id = r.id
@@ -283,7 +314,9 @@ const updateMyProfileImage = async (req, res, next) => {
       success: true,
       message: 'Profile image updated.',
       profileImage,
-      user: mapAuthUser(rows[0])
+      user: hierarchyTarget
+        ? selfProfileUser(req, { profileImage })
+        : mapAuthUser(rows[0])
     });
   } catch (err) { next(err); }
 };
@@ -291,14 +324,35 @@ const updateMyProfileImage = async (req, res, next) => {
 /** PUT /api/users/me — Update signed-in user's profile details */
 const updateMyProfile = async (req, res, next) => {
   try {
-    if (req.user.scopeType) {
-      return res.status(403).json({
-        success: false,
-        message: 'Profile editing is available for system users only.'
+    const { full_name, username, email, password } = req.body;
+    if (username && username.trim().toLowerCase() !== String(req.user.username).toLowerCase()) {
+      return res.status(400).json({ success: false, message: 'Username cannot be changed.' });
+    }
+
+    const hierarchyTarget = HIERARCHY_PROFILE_TARGETS[req.user.scopeType];
+    if (hierarchyTarget) {
+      if (!full_name?.trim()) {
+        return res.status(400).json({ success: false, message: 'Full name is required.' });
+      }
+      await db.query(
+        `UPDATE ${hierarchyTarget.table} SET ${hierarchyTarget.nameColumn} = ? WHERE id = ?`,
+        [full_name.trim(), req.user.scopeId]
+      );
+      await writeAuditLog({
+        userId: req.user.username,
+        userEmail: req.user.email || req.user.username,
+        action: 'UPDATE_MY_PROFILE',
+        entityType: hierarchyTarget.table,
+        entityId: req.user.scopeId,
+        newData: { full_name: full_name.trim() },
+      });
+      return res.json({
+        success: true,
+        message: 'Profile updated.',
+        user: selfProfileUser(req, { fullName: full_name.trim() }),
       });
     }
 
-    const { full_name, username, email, password } = req.body;
     const [existing] = await db.query('SELECT * FROM users WHERE id = ?', [req.user.id]);
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'User not found.' });
@@ -310,10 +364,6 @@ const updateMyProfile = async (req, res, next) => {
     if (full_name) {
       updates.push('full_name = ?');
       values.push(full_name.trim());
-    }
-    if (username) {
-      updates.push('username = ?');
-      values.push(username.trim().toLowerCase());
     }
     if (email) {
       updates.push('email = ?');
@@ -347,7 +397,7 @@ const updateMyProfile = async (req, res, next) => {
       entityType: 'users',
       entityId: req.user.id,
       oldData: existing[0],
-      newData: { full_name, username, email, passwordChanged: Boolean(password) },
+      newData: { full_name, email, passwordChanged: Boolean(password) },
     });
 
     res.json({
@@ -391,9 +441,12 @@ const getRoles = async (req, res, next) => {
       where = `LOWER(name) IN (${assignableRoles.map(() => '?').join(', ')})`;
       params.push(...assignableRoles);
     }
+    if(req.user.scopeType==='district'){const allowed=[...DISTRICT_OPERATIONAL_ROLES];where=`LOWER(name) IN (${allowed.map(()=>'?').join(',')})`;params.push(...allowed)}
     const [rows] = await db.query(`SELECT * FROM roles WHERE ${where} ORDER BY id`, params);
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 };
 
-module.exports = { getUsers, getUserById, createUser, updateUser, updateMyProfile, updateMyProfileImage, deleteUser, getRoles };
+const getAssignableOfficers=async(req,res,next)=>{try{if(req.user.scopeType!=='district'&&req.user.role!=='admin')return res.status(403).json({success:false,message:'Degmo keliya ayaa saraakiil u xilsaari karta roles-kan.'});const params=[];let where="po.approval_status='APPROVED' AND LOWER(po.employment_status)='active' AND u.id IS NULL";if(req.user.scopeType==='district'){where+=' AND po.district_id=?';params.push(req.user.scopeId)}const[rows]=await db.query(`SELECT po.id,po.full_name,po.force_number,r.rank_name,po.district_id FROM police_officers po LEFT JOIN ranks r ON r.id=po.rank_id LEFT JOIN users u ON u.police_officer_id=po.id WHERE ${where} ORDER BY po.full_name`,params);res.json({success:true,data:rows})}catch(e){next(e)}};
+
+module.exports = { getUsers, getUserById, createUser, updateUser, updateMyProfile, updateMyProfileImage, deleteUser, getRoles, getAssignableOfficers };

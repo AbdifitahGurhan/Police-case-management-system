@@ -7,12 +7,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button, Result, Spin } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 
-const ProtectedRoute = ({ children, allowedRoles = [] }) => {
+const ProtectedRoute = ({ children, allowedRoles = [], requiredPermissions = [] }) => {
   const { user, loading } = useAuth();
   const router = useRouter();
   const role = String(user?.role || '').toLowerCase();
   const isAdmin = role === 'admin';
-  const isDenied = Boolean(user && !isAdmin && allowedRoles.length > 0 && !allowedRoles.includes(role));
+  const userPermissions = user?.permissions || [];
+  const hasRequiredPermission = requiredPermissions.some(permission => userPermissions.includes('*') || userPermissions.includes(permission));
+  const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(role);
+  const isDenied = Boolean(user && !isAdmin && !roleAllowed && !hasRequiredPermission);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -55,6 +58,8 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
       region_admin: '/dashboard/unit',
       city_admin: '/dashboard/unit',
       district_admin: '/dashboard/unit',
+      personnel_registry: '/police-officers',
+      investigator: '/dashboard/cid',
     };
 
     const homeRoute = roleRedirects[user.role] || '/cases';

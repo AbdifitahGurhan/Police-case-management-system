@@ -56,25 +56,31 @@ const getDismissedAlertIds = () => {
   }
 };
 
-const cidRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
-const supervisorRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison'];
+const cidRoles = ['admin', 'district_admin', 'investigator', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
+const supervisorRoles = ['admin', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison'];
 
 const statusMeta = {
-  open: { label: 'Open', tone: 'open' },
-  under_investigation: { label: 'Under investigation', tone: 'pending' },
-  evidence_collection: { label: 'Evidence collection', tone: 'open' },
-  witness_interviews: { label: 'Witness interviews', tone: 'pending' },
-  suspect_tracking: { label: 'Suspect tracking', tone: 'warning' },
-  arrest_made: { label: 'Arrest made', tone: 'critical' },
-  investigation_completed: { label: 'Investigation completed', tone: 'open' },
-  supervisor_review: { label: 'Supervisor review', tone: 'pending' },
-  approved: { label: 'Approved', tone: 'open' },
-  rejected: { label: 'Rejected', tone: 'critical' },
-  sent_to_prosecutor: { label: 'Sent to prosecutor', tone: 'open' },
-  sent_to_court: { label: 'Sent to court', tone: 'open' },
+  open: { label: 'Socota (Open)', tone: 'open' },
+  Socota: { label: 'Socota', tone: 'pending' },
+  under_investigation: { label: 'Baaritaan Wado (Socota)', tone: 'pending' },
+  evidence_collection: { label: 'Uruurinta Caddemaha', tone: 'open' },
+  witness_interviews: { label: 'Dhageysiga Markhaatiyaasha', tone: 'pending' },
+  suspect_tracking: { label: 'Raadinta Eedeysanaha', tone: 'warning' },
+  arrest_made: { label: 'Eedeysane La Xiray', tone: 'critical' },
+  investigation_completed: { label: 'Dhammaystiran', tone: 'open' },
+  Dhammaystiran: { label: 'Dhammaystiran', tone: 'open' },
+  supervisor_review: { label: 'Dib-u-eegista Kormeeraha', tone: 'pending' },
+  approved: { label: 'La Ansixiyay', tone: 'open' },
+  rejected: { label: 'Xiran / Diiddan', tone: 'critical' },
+  Xiran: { label: 'Xiran', tone: 'critical' },
+  sent_to_prosecutor: { label: 'U Gudubtay Xeer-ilaalinta', tone: 'open' },
+  sent_to_court: { label: 'U Gudubtay Maxkamadda', tone: 'open' },
 };
 
 const CID_STATUS_OPTIONS = [
+  'Socota',
+  'Dhammaystiran',
+  'Xiran',
   'open',
   'under_investigation',
   'evidence_collection',
@@ -115,6 +121,7 @@ const statusTag = (value) => (
 export default function CIDDashboard() {
   const { message } = App.useApp();
   const { user } = useAuth();
+  const canInvestigate = user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes('cases.investigate');
   const router = useRouter();
   const [dashboard, setDashboard] = useState(null);
   const [cases, setCases] = useState([]);
@@ -311,7 +318,7 @@ export default function CIDDashboard() {
     { title: 'Investigation', dataIndex: 'investigation_status', render: statusTag },
     { title: 'Assigned', dataIndex: 'assigned_date', render: (v) => (v ? dayjs(v).format('YYYY-MM-DD') : '—') },
     {
-      title: 'Action',
+      title: 'Ficilka',
       key: 'action',
       render: (_, row) => (
         <Space>
@@ -358,15 +365,15 @@ export default function CIDDashboard() {
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div className="standard-dashboard-hero">
           <div>
-            <Text className="dashboard-eyebrow">Criminal Investigation Department</Text>
+            <Text className="dashboard-eyebrow">Waaxda Baarista Dambiyada</Text>
             <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
-              CID dashboard
+              Hawlaha Baaritaanka
             </Title>
             <Text type="secondary" style={{ fontSize: 13 }}>
-              Investigation queue, crime-scene logs, and acknowledge-before-update workflow.
+              Kiisaska laguu xilsaaray, caddeymaha, markhaatiyaasha, eedaysanayaasha iyo taariikhda baaritaanka.
             </Text>
           </div>
-          <Button type="primary" onClick={() => loadDashboard(filters)}>Refresh queue</Button>
+          <Button type="primary" onClick={() => loadDashboard(filters)}>Cusboonaysii</Button>
         </div>
 
         <Row gutter={[16, 16]}>
@@ -434,12 +441,12 @@ export default function CIDDashboard() {
           size="large"
           extra={cidCase && (
             <Space wrap>
-              {needsAcknowledge && (
+              {canInvestigate && needsAcknowledge && (
                 <Button type="primary" onClick={acknowledgeCase}>
                   Acknowledge case
                 </Button>
               )}
-              {canSupervise && (
+              {canInvestigate && canSupervise && (
                 <Button
                   disabled={needsAcknowledge}
                   onClick={() => openModal('assign', { assigned_officer: cidCase.assigned_officer, supervisor: cidCase.supervisor })}
@@ -447,17 +454,18 @@ export default function CIDDashboard() {
                   Assign
                 </Button>
               )}
-              <Button
+              {canInvestigate && <Button
                 type="primary"
                 disabled={needsAcknowledge || !nextStage}
                 onClick={openNextStage}
               >
                 Dhammeystir marxaladda xigta
-              </Button>
-              <Button disabled={needsAcknowledge} onClick={() => openModal('scene')}>Log crime scene</Button>
-              <Button disabled={needsAcknowledge} onClick={() => openModal('report')}>Submit report</Button>
-              {canSupervise && <Button disabled={needsAcknowledge} onClick={() => openModal('review')}>Supervisor review</Button>}
-              {canSupervise && <Button disabled={needsAcknowledge} icon={<SendOutlined />} onClick={() => openModal('prosecutor')}>Forward prosecutor</Button>}
+              </Button>}
+              {canInvestigate && <Button disabled={needsAcknowledge} onClick={() => openModal('scene')}>Diiwaangeli Goobta Dhacdada</Button>}
+              {canInvestigate && <Button disabled={needsAcknowledge} onClick={() => router.push(`/cases/${cidCase.police_case_id}`)}>Ku Dar Caddeyn, Markhaati ama Eedaysane</Button>}
+              {canInvestigate && <Button disabled={needsAcknowledge} onClick={() => openModal('report')}>Gudbi Warbixinta</Button>}
+              {canInvestigate && canSupervise && <Button disabled={needsAcknowledge} onClick={() => openModal('review')}>Dib-u-eegista Kormeeraha</Button>}
+              {canInvestigate && canSupervise && <Button disabled={needsAcknowledge} icon={<SendOutlined />} onClick={() => openModal('prosecutor')}>U Gudbi Xeer-ilaalinta</Button>}
             </Space>
           )}
         >
@@ -717,7 +725,7 @@ export default function CIDDashboard() {
                         dataSource={selected.auditTrail || []}
                         columns={[
                           { title: 'User', dataIndex: 'performed_by', render: safe },
-                          { title: 'Action', dataIndex: 'action', render: (v) => v?.replaceAll('_', ' ') },
+                          { title: 'Ficilka', dataIndex: 'action', render: (v) => v?.replaceAll('_', ' ') },
                           { title: 'Date/time', dataIndex: 'created_at', render: (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—') },
                           { title: 'Previous', dataIndex: 'previous_value', ellipsis: true, render: (v) => (v ? JSON.stringify(v) : '—') },
                           { title: 'New', dataIndex: 'new_value', ellipsis: true, render: (v) => (v ? JSON.stringify(v) : '—') },

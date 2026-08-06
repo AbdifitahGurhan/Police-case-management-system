@@ -7,18 +7,19 @@ const { getCases, getMyAssignedCases, getAssignableOfficers, getCaseById, create
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
 const { CASE_READ_ROLES, CASE_WRITE_ROLES, CASE_STATUS_ROLES } = require('../utils/roleGroups');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 router.use(authMiddleware);
 
-router.get('/', allowRoles(...CASE_READ_ROLES), getCases);
+router.get('/', requirePermission('cases.view'), getCases);
 router.get('/stats', allowRoles(...CASE_READ_ROLES, 'officer'), getCaseStats);
-router.get('/my-assigned', allowRoles(...CASE_READ_ROLES, 'officer'), getMyAssignedCases);
+router.get('/my-assigned', requirePermission('cases.view'), getMyAssignedCases);
 router.get('/assignable/officers', allowRoles('admin', 'district_commander', 'police_station_commander', 'district_admin'), getAssignableOfficers);
-router.get('/:id/export', allowRoles(...CASE_READ_ROLES), exportCasePackage);
-router.get('/:id', allowRoles(...CASE_READ_ROLES), getCaseById);
-router.post('/', allowRoles(...CASE_WRITE_ROLES), createCase);
+router.get('/:id/export', requirePermission('cases.view'), exportCasePackage);
+router.get('/:id', requirePermission('cases.view'), getCaseById);
+router.post('/', requirePermission('cases.investigate'), createCase);
 router.post('/:id/court-decision', allowRoles('admin', 'court'), recordCourtDecision);
 router.patch('/:id/assign', allowRoles('admin', 'district_commander', 'police_station_commander', 'district_admin'), assignCaseOfficer);
-router.put('/:id', allowRoles(...CASE_STATUS_ROLES), updateCase);
+router.put('/:id', requirePermission('cases.investigate'), updateCase);
 
 module.exports = router;

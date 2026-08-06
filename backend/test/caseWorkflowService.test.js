@@ -15,6 +15,7 @@ const {
 
 test('accepts valid police transitions', () => {
   assert.equal(assertPoliceTransition('registered', 'referred_to_cid'), true);
+  assert.equal(assertPoliceTransition('PENDING_COMMANDER_REVIEW', 'registered'), true);
   assert.equal(assertPoliceTransition('approved_for_court', 'court_decided'), true);
   assert.equal(assertPoliceTransition('court_decided', 'closed'), true);
 });

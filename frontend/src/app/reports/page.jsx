@@ -671,7 +671,7 @@ export default function ReportsPage() {
       render: (value) => value || 'System',
     },
     {
-      title: 'Action',
+      title: 'Ficilka',
       dataIndex: 'action',
       render: (action) => <Tag color="blue">{action}</Tag>,
     },
@@ -800,7 +800,7 @@ export default function ReportsPage() {
       dataIndex: 'ob_number',
     },
     {
-      title: 'Action',
+      title: 'Ficilka',
       dataIndex: 'action_type',
     },
     {
@@ -850,7 +850,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'region_admin', 'region_commander', 'officer', 'cid', 'court', 'jail', 'district_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'region_admin', 'region_commander', 'officer', 'cid', 'court', 'jail', 'district_admin']} requiredPermissions={['reports.view', 'reports.export']}>
       <div className="reports-page">
         <div className="reports-hero">
           <div>

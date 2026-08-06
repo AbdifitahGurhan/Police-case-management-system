@@ -23,13 +23,14 @@ const {
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
 const { REPORT_ROLES, UNIT_ROLES } = require('../utils/roleGroups');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 router.use(authMiddleware);
 
-router.get('/audit-logs', allowRoles(...REPORT_ROLES), getAuditLogs);
+router.get('/audit-logs', requirePermission('audit_logs.view'), getAuditLogs);
 router.get('/summary', allowRoles(...REPORT_ROLES, ...UNIT_ROLES), getSummaryReport);
 router.get('/dashboard-charts', allowRoles(...REPORT_ROLES, ...UNIT_ROLES), getDashboardCharts);
-router.get('/security-audit', allowRoles('admin'), getSecurityAuditDashboard);
+router.get('/security-audit', requirePermission('audit_logs.view'), getSecurityAuditDashboard);
 router.get('/export/cases.csv', allowRoles(...REPORT_ROLES), exportCasesCsv);
 router.get('/by-station', allowRoles(...REPORT_ROLES), getCasesByStation);
 router.get('/station-full', allowRoles(...REPORT_ROLES), getStationFullReport);

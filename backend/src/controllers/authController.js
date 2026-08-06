@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { normalizeRole } = require('../utils/locationScope');
+const { loadPermissions } = require('../middleware/permissionMiddleware');
 
 /**
  * POST /api/auth/login
@@ -54,19 +55,19 @@ const login = async (req, res, next) => {
         WHERE u.username = ? OR u.email = ?
       ) u
       UNION ALL
-      SELECT id, username, NULL as email, password_hash, 1 as is_active, 'state_admin' as role, state_name as full_name, NULL as profile_image,
+      SELECT id, username, NULL as email, password_hash, 1 as is_active, 'state_admin' as role, COALESCE(profile_name, state_name) as full_name, profile_image,
              NULL, NULL, 'COMMANDER', 'STATE', 1, id, NULL, NULL, state_name, NULL, NULL, 'state_administration' as scope_type, id as scope_id
       FROM state_administrations WHERE username = ?
       UNION ALL
-      SELECT r.id, r.username, NULL as email, r.password_hash, 1 as is_active, 'region_admin' as role, r.region_name as full_name, NULL as profile_image,
+      SELECT r.id, r.username, NULL as email, r.password_hash, 1 as is_active, 'region_admin' as role, COALESCE(r.profile_name, r.region_name) as full_name, r.profile_image,
              NULL, NULL, 'COMMANDER', 'REGION', 1, r.state_administration_id, r.id, NULL, sa.state_name, r.region_name, NULL, 'region' as scope_type, r.id as scope_id
       FROM regions r LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id WHERE r.username = ?
       UNION ALL
-      SELECT c.id, c.username, NULL as email, c.password_hash, 1 as is_active, 'city_admin' as role, c.city_name as full_name, NULL as profile_image,
+      SELECT c.id, c.username, NULL as email, c.password_hash, 1 as is_active, 'city_admin' as role, COALESCE(c.profile_name, c.city_name) as full_name, c.profile_image,
              NULL, NULL, 'COMMANDER', 'REGION', 1, r.state_administration_id, r.id, NULL, sa.state_name, r.region_name, NULL, 'city' as scope_type, c.id as scope_id
       FROM cities c LEFT JOIN regions r ON c.region_id = r.id LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id WHERE c.username = ?
       UNION ALL
-      SELECT d.id, d.username, NULL as email, d.password_hash, 1 as is_active, 'district_admin' as role, d.district_name as full_name, NULL as profile_image,
+      SELECT d.id, d.username, NULL as email, d.password_hash, 1 as is_active, 'district_admin' as role, COALESCE(d.profile_name, d.district_name) as full_name, d.profile_image,
              NULL, NULL, 'COMMANDER', 'DISTRICT_POLICE_STATION', 1, r.state_administration_id, r.id, d.id, sa.state_name, r.region_name, d.district_name, 'district' as scope_type, d.id as scope_id
       FROM districts d LEFT JOIN cities c ON d.city_id = c.id LEFT JOIN regions r ON c.region_id = r.id LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id WHERE d.username = ?
     `;
@@ -136,6 +137,7 @@ const login = async (req, res, next) => {
         districtName: user.district_name
       }
     };
+    payload.permissions = await loadPermissions(payload);
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '24h',

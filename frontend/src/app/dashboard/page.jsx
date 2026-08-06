@@ -24,6 +24,7 @@ export default function DashboardIndexPage() {
       region_admin: '/dashboard/unit',
       city_admin: '/dashboard/unit',
       district_admin: '/dashboard/unit',
+      personnel_registry: '/police-officers',
       cid: '/dashboard/cid',
       cid_director: '/dashboard/cid',
       cid_supervisor: '/dashboard/cid',

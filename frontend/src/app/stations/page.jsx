@@ -97,7 +97,7 @@ export default function StationManagementPage() {
     { title: 'Commander', dataIndex: 'commander_name', key: 'commander_name', render: (v) => v || 'N/A' },
     { title: 'Status', dataIndex: 'is_active', key: 'is_active', render: (a) => a ? <Tag color="success">OPERATIONAL</Tag> : <Tag color="error">INACTIVE</Tag> },
     {
-      title: 'Action',
+      title: 'Ficilka',
       key: 'action',
       render: (_, record) => (
         <Space>
@@ -154,7 +154,7 @@ export default function StationManagementPage() {
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item name="username" label="Login Username" rules={usernameRules}>
+                <Form.Item name="username" label="Username-ka Login-ka" rules={usernameRules}>
                   <Input placeholder="e.g. hodan_station" />
                 </Form.Item>
               </Col>

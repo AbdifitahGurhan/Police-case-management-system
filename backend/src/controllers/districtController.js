@@ -2,12 +2,50 @@
 const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 
+const HIRAAN_DISTRICT_CODES = {
+  Beledweyne: 'HIR-BLW', 'Buulo Burte': 'HIR-BBT', Jalalaqsi: 'HIR-JLL',
+  Matabaan: 'HIR-MTB', Maxaas: 'HIR-MXS', Halgan: 'HIR-HLG',
+  'Ceel-Cali': 'HIR-CCA', 'Far-Libaax': 'HIR-FLB', Moqokori: 'HIR-MQK',
+  'Buq-Aqable': 'HIR-BQA', 'Booco/Burweyn': 'HIR-BBW', 'Cali-Gaduud': 'HIR-CGD',
+  'Raage-Ceelle': 'HIR-RCL', Xawaadley: 'HIR-XWD',
+};
+
+const resolveDistrictCode = async (cityId, districtName, suppliedCode) => {
+  const [[location]] = await db.query(
+    `SELECT r.region_name FROM cities c JOIN regions r ON r.id=c.region_id WHERE c.id=?`,
+    [cityId]
+  );
+  if (!location) return { error: 'Gobolka/xarunta la doortay lama helin.' };
+  if (location.region_name === 'Hiiraan') {
+    const code = HIRAAN_DISTRICT_CODES[String(districtName || '').trim()];
+    if (!code) return { error: 'Degmada la doortay kama tirsana liiska degmooyinka Hiiraan.' };
+    return { code };
+  }
+  return { code: String(suppliedCode || '').trim() || null };
+};
+
+const getOrCreateRegionCity = async (regionId, createdBy) => {
+  const [[region]] = await db.query('SELECT id,region_name,region_code FROM regions WHERE id=?', [regionId]);
+  if (!region) return null;
+  const [[existing]] = await db.query('SELECT id FROM cities WHERE region_id=? ORDER BY id LIMIT 1', [regionId]);
+  if (existing) return existing.id;
+  const systemUsername = `${String(region.region_code).toLowerCase()}_districts`;
+  const systemPasswordHash = await bcrypt.hash(`${region.region_code}-${Date.now()}-${Math.random()}`, 10);
+  const [result] = await db.query(
+    `INSERT INTO cities(region_id,city_name,city_code,username,password_hash,created_by)
+     VALUES(?,?,?,?,?,?)`,
+    [region.id, `${region.region_name} Xarunta Degmooyinka`, `${region.region_code}-CTR`, systemUsername, systemPasswordHash, createdBy]
+  );
+  return result.insertId;
+};
+
 exports.getAll = async (req, res, next) => {
   try { 
     let query = `
-      SELECT c.id, c.district_name, c.district_code, c.username, c.commander_officer_id, c.city_id, p.full_name as commander_name
+      SELECT c.id, c.district_name, c.district_code, c.username, c.commander_officer_id, c.city_id, ci.region_id, r.region_name, p.full_name as commander_name
       FROM districts c
       LEFT JOIN cities ci ON c.city_id = ci.id
+      LEFT JOIN regions r ON r.id = ci.region_id
       LEFT JOIN police_officers p ON c.commander_officer_id = p.id
       WHERE 1=1
     `;
@@ -72,15 +110,21 @@ exports.getById = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const { city_id, district_name, district_code, username, password, commander_officer_id } = req.body;
+    const { district_name, district_code, username, password, commander_officer_id } = req.body;
+    const region_id = req.user.scopeType === 'region' ? Number(req.user.scopeId) : Number(req.body.region_id);
+    if (!region_id || !district_name || !username || !password) {
+      return res.status(400).json({ success: false, message: 'Gobolka/xarunta, degmada, username-ka iyo password-ka waa wajib.' });
+    }
+    const city_id = await getOrCreateRegionCity(region_id, req.user.username);
+    if (!city_id) return res.status(400).json({ success: false, message: 'Gobolka lama helin.' });
+    const resolvedCode = await resolveDistrictCode(city_id, district_name, district_code);
+    if (resolvedCode.error) return res.status(400).json({ success: false, message: resolvedCode.error });
+    if (!resolvedCode.code) return res.status(400).json({ success: false, message: 'District Code waa wajib.' });
     
     if (req.user.scopeType === 'city' && req.user.scopeId !== parseInt(city_id)) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
-    if (req.user.scopeType === 'region') {
-      const [[city]] = await db.query('SELECT id FROM cities WHERE id = ? AND region_id = ?', [city_id, req.user.scopeId]);
-      if (!city) return res.status(403).json({ success: false, message: 'Forbidden' });
-    }
+    if (req.user.scopeType === 'region' && Number(req.user.scopeId) !== region_id) return res.status(403).json({ success: false, message: 'Forbidden' });
 
     const hash = await bcrypt.hash(password, 10);
     const creator = req.user.username;
@@ -88,7 +132,7 @@ exports.create = async (req, res, next) => {
     const [result] = await db.query(`
       INSERT INTO districts (city_id, district_name, district_code, username, password_hash, commander_officer_id, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [city_id, district_name, district_code, username, hash, commander_officer_id || null, creator]);
+    `, [city_id, district_name, resolvedCode.code, username, hash, commander_officer_id || null, creator]);
     res.json({ success: true, message: 'Created successfully', id: result.insertId });
   } catch (err) { 
     if(err.code === 'ER_DUP_ENTRY') return res.status(400).json({success: false, message: 'Username or Code already exists.'});
@@ -99,7 +143,13 @@ exports.create = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { city_id, district_name, district_code, username, commander_officer_id } = req.body;
+    const { district_name, district_code, username, commander_officer_id } = req.body;
+    const region_id = req.user.scopeType === 'region' ? Number(req.user.scopeId) : Number(req.body.region_id);
+    const city_id = await getOrCreateRegionCity(region_id, req.user.username);
+    if (!city_id) return res.status(400).json({ success: false, message: 'Gobolka lama helin.' });
+    const resolvedCode = await resolveDistrictCode(city_id, district_name, district_code);
+    if (resolvedCode.error) return res.status(400).json({ success: false, message: resolvedCode.error });
+    if (!resolvedCode.code) return res.status(400).json({ success: false, message: 'District Code waa wajib.' });
 
     const [rows] = await db.query('SELECT * FROM districts WHERE id = ?', [id]);
     if (!rows.length) return res.status(404).json({ success: false, message: 'Not found' });
@@ -118,7 +168,7 @@ exports.update = async (req, res, next) => {
     await db.query(`
       UPDATE districts SET city_id=?, district_name=?, district_code=?, username=?, commander_officer_id=?
       WHERE id=?
-    `, [city_id, district_name, district_code, username, commander_officer_id || null, id]);
+    `, [city_id, district_name, resolvedCode.code, username, commander_officer_id || null, id]);
     res.json({ success: true, message: 'Updated successfully' });
   } catch (err) { next(err); }
 };

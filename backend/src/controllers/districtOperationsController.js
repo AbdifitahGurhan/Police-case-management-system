@@ -22,12 +22,21 @@ const getDistrictOperations = async (req, res, next) => {
              SUM(assigned_officer_id IS NULL AND status NOT IN ${terminalStatuses}) AS unassigned_cases,
              SUM(status IN ('pending_commander_review','PENDING_COMMANDER_REVIEW')) AS pending_review
         FROM cases WHERE district_id = ?`, [id]);
-    const [[obToday]] = await db.query('SELECT COUNT(*) AS total FROM ob_entries WHERE district_id = ? AND DATE(created_at) = CURDATE()', [id]);
+    const [[obSummary]] = await db.query(`SELECT COUNT(*) AS total,
+      SUM(DATE(created_at) = CURDATE()) AS today FROM ob_entries WHERE district_id = ?`, [id]);
     const [[custody]] = await db.query(`
       SELECT COUNT(*) AS arrests,
              SUM(a.sentence_status = 'released') AS released,
              SUM(a.sentence_status IN ('wanted','escaped')) AS wanted
         FROM arrests a JOIN cases c ON c.id = a.case_id WHERE c.district_id = ?`, [id]);
+    const [[stationJail]] = await db.query(`
+      SELECT COUNT(*) AS total
+        FROM prison_admissions pa
+        JOIN arrests a ON a.id = pa.arrest_id
+        JOIN cases c ON c.id = a.case_id
+       WHERE c.district_id = ? AND pa.status = 'admitted'`, [id]);
+    const [[districtUsers]] = await db.query(`
+      SELECT COUNT(*) AS total FROM users WHERE district_id = ? AND is_active = 1`, [id]);
 
     const [pendingCases] = await db.query(`
       SELECT c.id, c.case_number, c.ob_number, c.title, c.priority,
@@ -41,6 +50,17 @@ const getDistrictOperations = async (req, res, next) => {
         FROM cases c LEFT JOIN police_officers po ON po.id = c.assigned_officer_id
        WHERE c.district_id = ? AND c.status NOT IN ${terminalStatuses}
        ORDER BY (c.assigned_officer_id IS NULL) DESC, c.created_at ASC LIMIT 100`, [id]);
+
+    const [investigatorTasks] = await db.query(`
+      SELECT rf.id, rf.case_id, c.case_number, c.ob_number,
+             COALESCE(c.title, c.case_title) AS title, rf.reason, rf.status,
+             rf.referred_by, rf.referred_at, po.full_name AS assigned_investigator
+        FROM referrals rf
+        JOIN cases c ON c.id = rf.case_id
+        LEFT JOIN police_officers po ON po.id = c.assigned_officer_id
+       WHERE c.district_id = ? AND LOWER(rf.referred_to_role) = 'investigator'
+       ORDER BY FIELD(rf.status,'pending','accepted','in_progress','completed','rejected'), rf.referred_at DESC
+       LIMIT 100`, [id]);
 
     const [officers] = await db.query(`
       SELECT po.id, po.full_name, po.force_number, r.rank_name,
@@ -91,8 +111,11 @@ const getDistrictOperations = async (req, res, next) => {
 
     res.json({ success: true, data: {
       district,
-      metrics: { ...metrics, ob_today: obToday.total, arrests: custody.arrests, released: custody.released, wanted: custody.wanted },
-      pendingCases, activeCases, officers, attendance, recentActivities, hotspots, complaints,
+      metrics: { ...metrics, total_ob: obSummary.total, ob_today: obSummary.today,
+        total_officers: officers.length, station_prisoners: stationJail.total,
+        investigator_tasks: investigatorTasks.length, district_users: districtUsers.total,
+        arrests: custody.arrests, released: custody.released, wanted: custody.wanted },
+      pendingCases, activeCases, investigatorTasks, officers, attendance, recentActivities, hotspots, complaints,
       alerts: {
         evidenceIssues, wantedPeople,
         highWorkload: officers.filter((officer) => Number(officer.open_cases) >= 5),

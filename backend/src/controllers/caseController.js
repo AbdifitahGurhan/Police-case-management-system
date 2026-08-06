@@ -584,6 +584,8 @@ const assignCaseOfficer = async (req, res, next) => {
       'registered',
       caseId,
     ]);
+    await db.query(`UPDATE cid_cases SET assigned_officer=?, assignment_status='assigned', updated_at=NOW()
+      WHERE police_case_id=? AND investigation_status NOT IN ('sent_to_prosecutor','sent_to_court','approved')`, [officer.full_name, caseId]);
     await db.query(
       `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)
        VALUES (?, ?, 'CASE_ASSIGNED', ?, ?, ?)`,

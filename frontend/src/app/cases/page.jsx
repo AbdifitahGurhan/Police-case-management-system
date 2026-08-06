@@ -25,14 +25,14 @@ import api from '@/services/api';
 const { Title, Text } = Typography;
 
 const CASE_READ_ROLES = [
-  'admin', 'staff', 'officer', 'district_admin',
+  'admin', 'staff', 'officer', 'investigator', 'station_jail', 'district_admin',
   'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
   'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
   'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',
 ];
 
 const CASE_WRITE_ROLES = [
-  'admin', 'officer', 'district_admin',
+  'admin', 'officer', 'investigator', 'district_admin',
   'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
   'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
 ];
@@ -85,7 +85,10 @@ export default function CaseListPage() {
   });
 
   const normalizedRole = String(user?.role || '').trim().toLowerCase();
-  const canCreate = user && CASE_WRITE_ROLES.includes(normalizedRole);
+  const userPermissions = user?.permissions || [];
+  const hasPermission = key => normalizedRole === 'admin' || userPermissions.includes('*') || userPermissions.includes(key);
+  const canRead = Boolean(user && (CASE_READ_ROLES.includes(normalizedRole) || hasPermission('cases.view') || hasPermission('cases.investigate')));
+  const canCreate = Boolean(user && (CASE_WRITE_ROLES.includes(normalizedRole) || hasPermission('cases.investigate')));
 
   const fetchCases = useCallback(async (page = 1, pageSize = 20, activeFilters = filters) => {
     setLoading(true);
@@ -119,11 +122,13 @@ export default function CaseListPage() {
   }, [filters]);
 
   useEffect(() => {
-    if (!authLoading && user && CASE_READ_ROLES.includes(normalizedRole)) {
+    if (!authLoading && canRead) {
       fetchCases(1, pagination.pageSize, filters);
+    } else if (!authLoading) {
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user, filters]);
+  }, [authLoading, user?.id, filters, canRead]);
 
   useEffect(() => {
     const loadStations = async () => {
@@ -147,7 +152,7 @@ export default function CaseListPage() {
 
   const columns = [
     {
-      title: 'Case number',
+      title: 'Nambarka Kiiska',
       dataIndex: 'case_number',
       key: 'case_number',
       render: (text, record) => (
@@ -155,36 +160,36 @@ export default function CaseListPage() {
       ),
     },
     {
-      title: 'OB number',
+      title: 'Nambarka OB-da',
       dataIndex: 'ob_number',
       key: 'ob_number',
     },
     {
-      title: 'Title',
+      title: 'Cinwaanka Dacwadda',
       dataIndex: 'title',
       key: 'title',
       ellipsis: true,
     },
     {
-      title: 'Type',
+      title: 'Nooca Dambiga',
       dataIndex: 'incident_type',
       key: 'incident_type',
       render: (text, record) => text || record.case_type || '—',
     },
     {
-      title: 'Station',
+      title: 'Saldhigga',
       dataIndex: 'station_name',
       key: 'station_name',
       render: (text) => text || '—',
     },
     {
-      title: 'Status',
+      title: 'Xaaladda',
       dataIndex: 'status',
       key: 'status',
       render: (status) => <CaseStatusTag status={status} />,
     },
     {
-      title: 'Priority',
+      title: 'Heerka Ahmiyadda',
       dataIndex: 'priority',
       key: 'priority',
       render: (p) => (
@@ -194,18 +199,18 @@ export default function CaseListPage() {
       ),
     },
     {
-      title: 'Date',
+      title: 'Taariikhda',
       dataIndex: 'created_at',
       key: 'created_at',
       render: (date) => (date ? dayjs(date).format('DD/MM/YYYY') : '—'),
     },
     {
-      title: 'Action',
+      title: 'Ficilka',
       key: 'action',
       render: (_, record) => (
         <Link href={`/cases/${record.id}`}>
           <Button type="link" icon={<EyeOutlined />}>
-            View
+            Eeg Faahfaahinta
           </Button>
         </Link>
       ),
@@ -213,24 +218,24 @@ export default function CaseListPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={CASE_READ_ROLES}>
+    <ProtectedRoute allowedRoles={CASE_READ_ROLES} requiredPermissions={['cases.view', 'cases.investigate']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <Breadcrumb items={[{ title: 'Home' }, { title: 'Cases' }]} />
+        <Breadcrumb items={[{ title: 'Bogga Hore' }, { title: 'Galal-kiiseedka (Cases)' }]} />
 
         <div className="standard-dashboard-hero" style={{ marginBottom: 0 }}>
           <div>
-            <Text className="dashboard-eyebrow">Case management</Text>
+            <Text className="dashboard-eyebrow">Maamulka Kiisaska Booliska</Text>
             <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
-              Cases
+              Galal-kiiseedka (Cases)
             </Title>
             <Text type="secondary" style={{ fontSize: 13 }}>
-              Search, filter, and open investigation records in your jurisdiction.
+              Duhay, kala-sifeey, oo fur dhammaan galal-kiiseedka dambiyada ee deegaankaaga.
             </Text>
           </div>
           {canCreate && (
             <Link href="/cases/new">
               <Button type="primary" icon={<PlusOutlined />}>
-                New case
+                Dhal Kiis Cusub
               </Button>
             </Link>
           )}

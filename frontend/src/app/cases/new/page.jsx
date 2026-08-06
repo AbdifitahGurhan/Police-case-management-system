@@ -51,10 +51,10 @@ const WRITE_ROLES = [
 ];
 
 const STEP_ITEMS = [
-  { title: 'Complainant' },
-  { title: 'Incident' },
-  { title: 'Suspects' },
-  { title: 'Evidence' },
+  { title: '1. Dacwoodaha & Warbixinta' },
+  { title: '2. Dhacdada & Dambiga' },
+  { title: '3. Eedeysanayaasha' },
+  { title: '4. Caddeeyaha & Maragga' },
 ];
 
 function NewCaseWizardContent() {
@@ -222,7 +222,7 @@ function NewCaseWizardContent() {
       },
     ]);
     evidenceDraftForm.resetFields();
-    message.success('Evidence item added to draft list.');
+    message.success('Caddeynta waa lagu daray liiska.');
   };
 
   const submitWizard = async () => {
@@ -232,7 +232,7 @@ function NewCaseWizardContent() {
       const incident = incidentData || (await incidentForm.validateFields());
 
       if (!complainant || !incident?.title) {
-        throw new Error('Case details are incomplete. Please return to the Incident step.');
+        throw new Error('Xogta kiisku ma dhammaystirna. Fadlan ku laab qaybta Dhacdada.');
       }
 
       const incidentDate = incident.incident_date
@@ -262,7 +262,7 @@ function NewCaseWizardContent() {
 
       const caseId = createRes.data.caseId;
       if (!caseId) {
-        throw new Error('Case created but no caseId returned.');
+        throw new Error('Kiiska waa la dhalay laakiin nambarka kiiska lama helin.');
       }
 
       for (const suspect of suspects) {
@@ -296,11 +296,12 @@ function NewCaseWizardContent() {
       }
 
       message.success(
-        `Case ${createRes.data.caseNumber || caseId} registered successfully.`
+        `Kiiska ${createRes.data.caseNumber || caseId} waa lagu diiwaangeliyay nidaamka si guul ah.`
       );
+
       router.push(`/cases/${caseId}`);
     } catch (err) {
-      message.error(err.response?.data?.message || err.message || 'Could not create case.');
+      message.error(err.response?.data?.message || err.message || 'Kiiska ma dhalmi karin.');
     } finally {
       setSubmitting(false);
     }
@@ -311,20 +312,20 @@ function NewCaseWizardContent() {
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <Breadcrumb
           items={[
-            { title: 'Home' },
-            { title: <Link href="/cases">Cases</Link> },
-            { title: 'New case' },
+            { title: 'Bogga Hore' },
+            { title: <Link href="/cases">Galal-kiiseedka</Link> },
+            { title: 'Diiwaangeli Kiis Cusub' },
           ]}
         />
 
         <div className="standard-dashboard-hero">
           <div>
-            <Text className="dashboard-eyebrow">Case registration</Text>
+            <Text className="dashboard-eyebrow">Diiwaangelinta Kiiska Booliska</Text>
             <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
-              Foomka Kiiska Buuxa (Detailed Case Registration)
+              Foomka Diiwaangelinta Kiiska (Case Registration Form)
             </Title>
             <Text type="secondary" style={{ fontSize: 13 }}>
-              Diiwaangeli kiiska oo ku dar dacwoodaha, dhacdada, eedaysanayaasha, iyo caddeymaha.
+              Diiwaangeli kiiska dambiyeedka cusub oo ku dar dacwoodaha, dhacdada, eedaysanayaasha, iyo caddeymaha.
             </Text>
           </div>
           <Link href="/cases">

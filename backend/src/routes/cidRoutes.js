@@ -18,23 +18,24 @@ const {
   forwardToProsecutor,
 } = require('../controllers/cidController');
 const { COMMANDER_ROLES } = require('../utils/roleGroups');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
-const CID_READ_ROLES = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
-const CID_SUPERVISOR_ROLES = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison', ...COMMANDER_ROLES];
-const CID_WRITE_ROLES = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
+const CID_READ_ROLES = ['admin', 'district_admin', 'investigator', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
+const CID_SUPERVISOR_ROLES = ['admin', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison', ...COMMANDER_ROLES];
+const CID_WRITE_ROLES = ['admin', 'investigator', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
 
 router.use(authMiddleware);
 
-router.get('/dashboard', allowRoles(...CID_READ_ROLES), getCidDashboard);
-router.get('/cases', allowRoles(...CID_READ_ROLES), getCidCases);
-router.post('/cases/sync', allowRoles(...CID_SUPERVISOR_ROLES), syncCidCase);
-router.get('/cases/:id', allowRoles(...CID_READ_ROLES), getCidCaseById);
-router.patch('/cases/:id/assign', allowRoles(...CID_SUPERVISOR_ROLES), assignCidCase);
-router.patch('/cases/:id/acknowledge', allowRoles(...CID_READ_ROLES), acknowledgeCidCase);
-router.patch('/cases/:id/investigation', allowRoles(...CID_WRITE_ROLES), updateInvestigation);
-router.post('/cases/:id/crime-scenes', allowRoles(...CID_WRITE_ROLES), addCrimeScene);
-router.post('/cases/:id/reports', allowRoles(...CID_WRITE_ROLES), submitReport);
-router.patch('/cases/:id/review', allowRoles(...CID_SUPERVISOR_ROLES), reviewInvestigation);
-router.post('/cases/:id/forward-prosecutor', allowRoles(...CID_SUPERVISOR_ROLES), forwardToProsecutor);
+router.get('/dashboard', requirePermission('cases.view'), getCidDashboard);
+router.get('/cases', requirePermission('cases.view'), getCidCases);
+router.post('/cases/sync', requirePermission('cases.investigate'), syncCidCase);
+router.get('/cases/:id', requirePermission('cases.view'), getCidCaseById);
+router.patch('/cases/:id/assign', requirePermission('cases.investigate'), assignCidCase);
+router.patch('/cases/:id/acknowledge', requirePermission('cases.investigate'), acknowledgeCidCase);
+router.patch('/cases/:id/investigation', requirePermission('cases.investigate'), updateInvestigation);
+router.post('/cases/:id/crime-scenes', requirePermission('cases.investigate'), addCrimeScene);
+router.post('/cases/:id/reports', requirePermission('cases.investigate'), submitReport);
+router.patch('/cases/:id/review', requirePermission('cases.investigate'), reviewInvestigation);
+router.post('/cases/:id/forward-prosecutor', requirePermission('cases.investigate'), forwardToProsecutor);
 
 module.exports = router;

@@ -44,6 +44,7 @@ const cidRoutes = require('./routes/cidRoutes');
 const districtOperationsRoutes = require('./routes/districtOperationsRoutes');
 const legalPersonnelRoutes = require('./routes/legalPersonnelRoutes');
 const warrantRoutes = require('./routes/warrantRoutes');
+const permissionRoutes = require('./routes/permissionRoutes');
 
 const app = express();
 
@@ -88,6 +89,7 @@ app.use('/api/cid', cidRoutes);
 app.use('/api/district-operations', districtOperationsRoutes);
 app.use('/api/legal-personnel', legalPersonnelRoutes);
 app.use('/api/warrants', warrantRoutes);
+app.use('/api/permissions', permissionRoutes);
 
 // Root route
 app.get('/', (req, res) => {

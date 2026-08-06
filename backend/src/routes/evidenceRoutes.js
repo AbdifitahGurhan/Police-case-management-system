@@ -10,6 +10,7 @@ const { getEvidence, getEvidenceById, createEvidence, addCustodyTransfer } = req
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
 const { REPORT_ROLES, INVESTIGATION_WRITE_ROLES } = require('../utils/roleGroups');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 // Ensure uploads directory exists
 const uploadDir = 'uploads';
@@ -68,9 +69,9 @@ const upload = multer({
 
 router.use(authMiddleware);
 
-router.get('/', allowRoles(...REPORT_ROLES), getEvidence);
-router.get('/:id', allowRoles(...REPORT_ROLES), getEvidenceById);
-router.post('/', allowRoles(...INVESTIGATION_WRITE_ROLES), upload.single('file'), createEvidence);
-router.post('/:id/custody', allowRoles(...INVESTIGATION_WRITE_ROLES), addCustodyTransfer);
+router.get('/', requirePermission('cases.view'), getEvidence);
+router.get('/:id', requirePermission('cases.view'), getEvidenceById);
+router.post('/', requirePermission('evidence.manage'), upload.single('file'), createEvidence);
+router.post('/:id/custody', requirePermission('evidence.manage'), addCustodyTransfer);
 
 module.exports = router;

@@ -19,6 +19,7 @@ import {
   BarChartOutlined,
   IdcardOutlined,
   FileDoneOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +35,10 @@ const Sidebar = ({ collapsed }) => {
   const role = user?.role;
   const dashboardPathMap = {
     admin: '/dashboard/admin',
+    sub_admin: '/dashboard/admin',
+    personnel_registry: '/police-officers',
+    investigator: '/dashboard/cid',
+    station_jail: '/dashboard/jail',
     officer: '/dashboard/officer',
     cid: '/dashboard/cid',
     cid_director: '/dashboard/cid',
@@ -60,121 +65,139 @@ const Sidebar = ({ collapsed }) => {
   const dashboardPath = dashboardPathMap[role] || '/cases';
 
   const roleNames = {
-    admin: 'Administrator',
-    officer: 'Officer',
-    cid: 'CID',
-    cid_director: 'CID Director',
-    cid_supervisor: 'CID Supervisor',
-    cid_officer: 'CID Officer',
-    court: 'Court',
-    court_admin: 'Court Administrator',
-    judge: 'Judge',
-    prosecutor: 'Prosecutor',
-    prosecutor_liaison: 'Prosecutor Liaison',
-    court_clerk: 'Court Clerk',
-    jail: 'Jail',
-    state_admin: 'State Admin',
-    region_admin: 'Region Admin',
-    city_admin: 'City Admin',
-    district_admin: 'District Admin',
-    state_commander: 'State Commander',
-    region_commander: 'Region Commander',
-    district_commander: 'District Commander',
-    police_station_commander: 'Police Station Commander',
-    ob_staff: 'OB Staff',
-    staff: 'Staff',
+    admin: 'Maamulaha Nidaamka',
+    sub_admin: 'Maamule Hoosaad',
+    personnel_registry: 'Diiwaanka Ciidanka',
+    investigator: 'Baare',
+    station_jail: 'Xabsiga Saldhigga',
+    officer: 'Sarkaalka Booliska',
+    cid: 'Baaraha CID-da',
+    cid_director: 'Agaasimaha CID-da',
+    cid_supervisor: 'Kormeeraha CID-da',
+    cid_officer: 'Baaraha CID-da',
+    court: 'Maxkamadda',
+    court_admin: 'Maamulaha Maxkamadda',
+    judge: 'Garsoore',
+    prosecutor: 'Xeer-ilaaliye',
+    prosecutor_liaison: 'Liaison-ka Xeer-ilaalinta',
+    court_clerk: 'Kalaarkha Maxkamadda',
+    jail: 'Maamulka Xabsiga Saldhigga',
+    state_admin: 'Maamulaha Dawlad Goboleedka',
+    region_admin: 'Maamulaha Gobolka',
+    city_admin: 'Maamulaha Magaalada',
+    district_admin: 'Maamulaha Degmada',
+    state_commander: 'Taliyaha Dawlad Goboleedka',
+    region_commander: 'Taliyaha Gobolka',
+    district_commander: 'Taliyaha Degmada',
+    police_station_commander: 'Taliyaha Saldhigga Booliska',
+    ob_staff: 'Diiwaangeliyaha OB-da',
+    staff: 'Shaqaalaha Hawlgalka',
   };
   const roleLabel = roleNames[role] || 'Isticmaale';
 
   const sections = useMemo(() => {
     if (!role) return [];
+    const hasPermission = key => role === 'admin' || (user?.permissions || []).includes('*') || (user?.permissions || []).includes(key);
 
     const stationOperationRoles = ['district_admin'];
     const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
-    const stationWorkflowRoles = ['ob_staff', 'staff', 'officer', 'district_admin', 'region_commander', 'district_commander', 'police_station_commander', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
+    const stationWorkflowRoles = ['ob_staff', 'staff', 'officer', 'investigator', 'district_admin', 'region_commander', 'district_commander', 'police_station_commander', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const courtRoles = ['court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk'];
     const cidRoles = ['cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const isCourtRole = courtRoles.includes(role);
     // Role visibility aligned to Part 5 permission matrix
-    const canViewOffenders = ['admin', 'officer', ...cidRoles, 'jail', 'staff', ...commanderRoles, ...stationOperationRoles, 'ob_staff'].includes(role);
-    const canViewReports = ['admin', 'region_admin', 'officer', ...cidRoles, 'jail', ...commanderRoles, ...stationOperationRoles].includes(role);
+    const canViewOffenders = hasPermission('suspects.manage');
+    const canViewReports = hasPermission('reports.view') || hasPermission('reports.export');
 
     const caseReadRoles = [
-      'admin', 'officer', 'staff', 'district_admin',
+      'admin', 'sub_admin', 'officer', 'staff', 'investigator', 'station_jail', 'district_admin',
       'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
       'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
       'prosecutor', 'judge', 'court_clerk', 'jail',
     ];
-    const canViewCases = caseReadRoles.includes(role);
+    const canViewCases = hasPermission('cases.view') || hasPermission('cases.investigate');
+    const canViewOb = hasPermission('ob.view') || hasPermission('ob.create') || hasPermission('ob.update') || hasPermission('ob.print');
+    const canViewJail = hasPermission('station_jail.view') || hasPermission('station_jail.intake') || hasPermission('station_jail.assign_cell');
 
     const primaryItems = [
-      {
+      ...(role !== 'personnel_registry' && dashboardPath !== '/cases' ? [{
         key: dashboardPath,
         icon: dashboardPath === '/ob-register' ? <DatabaseOutlined /> : <DashboardOutlined />,
-        label: isCourtRole ? 'Dashboard' : (dashboardPath === '/ob-register' ? 'OB Register' : 'Dashboard'),
-      },
+        label: isCourtRole ? 'Dashboard-ka Maxkamadda' : (dashboardPath === '/ob-register' ? 'Diiwaanka OB-da' : 'Dashboard-ka Guud'),
+      }] : []),
+      ...(['district_admin', 'district_commander', 'police_station_commander'].includes(role) && hasPermission('cases.view') ? [{
+        key: '/district-operations',
+        icon: <ApartmentOutlined />,
+        label: 'Hawlaha Degmada',
+      }] : []),
+      ...(['investigator', 'district_admin'].includes(role) && hasPermission('cases.view') ? [{
+        key: '/dashboard/cid',
+        icon: <FileSearchOutlined />,
+        label: 'Hawlaha Baaritaanka',
+      }] : []),
       ...(isCourtRole ? [{
         key: '/dashboard/court/cases',
         icon: <BankOutlined />,
         label: 'Kiisaska Maxkamadda',
       }] : []),
-      ...(role === 'jail' ? [{
+      ...(canViewJail ? [{
         key: 'jail_operations',
         icon: <BankOutlined />,
-        label: 'Prison Operations',
+        label: 'Hawlgallada Xabsiga',
         children: [
-          { key: '/dashboard/jail?action=admit', label: 'Prison Admission' },
-          { key: '/dashboard/jail?action=capacity', label: 'Cell Capacity' },
-          { key: '/dashboard/jail?action=bulk_roll', label: 'Daily Roll Call' },
-          { key: '/dashboard/jail?action=alerts', label: 'Release & Alerts' },
+          ...(hasPermission('station_jail.intake') ? [{ key: '/dashboard/jail?action=admit', label: 'Qaabilaadda Xabsiga' }] : []),
+          ...(hasPermission('station_jail.assign_cell') ? [{ key: '/dashboard/jail?action=capacity', label: 'Awoodda Seliyaasha' }] : []),
+          ...(hasPermission('station_jail.intake') ? [{ key: '/dashboard/jail?action=bulk_roll', label: 'Tirada Maafada Maalinlaha' }] : []),
+          { key: '/dashboard/jail?action=alerts', label: 'Sii-deynta & Baaqyada' },
         ],
       }] : []),
-      ...(!isCourtRole ? [{
+      ...(canViewCases ? [{
         key: '/search',
         icon: <SearchOutlined />,
-        label: 'Search',
+        label: 'Raadinta Kiisaska',
       }] : []),
-      ...(canViewCases && dashboardPath !== '/cases' ? [{
+      ...(canViewCases ? [{
         key: '/cases',
         icon: <FileSearchOutlined />,
-        label: 'Cases',
+        label: 'Galal-kiiseedka (Cases)',
       }] : []),
-      ...(stationWorkflowRoles.includes(role) && dashboardPath !== '/ob-register' ? [{
+      ...(canViewOb && dashboardPath !== '/ob-register' ? [{
         key: '/ob-register',
         icon: <DatabaseOutlined />,
-        label: 'OB Register',
+        label: 'Diiwaanka OB-da',
       }] : []),
       ...(canViewOffenders && dashboardPath !== '/offenders' ? [{
         key: '/offenders',
         icon: <IdcardOutlined />,
-        label: 'Offenders',
+        label: 'Dambiilayaasha & Eedeysanayaasha',
       }] : []),
       ...(['admin','court','court_admin','court_clerk','judge','prosecutor','prosecutor_liaison','officer','cid','cid_director','cid_supervisor','cid_officer','district_admin','district_commander','police_station_commander'].includes(role) ? [{
         key: '/warrants',
         icon: <FileDoneOutlined />,
-        label: 'Warrants',
+        label: 'Waraaqaha Qabashada (Warrants)',
       }] : []),
     ];
 
     const adminMenus = [];
 
-    if (role === 'admin') {
-      adminMenus.push({ key: '/users', icon: <UserOutlined />, label: 'User Role Management' });
-      adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Judges & Prosecutors' });
-      adminMenus.push({ key: '/ranks', icon: <StarOutlined />, label: 'Ranks' });
-      adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'State Administrations' });
-    }
+    if (hasPermission('users.manage')) adminMenus.push({ key: '/users', icon: <UserOutlined />, label: 'Maamulka Isticmaalayaasha' });
+    if (hasPermission('permissions.manage') || hasPermission('roles.manage')) adminMenus.push({ key: '/permissions', icon: <SafetyCertificateOutlined />, label: 'Maamulka Awoodaha' });
+    if (hasPermission('audit_logs.view')) adminMenus.push({ key: '/audit-logs', icon: <FileDoneOutlined />, label: 'Diiwaanka Hawlaha' });
+    if (hasPermission('ranks.manage') || hasPermission('ranks.assign')) adminMenus.push({ key: '/ranks', icon: <StarOutlined />, label: 'Darajooyinka Booliska' });
+    if (hasPermission('officers.view') || hasPermission('officers.create') || hasPermission('officers.approve')) adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Saraakiisha Booliska' });
+    if (hasPermission('evidence.manage')) adminMenus.push({ key: '/evidence', icon: <SafetyCertificateOutlined />, label: 'Caddeymaha' });
+    if (role === 'admin') { adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Garsoorayaasha & Xeer-ilaaliyaasha' }); adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'Maamul-goboleedyada' }); }
     if (['court','court_admin'].includes(role)) {
-      adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Judges & Prosecutors' });
+      adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Garsoorayaasha & Xeer-ilaaliyaasha' });
     }
 
     if (canViewReports) {
       adminMenus.push({
         key: 'reports_menu',
         icon: <BarChartOutlined />,
-        label: 'Reports',
+        label: 'Warbixinada Rasmiga Ah',
         children: [
-          { key: '/reports', label: 'All Reports' },
+          { key: '/reports', label: 'Dhammaan Warbixinada' },
         ],
       });
     }
@@ -183,40 +206,32 @@ const Sidebar = ({ collapsed }) => {
       adminMenus.push({
         key: 'region_police_stations',
         icon: <BankOutlined />,
-        label: 'Police Stations',
+        label: 'Saldhigyada Booliska',
         children: [
-          { key: '/stations', label: 'District Stations' },
-          { key: '/reports?section=station-performance', label: 'Station Reports' },
+          { key: '/districts', label: 'Degmooyinka' },
+          { key: '/stations', label: 'Saldhigyada Degmooyinka' },
+          { key: '/reports?section=station-performance', label: 'Warbixinada Saldhigga' },
         ],
       });
-      adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Police Officers' });
     }
 
     if (['admin', 'state_admin'].includes(role)) {
-      adminMenus.push({ key: '/regions', icon: <ApartmentOutlined />, label: 'Regions' });
+      adminMenus.push({ key: '/regions', icon: <ApartmentOutlined />, label: 'Gobollada' });
     }
 
     if (role === 'admin') {
-      adminMenus.push({ key: '/cities', icon: <EnvironmentOutlined />, label: 'Cities' });
+      adminMenus.push({ key: '/cities', icon: <EnvironmentOutlined />, label: 'Magaalooyinka' });
     }
 
     if (role === 'admin') {
-      adminMenus.push({ key: '/districts', icon: <EnvironmentOutlined />, label: 'Districts' });
-    }
-
-    if (['admin', 'state_admin', 'city_admin'].includes(role)) {
-      adminMenus.push({ key: '/stations', icon: <EnvironmentOutlined />, label: 'District Stations' });
-    }
-
-    if (['admin', 'state_admin', 'city_admin', 'district_admin'].includes(role)) {
-      adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Police Officers' });
+      adminMenus.push({ key: '/districts', icon: <EnvironmentOutlined />, label: 'Degmooyinka' });
     }
 
     return [
-      { key: 'main', title: 'Main', items: primaryItems },
-      ...(adminMenus.length ? [{ key: 'administration', title: 'Administration', items: adminMenus }] : []),
+      { key: 'main', title: 'Nidaamka Waaweyn', items: primaryItems },
+      ...(adminMenus.length ? [{ key: 'administration', title: 'Maamulka & Hantida', items: adminMenus }] : []),
     ];
-  }, [dashboardPath, role]);
+  }, [dashboardPath, role, user]);
 
   const allNavigableItems = useMemo(() => {
     const flatten = (items) => items.flatMap((item) => item.children ? [item, ...flatten(item.children)] : [item]);

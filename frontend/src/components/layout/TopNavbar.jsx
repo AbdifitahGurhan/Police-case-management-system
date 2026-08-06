@@ -23,7 +23,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import api from '@/services/api';
-import { emailRule, nameRules, optionalPasswordRules, usernameRules } from '@/utils/validation';
+import { emailRule, nameRules, optionalPasswordRules } from '@/utils/validation';
 
 const { Header } = Layout;
 const { Text } = Typography;
@@ -207,35 +207,35 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     .toUpperCase();
 
   const roleLabels = {
-    admin: 'Administrator',
-    officer: 'Officer',
-    cid: 'CID',
-    cid_director: 'CID director',
-    cid_supervisor: 'CID supervisor',
-    cid_officer: 'CID officer',
-    court: 'Court',
-    court_admin: 'Court administrator',
-    judge: 'Judge',
-    prosecutor: 'Prosecutor',
-    prosecutor_liaison: 'Prosecutor liaison',
-    court_clerk: 'Court clerk',
-    jail: 'Jail',
-    state_admin: 'State admin',
-    region_admin: 'Region admin',
-    city_admin: 'City admin',
-    district_admin: 'District admin',
-    state_commander: 'State commander',
-    region_commander: 'Region commander',
-    district_commander: 'District commander',
-    police_station_commander: 'Police station commander',
-    ob_staff: 'OB staff',
-    staff: 'Staff',
+    admin: 'Maamulaha Nidaamka',
+    officer: 'Sarkaalka Booliska',
+    cid: 'Baaraha CID-da',
+    cid_director: 'Agaasimaha CID-da',
+    cid_supervisor: 'Kormeeraha CID-da',
+    cid_officer: 'Baaraha CID-da',
+    court: 'Maxkamadda',
+    court_admin: 'Maamulaha Maxkamadda',
+    judge: 'Garsoore',
+    prosecutor: 'Xeer-ilaaliye',
+    prosecutor_liaison: 'Liaison-ka Xeer-ilaalinta',
+    court_clerk: 'Kalaarkha Maxkamadda',
+    jail: 'Maamulka Xabsiga Saldhigga',
+    state_admin: 'Maamulaha Dawlad Goboleedka',
+    region_admin: 'Maamulaha Gobolka',
+    city_admin: 'Maamulaha Magaalada',
+    district_admin: 'Maamulaha Degmada',
+    state_commander: 'Taliyaha Dawlad Goboleedka',
+    region_commander: 'Taliyaha Gobolka',
+    district_commander: 'Taliyaha Degmada',
+    police_station_commander: 'Taliyaha Saldhigga Booliska',
+    ob_staff: 'Diiwaangeliyaha OB-da',
+    staff: 'Shaqaalaha Hawlgalka',
   };
 
   const menuItems = [
     {
       key: 'profile',
-      label: 'My Profile',
+      label: 'Profile-kayga (My Profile)',
       icon: <UserOutlined />,
       onClick: () => {
         profileForm.setFieldsValue({
@@ -253,7 +253,7 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     },
     {
       key: 'logout',
-      label: 'Logout',
+      label: 'Ka bax Nidaamka (Logout)',
       icon: <LogoutOutlined />,
       danger: true,
       onClick: logout
@@ -301,9 +301,9 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     try {
       const payload = {
         full_name: values.full_name,
-        username: values.username,
-        email: values.email,
       };
+
+      if (!user.scopeType) payload.email = values.email;
 
       if (values.password) {
         payload.password = values.password;
@@ -417,32 +417,34 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
           <Form.Item name="full_name" label="Full name" rules={nameRules('Full name')}>
             <Input placeholder="Full name" />
           </Form.Item>
-          <Form.Item name="username" label="Username" rules={usernameRules}>
-            <Input placeholder="Username" />
+          <Form.Item name="username" label="Username">
+            <Input disabled readOnly />
           </Form.Item>
-          <Form.Item name="email" label="Email" rules={[emailRule]}>
-            <Input placeholder="Email address" />
-          </Form.Item>
-          <Form.Item name="password" label="New password" rules={optionalPasswordRules}>
-            <Input.Password placeholder="Leave blank to keep current password" />
-          </Form.Item>
-          <Form.Item
-            name="confirm_password"
-            label="Confirm new password"
-            dependencies={['password']}
-            rules={[
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!getFieldValue('password') || getFieldValue('password') === value) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(new Error('Passwords do not match.'));
-                },
-              }),
-            ]}
-          >
-            <Input.Password placeholder="Confirm new password" />
-          </Form.Item>
+          {!user.scopeType && (
+            <>
+              <Form.Item name="email" label="Email" rules={[emailRule]}>
+                <Input placeholder="Email address" />
+              </Form.Item>
+              <Form.Item name="password" label="New password" rules={optionalPasswordRules}>
+                <Input.Password placeholder="Leave blank to keep current password" />
+              </Form.Item>
+              <Form.Item
+                name="confirm_password"
+                label="Confirm new password"
+                dependencies={['password']}
+                rules={[
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      if (!getFieldValue('password') || getFieldValue('password') === value) return Promise.resolve();
+                      return Promise.reject(new Error('Passwords do not match.'));
+                    },
+                  }),
+                ]}
+              >
+                <Input.Password placeholder="Confirm new password" />
+              </Form.Item>
+            </>
+          )}
           <Button type="primary" htmlType="submit" loading={savingProfile} block>
             Save profile
           </Button>

@@ -104,19 +104,28 @@ export default function CaseDetailsPage() {
 
   useEffect(() => {
     const allowedRoles = [
-      'admin', 'staff', 'officer', 'district_admin',
+      'admin', 'staff', 'officer', 'investigator', 'station_jail', 'district_admin',
       'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
       'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
       'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',
     ];
-    if (id && !authLoading && user && allowedRoles.includes(user.role)) {
+    const permissions = user?.permissions || [];
+    const canRead = user && (
+      allowedRoles.includes(user.role)
+      || permissions.includes('*')
+      || permissions.includes('cases.view')
+      || permissions.includes('cases.investigate')
+    );
+    if (id && !authLoading && canRead) {
       fetchCaseDetails();
       const assignRoles = ['admin', 'district_commander', 'police_station_commander', 'district_admin'];
       if (assignRoles.includes(user.role)) {
         fetchAssignableOfficers();
       }
+    } else if (!authLoading) {
+      setLoading(false);
     }
-  }, [id, fetchCaseDetails, user, authLoading]);
+  }, [id, fetchCaseDetails, user?.id, user?.role, user?.permissions, authLoading]);
 
   const handleUpdateStatus = async (values) => {
     setSubmitting(true);
@@ -715,7 +724,7 @@ export default function CaseDetailsPage() {
           { title: 'Linked Date', dataIndex: 'linked_at', render: d => d ? dayjs(d).format('DD MMM YYYY') : 'N/A' },
           { title: 'Role', dataIndex: 'role_in_case' },
           {
-            title: 'Action',
+            title: 'Ficilka',
             key: 'action',
             render: (_, record) => (
               <Space wrap>
@@ -744,11 +753,11 @@ export default function CaseDetailsPage() {
 
   return (
     <ProtectedRoute allowedRoles={[
-      'admin', 'staff', 'officer', 'district_admin',
+      'admin', 'staff', 'officer', 'investigator', 'station_jail', 'district_admin',
       'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
       'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
       'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',
-    ]}>
+    ]} requiredPermissions={['cases.view', 'cases.investigate']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <Space orientation="vertical">
@@ -1058,7 +1067,7 @@ export default function CaseDetailsPage() {
                 <Select><Option value="male">Male</Option><Option value="female">Female</Option></Select>
               </Form.Item>
             </Col>
-            <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[positiveIntegerRule('Age', 8, 120)]}><Input type="number" min={8} max={120} /></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item name="age" label="Age (Auto-calculated from DOB)" rules={[positiveIntegerRule('Age', 8, 120)]}><Input type="number" min={8} max={120} disabled placeholder="Calculated from DOB" /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="date_of_birth" label="Date of Birth" rules={[minimumAge8Rule()]}><DatePicker style={{ width: '100%' }} disabledDate={disabledUnder8DobDate} /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="nationality" label="Nationality" initialValue="Somali" rules={[textLengthRule('Nationality', 2, 100)]}><Input /></Form.Item></Col>
             <Col xs={24} md={12}>

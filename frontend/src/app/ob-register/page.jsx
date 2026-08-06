@@ -1,229 +1,178 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography, Upload } from 'antd';
-import { DeleteOutlined, FileAddOutlined, InboxOutlined, LoginOutlined } from '@ant-design/icons';
+import { App, Button, Card, Col, DatePicker, Form, Input, Modal, Row, Select, Space, Table, Tag, Typography } from 'antd';
+import { FileAddOutlined, MinusCircleOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons';
+import Link from 'next/link';
+import dayjs from 'dayjs';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
-import Link from 'next/link';
-import { emailRule, noFutureDateTimeRule, disabledFutureDate, dynamicIdNumberRule, nameRules, phoneRules, requiredRule, textLengthRule } from '@/utils/validation';
-import dayjs from 'dayjs';
+import { disabledFutureDate, noFutureDateTimeRule, phoneRules, requiredRule, textLengthRule } from '@/utils/validation';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
-
 const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
-const ObSection = ({ number, title, children }) => <Card size="small" title={<Space><Tag color="blue">{number}</Tag><Text strong>{title}</Text></Space>} style={{marginBottom:16}}><Row gutter={[16,0]}>{children}</Row></Card>;
+const allowedRoles = ['admin', 'ob_staff', 'staff', 'officer', 'investigator', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles];
+const courts = ['Maxkamadda Degmada', 'Maxkamadda Gobolka', 'Maxkamadda Ciidamada Qalabka Sida', 'Maxkamadda Sare'];
+const idTypes = ['Aqoonsiga Qaranka', 'Baasaboor', 'Laysanka Darawalnimada', 'Aqoonsiga Booliska/Milatariga', 'Kale'];
+const complaintTypes = ['Dambi', 'Madani', 'Qoys', 'Ganacsi', 'Maamul', 'Kale'];
+const statusLabels = {
+  REGISTERED: 'La Diiwaangeliyey', OB_REGISTERED: 'La Diiwaangeliyey', PRELIMINARY_REVIEW: 'Dib-u-eegis Hordhac',
+  INVESTIGATION_TRACING: 'Baaritaan / Baadi-goob', ARRESTED_IN_CUSTODY: 'La Qabtay / Xabsi Ku Jira',
+  SENT_TO_CID_OR_COURT: 'Loo Gudbiyey CID ama Maxkamad', CONVERTED_TO_CASE: 'OB iyo Kiis La Diiwaangeliyey', CLOSED: 'La Xiray',
+};
+const statusColors = { REGISTERED: 'blue', OB_REGISTERED: 'blue', PRELIMINARY_REVIEW: 'gold', INVESTIGATION_TRACING: 'orange', ARRESTED_IN_CUSTODY: 'red', SENT_TO_CID_OR_COURT: 'purple', CLOSED: 'green' };
+const custodyOptions = [{ value: 'IN_CUSTODY', label: 'Xabsi Ku Jira' }, { value: 'NOT_IN_CUSTODY', label: 'Xabsi Kuma Jiro' }];
+
+const Section = ({ title, children }) => (
+  <Card size="small" title={title} style={{ marginBottom: 16 }}><Row gutter={[16, 4]}>{children}</Row></Card>
+);
+
+function AccusedFields({ field, remove, form }) {
+  const custody = Form.useWatch(['accused', field.name, 'custody_state'], form);
+  const { key, name, ...rest } = field;
+  return (
+    <Card key={key} size="small" style={{ marginBottom: 10 }}>
+      <Row gutter={12}>
+        <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'full_name']} label="Magaca oo Buuxa" rules={[{ validator: (_, value) => custody !== 'IN_CUSTODY' || value?.trim() ? Promise.resolve() : Promise.reject(new Error('Magaca eedaysanaha xabsiga ku jira geli.')) }]}><Input /></Form.Item></Col>
+        <Col xs={12} md={4}><Form.Item {...rest} name={[name, 'phone']} label="Telefoonka" rules={phoneRules}><Input /></Form.Item></Col>
+        <Col xs={12} md={4}><Form.Item {...rest} name={[name, 'gender']} label="Jinsiga"><Select options={[{value:'Male',label:'Lab'},{value:'Female',label:'Dhedig'},{value:'Other',label:'Kale'}]} /></Form.Item></Col>
+        <Col xs={20} md={5}><Form.Item {...rest} name={[name, 'custody_state']} label="Xaaladda Qabashada" rules={[{ required: true, message: 'Xaaladda dooro.' }]}><Select options={custodyOptions} /></Form.Item></Col>
+        <Col xs={4} md={1}><Button danger type="text" aria-label="Ka saar eedaysanaha" icon={<MinusCircleOutlined />} onClick={() => remove(name)} style={{ marginTop: 30 }} /></Col>
+        <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'address']} label="Cinwaanka"><Input /></Form.Item></Col>
+        <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'description']} label="Sharaxaadda"><Input /></Form.Item></Col>
+        <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'identifying_information']} label="Astaamaha Lagu Garto"><Input /></Form.Item></Col>
+        {custody === 'IN_CUSTODY' && <>
+          <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'arrest_date']} label="Taariikhda iyo Waqtiga Qabashada" rules={[{ required: true, message: 'Waqtiga qabashada geli.' }]}><DatePicker showTime style={{ width: '100%' }} disabledDate={disabledFutureDate} /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item {...rest} name={[name, 'arrest_location']} label="Goobta Lagu Qabtay" rules={[{ required: true, message: 'Goobta qabashada geli.' }]}><Input /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item {...rest} name={[name, 'arresting_officer']} label="Sarkaalka Qabtay" rules={[{ required: true, message: 'Sarkaalka qabtay geli.' }]}><Input /></Form.Item></Col>
+        </>}
+      </Row>
+    </Card>
+  );
+}
+
+function ConfirmationSummary({ values }) {
+  return <Space orientation="vertical" style={{ width: '100%' }}>
+    <Card size="small" title="Xogta Dacwadda"><b>{values.case_title}</b><br />{values.case_type} · {values.court_level}<br />{values.incident_location} · {values.incident_datetime?.format('YYYY-MM-DD HH:mm')}<br />{values.description}</Card>
+    <Card size="small" title="Dacwoodaha">{values.reported_by} · {values.reporter_phone}<br />{values.reporter_id_type} {values.reporter_id_number || ''}<br />{values.reporter_address || ''}</Card>
+    <Card size="small" title={`Dhibbanayaasha (${values.victims?.length || 0})`}>{values.victims?.map((v, i) => <div key={i}>{i + 1}. {v.full_name} · {v.phone || 'Telefoon ma leh'} · {v.details}</div>)}</Card>
+    <Card size="small" title={`Eedaysanayaasha (${values.accused?.length || 0})`}>{values.accused?.map((a, i) => <div key={i}>{i + 1}. {a.full_name} · <Tag color={a.custody_state === 'IN_CUSTODY' ? 'red' : 'orange'}>{a.custody_state === 'IN_CUSTODY' ? 'Xabsi Ku Jira' : 'La Raadinayo'}</Tag></div>)}</Card>
+  </Space>;
+}
 
 export default function ObRegisterPage() {
   const { user } = useAuth();
   const location = user?.location || {};
   const { message } = App.useApp();
+  const [form] = Form.useForm();
   const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
-  const [files, setFiles] = useState([]);
-  const [form] = Form.useForm();
+  const [review, setReview] = useState(null);
+  const [filters, setFilters] = useState({});
 
-  const [deployedOfficers, setDeployedOfficers] = useState([]);
-  const [deployedOfficer, setDeployedOfficer] = useState(null);
+  const loadEntries = useCallback(async (next = filters) => {
+    setLoading(true);
+    try { const response = await api.get('/ob-entries', { params: next }); setEntries(response.data.data || []); }
+    catch (error) { message.error(error.response?.data?.message || 'Diiwaannada OB-ga lama soo qaadi karin.'); }
+    finally { setLoading(false); }
+  }, [filters, message]);
 
-  const fetchDeployedOfficers = useCallback(async () => {
-    try {
-      const res = await api.get('/police-officers');
-      if (res.data?.success && Array.isArray(res.data.data)) {
-        const allOfficers = res.data.data;
-        const userLocName = location.districtName || location.regionName || location.stateName || '';
+  useEffect(() => { loadEntries(); }, [loadEntries]);
 
-        // Filter officers matching the user's deployed location or active status
-        const matchedOfficers = allOfficers.filter(o => {
-          if (userLocName && o.current_assignment_name) {
-            return String(o.current_assignment_name).toLowerCase() === String(userLocName).toLowerCase();
-          }
-          return o.employment_status === 'Active';
-        });
-
-        const activeList = matchedOfficers.length > 0 ? matchedOfficers : allOfficers;
-        const primary = activeList.find(o => 
-          (user?.email && String(o.email).toLowerCase() === String(user.email).toLowerCase()) ||
-          (user?.fullName && String(o.full_name).toLowerCase() === String(user.fullName).toLowerCase())
-        ) || (activeList.length > 0 ? activeList[0] : null);
-
-        setDeployedOfficers(activeList);
-        setDeployedOfficer(primary);
-
-        if (primary) {
-          form.setFieldsValue({
-            registered_by_name: primary.full_name,
-            registered_by_rank: primary.rank_name || ''
-          });
-        } else {
-          form.setFieldsValue({
-            registered_by_name: user?.fullName || user?.username,
-            registered_by_rank: user?.rank || ''
-          });
-        }
-      } else {
-        form.setFieldsValue({
-          registered_by_name: user?.fullName || user?.username,
-          registered_by_rank: user?.rank || ''
-        });
-      }
-    } catch (err) {
-      form.setFieldsValue({
-        registered_by_name: user?.fullName || user?.username,
-        registered_by_rank: user?.rank || ''
-      });
-    }
-  }, [form, user, location]);
-
-  const handleOpenModal = () => {
+  const openNew = () => {
     form.resetFields();
-    setFiles([]);
-    fetchDeployedOfficers();
+    form.setFieldsValue({ court_level: courts[0], reporter_id_type: idTypes[0], incident_datetime: dayjs().subtract(1, 'minute'), victims: [], accused: [] });
     setOpen(true);
   };
 
-  const loadEntries = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/ob-entries');
-      setEntries(response.data.data || []);
-    } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to load OB entries.');
-    } finally {
-      setLoading(false);
-    }
-  }, [message]);
-
-  useEffect(() => {
-    loadEntries();
-  }, [loadEntries]);
-
-  const createEntry = async (values) => {
+  const saveEntry = async () => {
     setSaving(true);
     try {
-      const payload = new FormData();
-      Object.entries(values).forEach(([key,value]) => {
-        if (value === undefined || value === null || value === '') return;
-        payload.append(key, key === 'incident_datetime' ? value.format('YYYY-MM-DD HH:mm:ss') : value);
-      });
-      files.forEach(file => payload.append('attachments', file.originFileObj));
+      const victims = (review.victims || []).filter(v => Object.values(v || {}).some(value => value !== undefined && value !== null && String(value).trim() !== ''));
+      const accused = (review.accused || []).filter(a => Object.entries(a || {}).some(([key, value]) => key !== 'custody_state' && key !== 'status' && value !== undefined && value !== null && String(value).trim() !== ''));
+      const payload = { ...review, incident_datetime: review.incident_datetime.format('YYYY-MM-DD HH:mm:ss'), victims, accused };
       const response = await api.post('/ob-entries', payload);
-      message.success(`OB registered: ${response.data.obNumber}`);
-      form.resetFields();
-      setFiles([]);
-      setOpen(false);
-      loadEntries();
-    } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to register OB entry.');
-    } finally {
-      setSaving(false);
-    }
+      message.success(`Waa la diiwaangeliyey: OB ${response.data.obNumber} · Kiis ${response.data.caseNumber}`);
+      setReview(null); setOpen(false); form.resetFields(); loadEntries();
+    } catch (error) { message.error(error.response?.data?.message || 'Diiwaangelinta OB-ga way fashilantay.'); }
+    finally { setSaving(false); }
   };
 
-  const canCreate = ['admin', 'ob_staff', 'officer', 'district_admin', ...commanderRoles].includes(user?.role);
+  const applyFilters = values => {
+    const next = { ...values, incident_date: values.incident_date?.format('YYYY-MM-DD') };
+    Object.keys(next).forEach(key => !next[key] && delete next[key]);
+    setFilters(next);
+  };
 
   const columns = [
-    { title: 'OB Number', dataIndex: 'ob_number', key: 'ob_number', render: (value) => <Text strong>{value}</Text> },
-    { title: 'Case Title', dataIndex: 'case_title', key: 'case_title', render: (val) => val || 'N/A' },
-    { title: 'Incident Type', dataIndex: 'incident_type', key: 'incident_type' },
-    { title: 'Reported By', dataIndex: 'reported_by', key: 'reported_by' },
-    { title: 'Registered By', dataIndex: 'registered_by_name', key: 'registered_by_name' },
-    { title: 'District / Police Station', dataIndex: 'district_police_station_name', key: 'district_police_station_name' },
-    { title: 'Date', dataIndex: 'registration_date', key: 'registration_date' },
-    { title: 'Status', dataIndex: 'status', key: 'status', render: (value) => <Tag color={['CONVERTED_TO_CASE', 'CASE_OPENED'].includes(value) ? 'green' : 'blue'}>{value}</Tag> },
-    {
-      title: 'Action',
-      key: 'action',
-      render: (_, record) => (
-        <Link href={`/ob-register/${record.id}`}>
-          <Button type="primary" size="small">Eeg Faahfaahinta</Button>
-        </Link>
-      ),
-    },
+    { title: 'Lambarka OB', dataIndex: 'ob_number', render: value => <Text strong>{value}</Text> },
+    { title: 'Cinwaanka Dacwadda', dataIndex: 'case_title' }, { title: 'Nooca', dataIndex: 'case_type' },
+    { title: 'Heerka Maxkamadda', dataIndex: 'court_level' }, { title: 'Dacwoodaha', dataIndex: 'reported_by' },
+    { title: 'Saldhigga', dataIndex: 'district_police_station_name' },
+    { title: 'Xaaladda', dataIndex: 'status', render: value => <Tag color={statusColors[value] || 'blue'}>{statusLabels[value] || value}</Tag> },
+    { title: 'Ficil', render: (_, record) => <Link href={`/ob-register/${record.id}`}><Button size="small" type="primary">Fur Faahfaahinta</Button></Link> },
   ];
 
-  return (
-    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]}>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div>
-            <Title level={2}>OB Register</Title>
-            <Text type="secondary">Every OB entry records who registered it, when it was registered, and where it was registered.</Text>
-          </div>
-          {canCreate && (
-            <Button type="primary" icon={<FileAddOutlined />} onClick={handleOpenModal}>
-              Register OB Entry
-            </Button>
-          )}
-        </div>
+  return <ProtectedRoute allowedRoles={allowedRoles} requiredPermissions={['ob.view', 'ob.create', 'ob.update', 'ob.print']}><Space orientation="vertical" size="large" style={{ width: '100%' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <div><Title level={2}>Diiwaangelinta Kiisaska OB-ga</Title><Text type="secondary">Buugga Dhacdooyinka Saldhigga Booliska Degmada · {location.districtName || 'Saldhigga laguu qoondeeyey'}</Text></div>
+      <Space><Button icon={<PrinterOutlined />} onClick={() => window.print()}>Daabac / Dhoofso</Button>{['admin', 'ob_staff', 'officer', 'district_admin', ...commanderRoles].includes(user?.role) && <Button type="primary" icon={<FileAddOutlined />} onClick={openNew}>Diiwaangeli OB Cusub</Button>}</Space>
+    </div>
+    <Card size="small"><Form layout="vertical" onFinish={applyFilters}><Row gutter={12}>
+      <Col xs={24} md={6}><Form.Item name="search" label="OB / Cinwaan / Dacwoode"><Input allowClear /></Form.Item></Col>
+      <Col xs={12} md={4}><Form.Item name="complaint_type" label="Nooca Dacwadda"><Input allowClear placeholder="Qor nooca" /></Form.Item></Col>
+      <Col xs={12} md={4}><Form.Item name="status" label="Xaaladda"><Select allowClear options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} /></Form.Item></Col>
+      <Col xs={12} md={4}><Form.Item name="court_level" label="Heerka Maxkamadda"><Select allowClear options={courts.map(value => ({ value, label: value }))} /></Form.Item></Col>
+      <Col xs={12} md={4}><Form.Item name="arrest_status" label="Xaaladda Eedaysanaha"><Select allowClear options={[{value:'WANTED',label:'La Raadinayo'},{value:'UNDER_TRACING',label:'Baadi-goob Ku Jira'},{value:'ARRESTED',label:'La Qabtay'}]} /></Form.Item></Col>
+      <Col xs={12} md={4}><Form.Item name="incident_date" label="Taariikhda Dhacdada"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
+      <Col><Button htmlType="submit" type="primary">Raadi / Kala Saar</Button></Col>
+    </Row></Form></Card>
+    <Card><Table rowKey="id" columns={columns} dataSource={entries} loading={loading} scroll={{ x: 1000 }} /></Card>
 
-        <Card variant="none">
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={8}><Text type="secondary">Logged in as</Text><br /><Text strong>{user?.fullName || user?.username}</Text></Col>
-            <Col xs={24} md={8}><Text type="secondary">Role</Text><br /><Tag color="blue">{user?.roleCode || user?.role}</Tag></Col>
-            <Col xs={24} md={8}><Text type="secondary">District / Police Station</Text><br /><Text strong>{location.districtName || 'System level'}</Text></Col>
-          </Row>
-        </Card>
-
-        <Card variant="none">
-          <Table columns={columns} dataSource={entries} rowKey="id" loading={loading} scroll={{ x: 1100 }} />
-        </Card>
-
-        <Modal
-          title="Register OB Entry"
-          open={open}
-          onCancel={() => setOpen(false)}
-          footer={null}
-          width={1100}
-        >
-          <Card size="small" variant="none" style={{ marginBottom: 16 }}>
-            <Space orientation="vertical" size={2}>
-              <Text><LoginOutlined /> Location is captured automatically from your user profile.</Text>
-              <Text type="secondary">{location.stateName || 'Administration'} → {location.regionName || 'Region'} → {location.districtName || 'District / Police Station'}</Text>
-            </Space>
-          </Card>
-          <Form form={form} layout="vertical" onFinish={createEntry} initialValues={{case_level:'normal',reporter_id_type:'National ID',respondent_id_type:'National ID',incident_datetime:dayjs().subtract(1,'hour')}}>
-            <ObSection number="1" title="Xogta Dacwadda"><Col xs={24} md={16}><Form.Item name="case_title" label="Cinwaanka dacwadda" rules={[requiredRule('Cinwaanka'),textLengthRule('Cinwaanka',3,255)]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="case_type" label="Nooca dacwadda" rules={[requiredRule('Nooca dacwadda')]}><Select options={['Criminal','Civil','Family','Commercial','Administrative','Other'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="case_level" label="Heerka"><Select options={[{value:'normal',label:'Caadi'},{value:'urgent',label:'Degdeg'},{value:'critical',label:'Halis'}]}/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="incident_type" label="Nooca dhacdada" rules={[requiredRule('Nooca dhacdada')]}><Select options={['Theft','Robbery','Assault','Fraud','Traffic','General'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={24} md={8}><Form.Item label="OB Number"><Input disabled value="Automatic — unique"/></Form.Item></Col></ObSection>
-            <ObSection number="2" title="Dacwoodaha"><Col xs={24} md={12}><Form.Item name="reported_by" label="Magaca oo buuxa" rules={nameRules('Magaca dacwoodaha')}><Input/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="reporter_id_type" label="Aqoonsiga"><Select options={['National ID','Passport'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="reporter_id_number" label="Lambarka aqoonsiga" dependencies={['reporter_id_type']} rules={[requiredRule('Lambarka aqoonsiga'), dynamicIdNumberRule('reporter_id_type')]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="reporter_phone" label="Telefoon" rules={[requiredRule('Telefoon'),...phoneRules]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="reporter_email" label="Email" rules={[emailRule]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="reporter_address" label="Cinwaan"><Input/></Form.Item></Col></ObSection>
-            <ObSection number="3" title="Laga Dacwooday"><Col xs={24} md={12}><Form.Item name="respondent_name" label="Magaca oo buuxa" rules={nameRules('Magaca laga dacwooday')}><Input/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="respondent_id_type" label="Aqoonsiga"><Select options={['National ID','Passport'].map(v=>({value:v,label:v}))}/></Form.Item></Col><Col xs={12} md={6}><Form.Item name="respondent_id_number" label="Lambarka aqoonsiga" dependencies={['respondent_id_type']} rules={[dynamicIdNumberRule('respondent_id_type')]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_phone" label="Telefoon" rules={phoneRules}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_email" label="Email" rules={[emailRule]}><Input/></Form.Item></Col><Col xs={24} md={8}><Form.Item name="respondent_address" label="Cinwaan"><Input/></Form.Item></Col></ObSection>
-            <ObSection number="4" title="Faahfaahinta Dacwadda"><Col xs={24} md={12}><Form.Item name="incident_location" label="Goobta dhacdada" rules={[requiredRule('Goobta'),textLengthRule('Goobta',3,255)]}><Input/></Form.Item></Col><Col xs={24} md={12}><Form.Item name="incident_datetime" label="Taariikhda iyo waqtiga" rules={[requiredRule('Taariikhda'),noFutureDateTimeRule('Taariikhda')]}><DatePicker showTime style={{width:'100%'}} disabledDate={disabledFutureDate}/></Form.Item></Col><Col xs={24} md={12}><Form.Item name="claim_value" label="Qiimaha dacwadda (USD)" rules={[{validator:(_,v)=>v===undefined||v===null||v===''||Number(v)>=0?Promise.resolve():Promise.reject(new Error('Amount cannot be negative.'))}]}><InputNumber min={0} precision={2} step={0.01} stringMode prefix="$" style={{width:'100%'}}/></Form.Item></Col><Col span={24}><Form.Item name="description" label="Sharaxaad faahfaahsan" rules={[requiredRule('Sharaxaadda'),textLengthRule('Sharaxaadda',10,5000)]}><TextArea rows={5} showCount maxLength={5000}/></Form.Item></Col></ObSection>
-            <ObSection number="5" title="Caddeymaha"><Col span={24}><Upload.Dragger multiple accept=".pdf,image/*,video/*" fileList={files} beforeUpload={file=>{if(file.size>10*1024*1024){message.error('File-ku waa inuu ka yaraadaa 10MB.');return Upload.LIST_IGNORE}setFiles(old=>[...old,{...file,originFileObj:file,status:'done'}]);return false}} onRemove={file=>setFiles(old=>old.filter(x=>x.uid!==file.uid))}><p className="ant-upload-drag-icon"><InboxOutlined/></p><p>PDF, sawir ama fiidiyow halkan ku jiid</p><p className="ant-upload-hint">Ugu badnaan 10 files, midkiiba 10MB</p></Upload.Dragger></Col></ObSection>
-            <ObSection number="6" title="Xogta Diiwaangelinta">
-              <Col xs={24} md={6}><Form.Item label="Xafiiska"><Input readOnly value={location.districtName||location.regionName||'System'}/></Form.Item></Col>
-              <Col xs={24} md={6}>
-                <Form.Item name="registered_by_name" label="Shaqaalaha / Sarkaal" rules={[requiredRule('Shaqaalaha')]}>
-                  {deployedOfficers.length > 1 ? (
-                    <Select
-                      showSearch
-                      placeholder="Dooro Sarkaalka Diiwaangelinaya"
-                      onChange={(val) => {
-                        const selected = deployedOfficers.find(o => o.full_name === val);
-                        if (selected) {
-                          form.setFieldsValue({ registered_by_rank: selected.rank_name || '' });
-                        }
-                      }}
-                      options={deployedOfficers.map(o => ({
-                        value: o.full_name,
-                        label: `${o.full_name}${o.rank_name ? ` (${o.rank_name})` : ''}${o.force_number ? ` - ${o.force_number}` : ''}`
-                      }))}
-                    />
-                  ) : (
-                    <Input placeholder="Sarkaalka Diiwaangelinaya" />
-                  )}
-                </Form.Item>
-              </Col>
-              <Form.Item name="registered_by_rank" hidden><Input /></Form.Item>
-              <Col xs={24} md={6}><Form.Item label="Taariikhda"><Input readOnly value={dayjs().format('YYYY-MM-DD')}/></Form.Item></Col>
-              <Col xs={24} md={6}><Form.Item label="Waqtiga"><Input readOnly value={dayjs().format('HH:mm:ss')}/></Form.Item></Col>
-            </ObSection>
-            <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><Button onClick={()=>setOpen(false)}>Jooji</Button><Button icon={<DeleteOutlined/>} onClick={()=>{form.resetFields();setFiles([])}}>Nadiifi</Button><Button type="primary" htmlType="submit" loading={saving}>Kaydi</Button></div>
-          </Form>
-        </Modal>
-      </Space>
-    </ProtectedRoute>
-  );
+    <Modal title="Diiwaangeli OB Cusub" open={open} onCancel={() => setOpen(false)} width={1150} footer={null}>
+      <Form form={form} layout="vertical" onFinish={setReview}>
+        <Section title="1. Xogta Dacwadda">
+          <Col xs={24} md={12}><Form.Item name="case_title" label="Cinwaanka Dacwadda" rules={[requiredRule('Cinwaanka dacwadda'), textLengthRule('Cinwaanka', 3, 255)]}><Input /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="case_type" label="Nooca Dacwadda" rules={[requiredRule('Nooca dacwadda'), textLengthRule('Nooca dacwadda', 2, 100)]}><Input placeholder="Qor nooca dacwadda" /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="court_level" label="Heerka Maxkamadda" rules={[requiredRule('Heerka maxkamadda')]}><Select options={courts.map(value => ({ value, label: value }))} /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item name="incident_type" label="Nooca Dhacdada" rules={[requiredRule('Nooca dhacdada')]}><Input /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item name="incident_location" label="Goobta Dhacdada" rules={[requiredRule('Goobta dhacdada')]}><Input /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item name="incident_datetime" label="Taariikhda iyo Waqtiga Dhacdada" rules={[requiredRule('Taariikhda dhacdada'), noFutureDateTimeRule('Taariikhda dhacdada')]}><DatePicker showTime disabledDate={disabledFutureDate} style={{ width: '100%' }} /></Form.Item></Col>
+          <Col span={24}><Form.Item name="description" label="Sharaxaadda Dacwadda" rules={[requiredRule('Sharaxaadda'), textLengthRule('Sharaxaadda', 10, 5000)]}><TextArea rows={4} /></Form.Item></Col>
+        </Section>
+        <Section title="2. Xogta Dacwoodaha">
+          <Col xs={24} md={8}><Form.Item name="reported_by" label="Magaca oo Buuxa" rules={[requiredRule('Magaca')]}><Input /></Form.Item></Col>
+          <Col xs={12} md={8}><Form.Item name="reporter_phone" label="Lambarka Telefoonka" rules={[requiredRule('Telefoonka'), ...phoneRules]}><Input /></Form.Item></Col>
+          <Col xs={12} md={8}><Form.Item name="reporter_id_type" label="Nooca Aqoonsiga" rules={[requiredRule('Nooca aqoonsiga')]}><Select options={idTypes.map(value => ({ value, label: value }))} /></Form.Item></Col>
+          <Col xs={12} md={8}><Form.Item name="reporter_id_number" label="Lambarka Aqoonsiga (Ikhtiyaari)"><Input /></Form.Item></Col>
+          <Col xs={24} md={16}><Form.Item name="reporter_address" label="Cinwaanka (Ikhtiyaari)"><Input /></Form.Item></Col>
+        </Section>
+        <Card size="small" title="3. Xogta Dhibbanayaasha" style={{ marginBottom: 16 }}><Form.List name="victims">{(fields, { add, remove }) => <>
+          {fields.map(({ key, name, ...rest }) => <Card key={key} size="small" style={{ marginBottom: 10 }}><Row gutter={12}>
+            <Col xs={24} md={7}><Form.Item {...rest} name={[name, 'full_name']} label="Magaca oo Buuxa" rules={[{ required: true, message: 'Magaca geli.' }]}><Input /></Form.Item></Col>
+            <Col xs={12} md={5}><Form.Item {...rest} name={[name, 'phone']} label="Telefoonka" rules={phoneRules}><Input /></Form.Item></Col>
+            <Col xs={24} md={7}><Form.Item {...rest} name={[name, 'details']} label="Faahfaahinta / Sharaxaadda" rules={[{ required: true, message: 'Faahfaahinta geli.' }]}><Input /></Form.Item></Col>
+            <Col xs={20} md={4}><Form.Item {...rest} name={[name, 'address']} label="Cinwaanka"><Input /></Form.Item></Col>
+            <Col xs={4} md={1}><Button danger type="text" aria-label="Ka saar dhibbanaha" icon={<MinusCircleOutlined />} onClick={() => remove(name)} style={{ marginTop: 30 }} /></Col>
+          </Row></Card>)}
+          <Button block type="dashed" icon={<PlusOutlined />} onClick={() => add({})}>Ku Dar Dhibbane Kale</Button>
+        </>}</Form.List></Card>
+        <Card size="small" title="4. Xogta Eedaysanayaasha" style={{ marginBottom: 16 }}><Form.List name="accused">{(fields, { add, remove }) => <>
+          {fields.map(field => <AccusedFields key={field.key} field={field} remove={remove} form={form} />)}
+          <Button block type="dashed" icon={<PlusOutlined />} onClick={() => add({ custody_state: 'NOT_IN_CUSTODY', status: 'WANTED' })}>Ku Dar Eedaysane Kale</Button>
+        </>}</Form.List></Card>
+        <Card size="small" title="5. Xogta Si Toos ah Loo Diiwaangelinayo" style={{ marginBottom: 16 }}><Row gutter={12}>
+          <Col span={8}><Text type="secondary">Lambarka OB</Text><br /><b>Si toos ah · gaar ah</b></Col>
+          <Col span={8}><Text type="secondary">Saldhigga / Degmada</Text><br /><b>{location.districtName || 'Waxaa laga qaadayaa koontada'}</b></Col>
+          <Col span={8}><Text type="secondary">Sarkaalka Diiwaangelinaya</Text><br /><b>{user?.fullName || user?.username}</b></Col>
+        </Row></Card>
+        <Space style={{ width: '100%', justifyContent: 'flex-end' }}><Button onClick={() => setOpen(false)}>Jooji</Button><Button type="primary" htmlType="submit">Dib u Eeg Ka Hor Kaydinta</Button></Space>
+      </Form>
+    </Modal>
+    <Modal title="Xaqiiji Diiwaangelinta OB-ga" open={!!review} onCancel={() => setReview(null)} width={850} footer={<Space><Button onClick={() => setReview(null)}>Ku Laabo Wax-ka-beddelka</Button><Button type="primary" loading={saving} onClick={saveEntry}>Xaqiiji oo Diiwaangeli</Button></Space>}>{review && <ConfirmationSummary values={review} />}</Modal>
+  </Space></ProtectedRoute>;
 }

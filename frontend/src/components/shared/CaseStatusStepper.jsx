@@ -5,9 +5,9 @@ import React, { useMemo } from 'react';
 // ─── Flow Definitions ───────────────────────────────────────────────────────
 
 export const POLICE_CASE_FLOW = [
-  { key: 'draft',              title: 'Qoraal' },
-  { key: 'registered',         title: 'Diiwaan' },
-  { key: 'referred_to_cid',   title: 'CID' },
+  { key: 'draft',              title: 'Qoraal (Draft)' },
+  { key: 'registered',         title: 'Diiwaan (OB)' },
+  { key: 'referred_to_cid',   title: 'CID Baaritaan' },
   { key: 'under_investigation', title: 'Baaritaan' },
   { key: 'ready_for_court',   title: 'Maxkamad' },
   { key: 'forwarded_to_court', title: 'U Dirtay' },
@@ -16,25 +16,44 @@ export const POLICE_CASE_FLOW = [
 ];
 
 export const CID_INVESTIGATION_FLOW = [
-  { key: 'open',                  title: 'Furan' },
+  { key: 'open',                  title: 'Furan (Socota)' },
   { key: 'under_investigation',   title: 'Baaritaan' },
   { key: 'evidence_collection',   title: 'Caddeymo' },
   { key: 'witness_interviews',    title: 'Markhaati' },
   { key: 'suspect_tracking',      title: 'Raadraac' },
   { key: 'arrest_made',           title: 'Xarig' },
-  { key: 'investigation_completed', title: 'Dhammaad' },
-  { key: 'supervisor_review',     title: 'Dib-u-Eeg' },
+  { key: 'investigation_completed', title: 'Dhammaystiran' },
+  { key: 'supervisor_review',     title: 'Dib-u-Eegis' },
   { key: 'approved',              title: 'La Xaqiijiyey' },
 ];
 
 export const COURT_CASE_FLOW = [
-  { key: 'registered',       title: 'Diiwaan' },
+  { key: 'registered',       title: 'Diiwaangelin' },
   { key: 'awaiting_hearing', title: 'Sugaya Dheg.' },
-  { key: 'hearing_scheduled', title: 'Dheg. Qorshe' },
-  { key: 'in_trial',         title: 'Maxkamadayn' },
-  { key: 'judgment_issued',  title: 'Go\'aan' },
-  { key: 'sentenced',        title: 'Xukun' },
+  { key: 'hearing_scheduled', title: 'Jadwalsan' },
+  { key: 'in_trial',         title: 'Dhageysi' },
+  { key: 'judgment_issued',  title: 'Xukunsan' },
+  { key: 'sentenced',        title: 'Ciqaabsan' },
   { key: 'closed',           title: 'La Xiray' },
+];
+
+export const FULL_CASE_LIFECYCLE_FLOW = [
+  { key: 'ob', title: '1. OB / Dhacdo' },
+  { key: 'investigation', title: '2. Baaritaan' },
+  { key: 'evidence', title: '3. Caddeyn' },
+  { key: 'conclusion', title: '4. Gunaanad' },
+  { key: 'arrest', title: '5. Xarig' },
+  { key: 'jail', title: '6. Xabsiga' },
+  { key: 'bail', title: '7. Damanad' },
+  { key: 'prosecution', title: '8. Xeer-ilaalin' },
+  { key: 'court_reg', title: '9. Diiwaan Maxkamad' },
+  { key: 'schedule', title: '10. Jadwal' },
+  { key: 'hearing', title: '11. Dhageysi' },
+  { key: 'defense', title: '12. Difaac' },
+  { key: 'case_close', title: '13. Xirid Dheg.' },
+  { key: 'judgment', title: '14. Xukunnada' },
+  { key: 'sentence', title: '15. Ciqaab/Sii-deyn' },
+  { key: 'appeal', title: '16. Rafcaan' },
 ];
 
 // ─── Status → Index Maps ─────────────────────────────────────────────────────
@@ -52,10 +71,10 @@ const POLICE_STATUS_INDEX = {
 };
 
 const CID_STATUS_INDEX = {
-  open: 0, under_investigation: 1, evidence_collection: 2,
+  open: 0, Socota: 0, under_investigation: 1, evidence_collection: 2,
   witness_interviews: 3, suspect_tracking: 4, arrest_made: 5,
-  investigation_completed: 6, supervisor_review: 7, approved: 8,
-  rejected: 7, sent_to_prosecutor: 8, sent_to_court: 8,
+  investigation_completed: 6, Dhammaystiran: 6, supervisor_review: 7, approved: 8,
+  rejected: 7, Xiran: 7, sent_to_prosecutor: 8, sent_to_court: 8,
 };
 
 const COURT_STATUS_INDEX = {
@@ -64,10 +83,30 @@ const COURT_STATUS_INDEX = {
   closed: 6, archived: 6,
 };
 
+const FULL_STATUS_INDEX = {
+  draft: 0, registered: 0, OB_REGISTERED: 0, FORWARDED_FOR_REVIEW: 0, CONVERTED_TO_CASE: 0,
+  referred_to_cid: 1, under_investigation: 1, open: 1, Socota: 1,
+  evidence_collection: 2, witness_interviews: 2,
+  investigation_completed: 3, Dhammaystiran: 3, supervisor_review: 3, Xiran: 3,
+  arrest_made: 4, arrested: 4,
+  admitted: 5, in_jail: 5,
+  bail_granted: 6, temporary_detention: 6,
+  prosecutor_review: 7, sent_to_prosecutor: 7,
+  court_registered: 8, court_cases: 8,
+  hearing_scheduled: 9, scheduled: 9,
+  in_trial: 10, hearing: 10,
+  defense_presented: 11,
+  hearing_closed: 12,
+  judgment_issued: 13, convicted: 13, acquitted: 13,
+  sentenced: 14, released: 14,
+  appealed: 15, appeal_pending: 15,
+};
+
 const FLOW_MAP = {
   case:  { steps: POLICE_CASE_FLOW,       index: POLICE_STATUS_INDEX },
   cid:   { steps: CID_INVESTIGATION_FLOW, index: CID_STATUS_INDEX },
   court: { steps: COURT_CASE_FLOW,        index: COURT_STATUS_INDEX },
+  full:  { steps: FULL_CASE_LIFECYCLE_FLOW, index: FULL_STATUS_INDEX },
 };
 
 // ─── Custom Stepper ──────────────────────────────────────────────────────────

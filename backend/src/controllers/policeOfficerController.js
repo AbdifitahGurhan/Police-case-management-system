@@ -3,11 +3,18 @@ const db = require('../config/database');
 const fs = require('fs');
 const path = require('path');
 const { getUserLocation } = require('../utils/locationScope');
+const { writeAuditLog } = require('../utils/auditLogger');
+
+const STATE_ADMIN_RANK_CODES = new Set(['AL', 'SA', 'XDH', 'LXDH', 'LA', 'SXD']);
 
 exports.getAll = async (req, res, next) => {
   try {
+    const location=await getUserLocation(req.user); const params=[]; let scope='';
+    if(req.user.role!=='admin'&&req.user.scopeType==='district'&&location.district_id){scope=' AND (o.district_id=? OR EXISTS(SELECT 1 FROM officer_assignments sx WHERE sx.officer_id=o.id AND sx.is_current=1 AND sx.assignment_type IN (\'District\',\'District Station\') AND sx.assignment_id=?))';params.push(location.district_id,location.district_id)}
+    else if(req.user.role!=='admin'&&req.user.scopeType==='region'&&location.region_id){scope=' AND (o.region_id=? OR EXISTS(SELECT 1 FROM officer_assignments sx WHERE sx.officer_id=o.id AND sx.is_current=1 AND sx.assignment_type=\'Region\' AND sx.assignment_id=?))';params.push(location.region_id,location.region_id)}
+    else if(req.user.role!=='admin'&&location.state_administration_id){scope=' AND o.state_administration_id=?';params.push(location.state_administration_id)}
     let query = `
-      SELECT o.*, r.rank_name,
+      SELECT o.*, TIMESTAMPDIFF(YEAR,o.date_of_birth,CURDATE()) AS age, r.rank_name, r.rank_code,
         COALESCE(
           (
             SELECT CASE
@@ -42,9 +49,9 @@ exports.getAll = async (req, res, next) => {
         ) AS current_assignment_type
       FROM police_officers o
       LEFT JOIN ranks r ON o.rank_id = r.id
-      WHERE 1=1
+      WHERE 1=1 ${scope}
     `;
-    const [rows] = await db.query(query);
+    const [rows] = await db.query(query,params);
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 };
@@ -53,16 +60,44 @@ exports.getById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const [rows] = await db.query(`
-      SELECT o.*, r.rank_name 
+      SELECT o.*, TIMESTAMPDIFF(YEAR,o.date_of_birth,CURDATE()) AS age, r.rank_name,
+             registration_state.state_name AS registration_state_name,
+             registration_region.region_name AS registration_region_name,
+             registration_district.district_name AS registration_district_name,
+             current_state.state_name AS current_state_name,
+             current_region.region_name AS current_region_name,
+             current_district.district_name AS current_district_name
       FROM police_officers o
       LEFT JOIN ranks r ON o.rank_id = r.id
+      LEFT JOIN state_administrations registration_state ON registration_state.id=o.registration_state_administration_id
+      LEFT JOIN regions registration_region ON registration_region.id=o.registration_region_id
+      LEFT JOIN districts registration_district ON registration_district.id=o.registration_district_id
+      LEFT JOIN state_administrations current_state ON current_state.id=o.state_administration_id
+      LEFT JOIN regions current_region ON current_region.id=o.region_id
+      LEFT JOIN districts current_district ON current_district.id=o.district_id
       WHERE o.id = ?
     `, [id]);
     if (!rows.length) return res.status(404).json({ success: false, message: 'Not found' });
     let officer = rows[0];
     
     // Transfer history
-    const [transfers] = await db.query('SELECT * FROM officer_transfers WHERE officer_id = ? ORDER BY transferred_at DESC', [id]);
+    const [transfers] = await db.query(`
+      SELECT t.*,
+        CASE t.from_assignment_type
+          WHEN 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id=t.from_assignment_id)
+          WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=t.from_assignment_id)
+          WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=t.from_assignment_id)
+          WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=t.from_assignment_id)
+          WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=t.from_assignment_id)
+        END AS from_assignment_name,
+        CASE t.to_assignment_type
+          WHEN 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id=t.to_assignment_id)
+          WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=t.to_assignment_id)
+          WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=t.to_assignment_id)
+          WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=t.to_assignment_id)
+          WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=t.to_assignment_id)
+        END AS to_assignment_name
+      FROM officer_transfers t WHERE t.officer_id=? ORDER BY t.transferred_at DESC`, [id]);
     officer.transfers = transfers;
 
     // Assignment history with dynamic tier name subqueries
@@ -122,61 +157,109 @@ const validateOfficerInput = (phone, date_of_birth) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const { full_name, force_number, rank_id, phone, email, gender, date_of_birth, address, employment_status } = req.body;
+    const { full_name, mother_name, phone, gender, date_of_birth, address,
+      national_id, department, position, employment_date, employment_status, weapons_issued, blood_group, station_id } = req.body;
     
     const validationError = validateOfficerInput(phone, date_of_birth);
     if (validationError) {
       return res.status(400).json({ success: false, message: validationError });
     }
 
-    let profile_image = req.file ? '/uploads/officers/' + req.file.filename : null;
+    if(!full_name||!mother_name||!date_of_birth||!gender||!phone)return res.status(400).json({success:false,message:'Magaca, magaca hooyada, dhalashada, jinsiga iyo telefoonka waa wajib.'});
+    if(!req.file)return res.status(400).json({success:false,message:'Sawirka askariga waa wajib; document ama fayl aan sawir ahayn lama oggola.'});
+    const profile_image=req.file?'/uploads/officers/'+req.file.filename:null;
+    let force_number=null;
+    for(let attempt=0;attempt<5;attempt++){
+      const year=new Date().getFullYear();const[[last]]=await db.query(`SELECT force_number FROM police_officers WHERE force_number LIKE ? ORDER BY CAST(SUBSTRING_INDEX(force_number,'-',-1) AS UNSIGNED) DESC LIMIT 1`,[`SPF-${year}-%`]);
+      const next=(Number(String(last?.force_number||'').split('-').pop())||0)+1;force_number=`SPF-${year}-${String(next+attempt).padStart(5,'0')}`;
+      const[[duplicate]]=await db.query('SELECT id FROM police_officers WHERE force_number=?',[force_number]);if(!duplicate)break;
+    }
 
+    const location=await getUserLocation(req.user); const directApproval=req.user.role==='admin';
     const [result] = await db.query(
-      `INSERT INTO police_officers (full_name, force_number, rank_id, phone, email, gender, date_of_birth, address, profile_image, employment_status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO police_officers (full_name,mother_name, force_number, rank_id, phone, email, national_id, department, position, gender, date_of_birth, address, employment_date, profile_image, employment_status, weapons_issued, blood_group, station_id, created_by,approval_status,state_administration_id,region_id,district_id,registration_state_administration_id,registration_region_id,registration_district_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        full_name, 
-        force_number, 
-        rank_id, 
-        phone || null, 
-        email || null, 
-        gender || null, 
-        date_of_birth || null, 
-        address || null, 
-        profile_image || null, 
-        employment_status || 'Active', 
-        req.user.username
+        full_name, mother_name, force_number, null, phone, null, national_id||null, department||null, position||null, gender, date_of_birth, address || null, employment_date||null, profile_image,
+        employment_status||'active', weapons_issued||null, blood_group||null, station_id||null, req.user.username,directApproval?'APPROVED':'PENDING',location.state_administration_id||null,location.region_id||null,location.district_id||null,
+        location.state_administration_id||null,location.region_id||null,location.district_id||null
       ]
     );
 
-    res.json({ success: true, message: 'Created successfully', id: result.insertId, profile_image });
+    await db.query('INSERT INTO officer_approval_history(officer_id,previous_status,new_status,notes,performed_by) VALUES(?,NULL,?,?,?)',[result.insertId,directApproval?'APPROVED':'PENDING',directApproval?'Admin ayaa abuuray oo ansixiyey.':'Waxaa loo gudbiyey State Administration.',req.user.username]);
+    res.json({ success: true, message: directApproval?'Sarkaalka waa la abuuray.':'Askariga waa la diiwaangeliyey, wuxuuna sugayaa State Administration.', id: result.insertId, force_number, profile_image });
   } catch (err) { 
     if(err.code === 'ER_DUP_ENTRY') return res.status(400).json({success: false, message: 'Force number already exists.'});
     next(err); 
   }
 };
 
+exports.reviewApproval=async(req,res,next)=>{try{const{status,rank_id,notes}=req.body;if(!['APPROVED','REJECTED','RETURNED'].includes(status))return res.status(400).json({success:false,message:'Xaalad sax ah dooro.'});const[[officer]]=await db.query('SELECT * FROM police_officers WHERE id=?',[req.params.id]);if(!officer)return res.status(404).json({success:false,message:'Askariga lama helin.'});if(status==='APPROVED'&&!rank_id)return res.status(400).json({success:false,message:'Darajo ayaa loo baahan yahay marka la ansixinayo.'});await db.query(`UPDATE police_officers SET approval_status=?,rank_id=COALESCE(?,rank_id),employment_status=?,approval_notes=?,approved_by=?,approved_at=IF(?='APPROVED',NOW(),approved_at) WHERE id=?`,[status,rank_id||null,status==='APPROVED'?'active':'inactive',notes||null,req.user.username,status,officer.id]);await db.query('INSERT INTO officer_approval_history(officer_id,previous_status,new_status,notes,performed_by) VALUES(?,?,?,?,?)',[officer.id,officer.approval_status,status,notes||null,req.user.username]);await writeAuditLog({userId:req.user.username,userEmail:req.user.email,action:'REVIEW_OFFICER_REGISTRATION',entityType:'police_officers',entityId:officer.id,oldData:{status:officer.approval_status},newData:{status,rank_id,notes}});res.json({success:true,message:status==='APPROVED'?'Askariga waa la ansixiyey oo la hawlgeliyey.':'Go’aanka waa la kaydiyey.'})}catch(e){next(e)}};
+
+// Ansixintu waxay beddeshaa xaaladda ansixinta iyo darajada oo keliya.
+// Xaaladda shaqadu waxay ahaanaysaa active laga bilaabo maalinta la diiwaangeliyo.
+exports.reviewApproval = async (req, res, next) => {
+  try {
+    const { status, rank_id, notes } = req.body;
+    if (!['APPROVED', 'REJECTED', 'RETURNED'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Xaalad sax ah dooro.' });
+    }
+    const [[officer]] = await db.query('SELECT * FROM police_officers WHERE id=?', [req.params.id]);
+    if (!officer) return res.status(404).json({ success: false, message: 'Askariga lama helin.' });
+    if (status === 'APPROVED' && !rank_id) {
+      return res.status(400).json({ success: false, message: 'Darajo ayaa loo baahan yahay marka la ansixinayo.' });
+    }
+    if (status === 'APPROVED') {
+      const [[rank]] = await db.query('SELECT rank_code FROM ranks WHERE id=?', [rank_id]);
+      if (!rank) return res.status(400).json({ success: false, message: 'Darajada la doortay lama helin.' });
+      if (req.user.role === 'state_admin' && !STATE_ADMIN_RANK_CODES.has(String(rank.rank_code).trim().toUpperCase())) {
+        return res.status(403).json({
+          success: false,
+          message: 'State Administration wuxuu ansixin karaa oo keliya darajooyinka Al, SA, XDH, LXDH, LA iyo SXD.',
+        });
+      }
+    }
+    await db.query(
+      `UPDATE police_officers
+       SET approval_status=?, rank_id=COALESCE(?,rank_id), approval_notes=?, approved_by=?,
+           approved_at=IF(?='APPROVED',NOW(),approved_at)
+       WHERE id=?`,
+      [status, rank_id || null, notes || null, req.user.username, status, officer.id]
+    );
+    await db.query(
+      'INSERT INTO officer_approval_history(officer_id,previous_status,new_status,notes,performed_by) VALUES(?,?,?,?,?)',
+      [officer.id, officer.approval_status, status, notes || null, req.user.username]
+    );
+    await writeAuditLog({
+      userId: req.user.username,
+      userEmail: req.user.email,
+      action: 'REVIEW_OFFICER_REGISTRATION',
+      entityType: 'police_officers',
+      entityId: officer.id,
+      oldData: { status: officer.approval_status },
+      newData: { status, rank_id, notes },
+    });
+    res.json({ success: true, message: status === 'APPROVED' ? 'Askariga waa la ansixiyey.' : 'Go’aanka waa la kaydiyey.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { full_name, force_number, rank_id, phone, email, gender, date_of_birth, address, employment_status } = req.body;
+    const { full_name, mother_name, phone, gender, date_of_birth, address,
+      national_id, department, position, employment_date, employment_status, weapons_issued, blood_group, station_id } = req.body;
 
     const validationError = validateOfficerInput(phone, date_of_birth);
     if (validationError) {
       return res.status(400).json({ success: false, message: validationError });
     }
     
-    let query = `UPDATE police_officers SET full_name=?, force_number=?, rank_id=?, phone=?, email=?, gender=?, date_of_birth=?, address=?, employment_status=?`;
+    let query = `UPDATE police_officers SET full_name=?, mother_name=?, phone=?, gender=?, date_of_birth=?, address=?, national_id=?, department=?, position=?, employment_date=?, employment_status=?, weapons_issued=?, blood_group=?, station_id=?`;
     let params = [
-      full_name, 
-      force_number, 
-      rank_id, 
-      phone || null, 
-      email || null, 
-      gender || null, 
-      date_of_birth || null, 
-      address || null, 
-      employment_status || 'Active'
+      full_name, mother_name || null, phone || null, gender || null, date_of_birth || null, address || null,
+      national_id||null, department||null, position||null, employment_date||null, employment_status||null, weapons_issued||null, blood_group||null, station_id||null
     ];
 
     if (req.file) {

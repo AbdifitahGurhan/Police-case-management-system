@@ -77,6 +77,10 @@ export const AuthProvider = ({ children }) => {
       
       const roleRedirects = {
         admin: '/dashboard/admin',
+        sub_admin: '/dashboard/admin',
+        personnel_registry: '/police-officers',
+        investigator: '/dashboard/cid',
+        station_jail: '/dashboard/jail',
         state_admin: '/dashboard/unit',
         region_admin: '/dashboard/unit',
         city_admin: '/dashboard/unit',

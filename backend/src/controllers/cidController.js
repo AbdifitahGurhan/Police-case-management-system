@@ -149,8 +149,11 @@ const getCidCaseById = async (req, res, next) => {
          OR (entity_type = 'cid_progress_notes' AND entity_id IN (SELECT id FROM cid_progress_notes WHERE cid_case_id = ?))
          OR (entity_type = 'cid_crime_scenes' AND entity_id IN (SELECT id FROM cid_crime_scenes WHERE cid_case_id = ?))
          OR (entity_type = 'cid_reports' AND entity_id IN (SELECT id FROM cid_reports WHERE cid_case_id = ?))
+         OR (entity_type = 'evidence' AND entity_id IN (SELECT id FROM evidence WHERE case_id = ?))
+         OR (entity_type = 'witnesses' AND entity_id IN (SELECT witness_id FROM witness_statements WHERE case_id = ?))
+         OR (entity_type = 'criminals' AND entity_id IN (SELECT criminal_id FROM case_criminals WHERE case_id = ?))
       ORDER BY created_at DESC
-      LIMIT 100`, [cidCase.id, cidCase.id, cidCase.id, cidCase.id]);
+      LIMIT 100`, [cidCase.id, cidCase.id, cidCase.id, cidCase.id, caseId, caseId, caseId]);
 
     res.json({ success: true, data: { cidCase, progress, crimeScenes, reports, evidence, custody, criminals, suspects: criminals, witnesses, arrests, auditTrail } });
   } catch (err) { next(err); }

@@ -19,7 +19,7 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system', executor
   if (!policeCase) return null;
 
   const [[referral]] = await executor.query(
-    "SELECT id, status FROM referrals WHERE case_id = ? AND referred_to_role = 'cid' LIMIT 1",
+    "SELECT id, status FROM referrals WHERE case_id = ? AND referred_to_role IN ('cid','investigator') LIMIT 1",
     [caseId]
   );
 
@@ -86,7 +86,7 @@ const syncAllCidCases = async (createdBy = 'system') => {
              r.status AS referral_status, r.referred_by AS referral_by
       FROM cases c
       LEFT JOIN police_officers po ON po.id = c.assigned_officer_id
-      LEFT JOIN referrals r ON r.case_id = c.id AND r.referred_to_role = 'cid'
+      LEFT JOIN referrals r ON r.case_id = c.id AND r.referred_to_role IN ('cid','investigator')
       WHERE LOWER(c.status) IN ('referred_to_cid', 'referred_cid', 'assigned_to_cid')
          OR (r.id IS NOT NULL AND r.status IN ('accepted', 'pending', 'completed'))
     `);

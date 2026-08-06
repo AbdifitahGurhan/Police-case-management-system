@@ -6,6 +6,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -25,7 +26,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg'];
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
     const isExtAllowed = allowedExts.includes(ext);
     const isMimeAllowed = file.mimetype ? file.mimetype.startsWith('image/') : false;
 
@@ -40,11 +41,12 @@ const upload = multer({
 
 router.use(authMiddleware);
 
-router.get('/deployed', controller.getDeployedOfficers);
-router.get('/', controller.getAll);
-router.get('/:id', controller.getById);
-router.post('/', upload.single('profile_image'), controller.create);
-router.put('/:id', upload.single('profile_image'), controller.update);
-router.delete('/:id', controller.delete);
+router.get('/deployed', requirePermission('officers.view'), controller.getDeployedOfficers);
+router.get('/', requirePermission('officers.view'), controller.getAll);
+router.get('/:id', requirePermission('officers.view'), controller.getById);
+router.post('/', requirePermission('officers.create'), upload.single('profile_image'), controller.create);
+router.post('/:id/review', requirePermission('officers.approve'), controller.reviewApproval);
+router.put('/:id', requirePermission('officers.update'), upload.single('profile_image'), controller.update);
+router.delete('/:id', requirePermission('officers.delete'), controller.delete);
 
 module.exports = router;

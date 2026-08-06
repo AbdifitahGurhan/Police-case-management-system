@@ -734,7 +734,7 @@ export default function OffendersPage() {
     { title: 'Cases', dataIndex: 'case_count', width: 110, align: 'center', render: (value) => <Tag color={value > 1 ? 'red' : 'blue'}>{value || 0}</Tag> },
     { title: 'Status', dataIndex: 'is_arrested', width: 130, render: (value) => Number(value) === 1 ? <Tag color="red">Arrested</Tag> : <Tag color="green">Not Arrested</Tag> },
     {
-      title: 'Actions',
+      title: 'Ficillada',
       key: 'actions',
       width: 240,
       render: (_, row) => (
@@ -753,7 +753,7 @@ export default function OffendersPage() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'region_commander', 'officer', 'cid', 'court', 'jail', 'district_admin', 'ob_staff']}>
+    <ProtectedRoute allowedRoles={['admin', 'region_commander', 'officer', 'cid', 'court', 'jail', 'district_admin', 'ob_staff']} requiredPermissions={['suspects.manage']}>
       <div className="offenders-page">
         {loadError && (
           <Alert
@@ -1088,7 +1088,7 @@ export default function OffendersPage() {
                           pagination={{ pageSize: 6 }}
                           columns={[
                             { title: 'Date', dataIndex: 'created_at', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm') },
-                            { title: 'Action', dataIndex: 'action_type' },
+                            { title: 'Ficilka', dataIndex: 'action_type' },
                             { title: 'By', dataIndex: 'performed_by' },
                             { title: 'Description', dataIndex: 'description' },
                           ]}
@@ -1185,7 +1185,7 @@ export default function OffendersPage() {
                               { title: 'Court/Authority', dataIndex: 'court_approved_by', render: (v, row) => v || (row.status === 'prison_confirmed' ? 'Pending' : 'N/A') },
                               { title: 'Certificate', dataIndex: 'certificate_number', render: (v) => v || 'N/A' },
                               {
-                                title: 'Action',
+                                title: 'Ficilka',
                                 render: (_, row) => (
                                   <Space>
                                     {user?.role === 'admin' && row.status === 'pending_admin_review' && (

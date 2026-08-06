@@ -971,6 +971,29 @@ const getSecurityAuditDashboard = async (req, res, next) => {
       [safeLimit]
     );
 
+    const [activities] = await db.query(
+      `SELECT al.id,al.user_id,al.user_email,al.action,al.entity_type,al.entity_id,
+              al.old_data,al.new_data,al.ip_address,al.user_agent,al.created_at,
+              d.district_name AS location_name
+         FROM audit_logs al
+         LEFT JOIN districts d ON d.id=al.police_station_id
+        ORDER BY al.created_at DESC LIMIT ?`, [safeLimit]
+    );
+
+    const [permissionChanges] = await db.query(
+      `SELECT pch.*,CASE WHEN pch.target_type='ROLE' THEN r.name ELSE u.username END AS target_name
+         FROM permission_change_history pch
+         LEFT JOIN roles r ON pch.target_type='ROLE' AND r.id=pch.target_id
+         LEFT JOIN users u ON pch.target_type='USER' AND u.id=pch.target_id
+        ORDER BY pch.created_at DESC LIMIT ?`, [safeLimit]
+    );
+
+    const [officerTransfers] = await db.query(
+      `SELECT ot.*,po.full_name,po.force_number
+         FROM officer_transfers ot JOIN police_officers po ON po.id=ot.officer_id
+        ORDER BY ot.transferred_at DESC LIMIT ?`, [safeLimit]
+    );
+
     const [[summary]] = await db.query(
       `SELECT
           (SELECT COUNT(*) FROM login_logs WHERE success = 1) AS successful_logins,
@@ -979,7 +1002,7 @@ const getSecurityAuditDashboard = async (req, res, next) => {
           (SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'evidence' OR action LIKE '%EVIDENCE%') AS evidence_changes`
     );
 
-    res.json({ success: true, data: { summary, logins, caseChanges, evidenceChanges } });
+    res.json({ success: true, data: { summary, activities, permissionChanges, officerTransfers, logins, caseChanges, evidenceChanges } });
   } catch (err) { next(err); }
 };
 

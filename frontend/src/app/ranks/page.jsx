@@ -101,7 +101,7 @@ function RanksPageContent() {
       render: (val) => new Date(val).toLocaleDateString()
     },
     {
-      title: 'Action',
+      title: 'Ficilka',
       key: 'action',
       render: (_, record) => (
         <Space size="middle">
@@ -125,7 +125,7 @@ function RanksPageContent() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
+    <ProtectedRoute allowedRoles={['admin']} requiredPermissions={['ranks.manage', 'ranks.assign']}>
       <Card variant="none">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
 
@@ -174,7 +174,7 @@ function RanksPageContent() {
             label="Rank Code"
             rules={codeRules('Rank code')}
           >
-            <Input placeholder="e.g. IG" disabled={!!editingRecord} />
+            <Input placeholder="tusaale IG" />
           </Form.Item>
 
           <Form.Item name="description" label="Rank Description (Optional)" rules={[textLengthRule('Rank description', 3, 500)]}>

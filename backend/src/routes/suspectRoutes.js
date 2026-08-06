@@ -22,6 +22,7 @@ const {
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
 const { REPORT_ROLES, INVESTIGATION_WRITE_ROLES } = require('../utils/roleGroups');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 const offenderUploadDir = path.join(__dirname, '../../uploads/offenders');
 if (!fs.existsSync(offenderUploadDir)) {
@@ -49,16 +50,16 @@ const upload = multer({
 
 router.use(authMiddleware);
 
-router.get('/', allowRoles(...REPORT_ROLES), getcriminals);
+router.get('/', requirePermission('suspects.manage'), getcriminals);
 router.get('/sentence-alerts', allowRoles('admin', 'jail'), getSentenceAlerts);
-router.get('/check-duplicate', allowRoles(...INVESTIGATION_WRITE_ROLES), checkDuplicate);
-router.post('/face-search', allowRoles(...REPORT_ROLES), searchSuspectByFace);
-router.post('/match-search', allowRoles(...REPORT_ROLES), searchAndMatch);
-router.get('/:id/history', allowRoles(...REPORT_ROLES), getSuspectHistory);
-router.get('/:id/report', allowRoles(...REPORT_ROLES), getSuspectReport);
-router.get('/:id', allowRoles(...REPORT_ROLES), getSuspectById);
-router.post('/', allowRoles(...INVESTIGATION_WRITE_ROLES), upload.single('photo'), createSuspect);
+router.get('/check-duplicate', requirePermission('suspects.manage'), checkDuplicate);
+router.post('/face-search', requirePermission('suspects.manage'), searchSuspectByFace);
+router.post('/match-search', requirePermission('suspects.manage'), searchAndMatch);
+router.get('/:id/history', requirePermission('suspects.manage'), getSuspectHistory);
+router.get('/:id/report', requirePermission('suspects.manage'), getSuspectReport);
+router.get('/:id', requirePermission('suspects.manage'), getSuspectById);
+router.post('/', requirePermission('suspects.manage'), upload.single('photo'), createSuspect);
 router.post('/:id/release', allowRoles('admin', 'jail'), releaseSuspect);
-router.put('/:id', allowRoles(...INVESTIGATION_WRITE_ROLES), upload.single('photo'), updateSuspect);
+router.put('/:id', requirePermission('suspects.manage'), upload.single('photo'), updateSuspect);
 
 module.exports = router;

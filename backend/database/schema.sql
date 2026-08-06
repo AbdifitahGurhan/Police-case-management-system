@@ -107,6 +107,8 @@ CREATE TABLE IF NOT EXISTS state_administrations (
   state_code VARCHAR(50) NOT NULL UNIQUE,
   username VARCHAR(150) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  profile_name VARCHAR(150),
+  profile_image VARCHAR(500),
   commander_officer_id INT,
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -121,6 +123,8 @@ CREATE TABLE IF NOT EXISTS regions (
   region_code VARCHAR(50) NOT NULL UNIQUE,
   username VARCHAR(150) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  profile_name VARCHAR(150),
+  profile_image VARCHAR(500),
   commander_officer_id INT,
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -136,6 +140,8 @@ CREATE TABLE IF NOT EXISTS cities (
   city_code VARCHAR(50) NOT NULL UNIQUE,
   username VARCHAR(150) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  profile_name VARCHAR(150),
+  profile_image VARCHAR(500),
   commander_officer_id INT,
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -151,6 +157,8 @@ CREATE TABLE IF NOT EXISTS districts (
   district_code VARCHAR(50) NOT NULL UNIQUE,
   username VARCHAR(150) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  profile_name VARCHAR(150),
+  profile_image VARCHAR(500),
   commander_officer_id INT,
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -235,6 +243,7 @@ CREATE TABLE IF NOT EXISTS ob_entries (
   ob_number VARCHAR(50) NOT NULL UNIQUE,
   case_title VARCHAR(255),
   case_type VARCHAR(100),
+  court_level VARCHAR(50),
   case_level ENUM('normal','urgent','critical') DEFAULT 'normal',
   incident_type VARCHAR(100) NOT NULL,
   incident_location VARCHAR(255) NOT NULL,
@@ -257,20 +266,23 @@ CREATE TABLE IF NOT EXISTS ob_entries (
   registered_by_name VARCHAR(150) NOT NULL,
   registered_by_role VARCHAR(100) NOT NULL,
   registered_by_rank VARCHAR(100),
+  updated_by VARCHAR(100),
   state_administration_id INT,
   region_id INT,
   district_id INT,
   registration_date DATE NOT NULL,
   registration_time TIME NOT NULL,
-  status ENUM('OB_REGISTERED','FORWARDED_FOR_REVIEW','CONVERTED_TO_CASE','CASE_OPENED','CLOSED','RESOLVED_BY_RECONCILIATION','WARNING_ISSUED','MEDIATION_COMPLETED','COMPLAINT_WITHDRAWN','FALSE_REPORT_CORRECTED','GENERAL_AGREEMENT_COMPLETED') DEFAULT 'OB_REGISTERED',
+  status VARCHAR(50) NOT NULL DEFAULT 'REGISTERED',
   resolution_method ENUM('reconciliation','warning','mediation','withdrawal','false_report','general_agreement','agreement','withdrawn','other'),
   resolution_notes TEXT,
+  closed_reason TEXT,
   resolution_parties TEXT,
   resolved_by VARCHAR(100),
   resolved_at DATETIME,
   reopen_reason TEXT,
   reopened_by VARCHAR(100),
   reopened_at DATETIME,
+  deleted_at DATETIME,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_ob_user FOREIGN KEY (registered_by_user_id) REFERENCES users(id),
@@ -279,6 +291,54 @@ CREATE TABLE IF NOT EXISTS ob_entries (
   CONSTRAINT fk_ob_district FOREIGN KEY (district_id) REFERENCES districts(id),
   INDEX idx_ob_registered_by (registered_by_user_id),
   INDEX idx_ob_location (state_administration_id, region_id, district_id)
+);
+
+CREATE TABLE IF NOT EXISTS ob_victims (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  ob_entry_id INT NOT NULL,
+  full_name VARCHAR(150) NOT NULL,
+  phone VARCHAR(30),
+  details TEXT NOT NULL,
+  address TEXT,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ob_victim_entry FOREIGN KEY (ob_entry_id) REFERENCES ob_entries(id),
+  INDEX idx_ob_victim_entry (ob_entry_id)
+);
+
+CREATE TABLE IF NOT EXISTS ob_accused (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  ob_entry_id INT NOT NULL,
+  full_name VARCHAR(150) NOT NULL,
+  phone VARCHAR(30), id_type VARCHAR(50), id_number VARCHAR(100), gender VARCHAR(20), address TEXT,
+  description TEXT, identifying_information TEXT,
+  custody_state ENUM('IN_CUSTODY','NOT_IN_CUSTODY') NOT NULL DEFAULT 'NOT_IN_CUSTODY',
+  status VARCHAR(40) NOT NULL DEFAULT 'WANTED',
+  arrest_date DATETIME, arrest_location VARCHAR(255), arresting_officer VARCHAR(150), tracing_sent_at DATETIME,
+  custody_ready TINYINT(1) NOT NULL DEFAULT 0,
+  created_by VARCHAR(100), updated_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ob_accused_entry FOREIGN KEY (ob_entry_id) REFERENCES ob_entries(id),
+  INDEX idx_ob_accused_entry (ob_entry_id), INDEX idx_ob_accused_search (full_name, phone, id_number)
+);
+
+CREATE TABLE IF NOT EXISTS ob_accused_status_history (
+  id INT PRIMARY KEY AUTO_INCREMENT, ob_entry_id INT NOT NULL, accused_id INT NOT NULL,
+  previous_status VARCHAR(40), new_status VARCHAR(40) NOT NULL, action VARCHAR(80) NOT NULL,
+  notes TEXT, performed_by VARCHAR(100) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ob_ash_entry FOREIGN KEY (ob_entry_id) REFERENCES ob_entries(id),
+  CONSTRAINT fk_ob_ash_accused FOREIGN KEY (accused_id) REFERENCES ob_accused(id),
+  INDEX idx_ob_ash_accused (accused_id)
+);
+
+CREATE TABLE IF NOT EXISTS ob_status_history (
+  id INT PRIMARY KEY AUTO_INCREMENT, ob_entry_id INT NOT NULL, previous_status VARCHAR(50),
+  new_status VARCHAR(50) NOT NULL, reason TEXT, performed_by VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ob_status_entry FOREIGN KEY (ob_entry_id) REFERENCES ob_entries(id),
+  INDEX idx_ob_status_entry (ob_entry_id)
 );
 
 CREATE TABLE IF NOT EXISTS login_logs (
@@ -346,6 +406,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   action VARCHAR(100) NOT NULL,
   entity_type VARCHAR(100),
   entity_id INT,
+  police_station_id INT,
   details JSON,
   old_data JSON,
   new_data JSON,

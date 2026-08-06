@@ -26,6 +26,8 @@ const getImageUrl = (pathStr) => {
 export default function OfficerDetailsPage({ params }) {
   const { message } = App.useApp();
   const { user } = useAuth();
+  const canViewLocations = user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes('locations.view');
+  const canTransfer = (user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes('officers.transfer')) && canViewLocations;
   const router = useRouter();
   const { id } = use(params);
   const [officer, setOfficer] = useState(null);
@@ -46,31 +48,31 @@ export default function OfficerDetailsPage({ params }) {
   const selectedDistrict = Form.useWatch('district_id', transferForm);
 
   useEffect(() => {
-    if (isTransferModalOpen && user?.role !== 'district_admin') {
+    if (isTransferModalOpen && canViewLocations && user?.role !== 'district_admin') {
        api.get('/state-administrations').then(res => setStates(res.data.data)).catch(console.error);
     }
-  }, [isTransferModalOpen, user?.role]);
+  }, [isTransferModalOpen, canViewLocations, user?.role]);
 
   useEffect(() => {
-    if (selectedState) {
+    if (canViewLocations && selectedState) {
        api.get(`/regions?state_administration_id=${selectedState}`).then(res => setRegions(res.data.data)).catch(console.error);
        transferForm.setFieldsValue({ region_id: undefined, city_id: undefined, district_id: undefined });
     }
-  }, [selectedState, transferForm]);
+  }, [selectedState, transferForm, canViewLocations]);
 
   useEffect(() => {
-    if (selectedRegion) {
+    if (canViewLocations && selectedRegion) {
        api.get(`/cities?region_id=${selectedRegion}`).then(res => setCities(res.data.data)).catch(console.error);
        transferForm.setFieldsValue({ city_id: undefined, district_id: undefined });
     }
-  }, [selectedRegion, transferForm]);
+  }, [selectedRegion, transferForm, canViewLocations]);
 
   useEffect(() => {
-    if (selectedCity) {
+    if (canViewLocations && selectedCity) {
        api.get(`/districts?city_id=${selectedCity}`).then(res => setDistricts(res.data.data)).catch(console.error);
        transferForm.setFieldsValue({ district_id: undefined });
     }
-  }, [selectedCity, transferForm]);
+  }, [selectedCity, transferForm, canViewLocations]);
 
 
   const fetchOfficerDetails = useCallback(async () => {
@@ -131,18 +133,18 @@ export default function OfficerDetailsPage({ params }) {
   }
 
   const assignmentCols = [
-    { title: 'Level', dataIndex: 'assignment_type', key: 'type', render: t => <Tag color="geekblue">{t}</Tag> },
-    { title: 'Unit Location', dataIndex: 'assignment_name', key: 'name' },
-    { title: 'Remarks', dataIndex: 'remarks', key: 'remarks' },
-    { title: 'Status', dataIndex: 'is_current', key: 'is_current', render: c => c === 1 ? <Tag color="green">Active</Tag> : <Tag>Past</Tag> },
-    { title: 'Assigned At', dataIndex: 'assigned_at', key: 'date', render: d => dayjs(d).format('DD MMM YYYY') }
+    { title: 'Heerka', dataIndex: 'assignment_type', key: 'type', render: t => <Tag color="geekblue">{t}</Tag> },
+    { title: 'Goobta Shaqada', dataIndex: 'assignment_name', key: 'name' },
+    { title: 'Faallooyinka', dataIndex: 'remarks', key: 'remarks' },
+    { title: 'Xaaladda', dataIndex: 'is_current', key: 'is_current', render: c => c === 1 ? <Tag color="green">Hadda</Tag> : <Tag>Hore</Tag> },
+    { title: 'Taariikhda Qoondeynta', dataIndex: 'assigned_at', key: 'date', render: d => dayjs(d).format('DD MMM YYYY') }
   ];
 
   const transferCols = [
-    { title: 'From', key: 'from', render: (_, record) => record.from_assignment_type ? `${record.from_assignment_type} (#${record.from_assignment_id})` : 'New Recruit' },
-    { title: 'To', key: 'to', render: (_, record) => `${record.to_assignment_type} (#${record.to_assignment_id})` },
-    { title: 'Reason', dataIndex: 'transfer_reason', key: 'reason' },
-    { title: 'Date', dataIndex: 'transferred_at', key: 'date', render: d => dayjs(d).format('DD MMM YYYY') }
+    { title: 'Laga soo Wareejiyey', key: 'from', render: (_, record) => record.from_assignment_type ? `${record.from_assignment_name || record.from_assignment_type} · ${record.from_assignment_type}` : 'Diiwaangelin Cusub' },
+    { title: 'Loo Wareejiyey', key: 'to', render: (_, record) => `${record.to_assignment_name || record.to_assignment_type} · ${record.to_assignment_type}` },
+    { title: 'Sababta', dataIndex: 'transfer_reason', key: 'reason' },
+    { title: 'Taariikhda', dataIndex: 'transferred_at', key: 'date', render: d => dayjs(d).format('DD MMM YYYY') }
   ];
 
   return (
@@ -168,45 +170,60 @@ export default function OfficerDetailsPage({ params }) {
               </div>
             </Space>
             
-            <Button type="primary" icon={<SwapOutlined />} size="large" onClick={() => setIsTransferModalOpen(true)}>
-              Transfer Officer
-            </Button>
+            {canTransfer && <Button type="primary" icon={<SwapOutlined />} size="large" onClick={() => setIsTransferModalOpen(true)}>
+              Wareeji Askariga
+            </Button>}
           </div>
 
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={16}>
-              <Card title="Bio & Contact Information" variant="borderless" className="shadow-sm">
-                <Descriptions column={{ xxl: 2, xl: 2, lg: 2, md: 1, sm: 1, xs: 1 }}>
-                  <Descriptions.Item label="Contact Phone">{officer?.phone || 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="Primary Email">{officer?.email || 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="Gender">{officer?.gender || 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="Date of Birth">{officer?.date_of_birth ? dayjs(officer.date_of_birth).format('DD MMM YYYY') : 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="Residential Address" span={2}>{officer?.address || 'N/A'}</Descriptions.Item>
-                  <Descriptions.Item label="Employment Status"><Tag color={officer?.employment_status === 'Active' ? 'green' : 'red'}>{officer?.employment_status}</Tag></Descriptions.Item>
+              <Card title="Xogta Askariga" variant="borderless" className="shadow-sm">
+                <Descriptions column={2}>
+                  <Descriptions.Item label="Darajada"><Tag color="blue">{officer?.rank_name || 'Darajo lama siin'}</Tag></Descriptions.Item>
+                  <Descriptions.Item label="Lambarka Ciidanka">{officer?.force_number}</Descriptions.Item>
+                  <Descriptions.Item label="Lambarka Telefoonka">{officer?.phone || 'Ma jiro'}</Descriptions.Item>
+                  <Descriptions.Item label="Email-ka">{officer?.email || 'Ma jiro'}</Descriptions.Item>
+                  <Descriptions.Item label="Jinsiga">{officer?.gender || 'Ma jiro'}</Descriptions.Item>
+                  <Descriptions.Item label="Taariikhda Dhalashada">{officer?.date_of_birth ? dayjs(officer.date_of_birth).format('DD MMM YYYY') : 'Ma jiro'}</Descriptions.Item>
+                  <Descriptions.Item label="Cinwaanka Hoyga" span={2}>{officer?.address || 'Ma jiro'}</Descriptions.Item>
+                  <Descriptions.Item label="Xaaladda Shaqada"><Tag color={String(officer?.employment_status).toLowerCase() === 'active' ? 'green' : 'red'}>{officer?.employment_status}</Tag></Descriptions.Item>
+                </Descriptions>
+                <Divider />
+                <Title level={5}>Goobtii Laga Diiwaangeliyey</Title>
+                <Descriptions column={3}>
+                  <Descriptions.Item label="Dawlad-goboleedka">{officer?.registration_state_name || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Gobolka">{officer?.registration_region_name || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Degmada">{officer?.registration_district_name || '—'}</Descriptions.Item>
                 </Descriptions>
               </Card>
             </Col>
             
             <Col xs={24} lg={8}>
               <Card 
-                title={<><EnvironmentOutlined /> Current Assignment</>} 
+                title={<><EnvironmentOutlined /> Goobta Hadda</>} 
                 variant="borderless"
                 style={{ height: '100%', background: '#f0f2f5' }}
               >
                 {officer?.current_assignment_type === 'Unassigned' ? (
-                   <Text type="warning">Currently unassigned</Text>
+                   <Text type="warning">Weli goob shaqo looma qoondeyn</Text>
                 ) : (
                   <>
                     <Title level={4} style={{ marginTop: 0 }}>{officer?.current_assignment_name}</Title>
                     <Text type="secondary">{officer?.current_assignment_type}</Text>
+                    <Divider />
+                    <Space orientation="vertical" size={4}>
+                      <Text><strong>Dawlad-goboleedka:</strong> {officer?.current_state_name || '—'}</Text>
+                      <Text><strong>Gobolka:</strong> {officer?.current_region_name || '—'}</Text>
+                      <Text><strong>Degmada:</strong> {officer?.current_district_name || '—'}</Text>
+                    </Space>
                   </>
                 )}
               </Card>
             </Col>
           </Row>
 
-          <Card title={<><AuditOutlined /> Career History</>} variant="borderless">
-            <Title level={5}>Transfer Logs</Title>
+          <Card title={<><AuditOutlined /> Taariikhda Shaqada</>} variant="borderless">
+            <Title level={5}>Taariikhda Wareejinta</Title>
             <Table 
                columns={transferCols} 
                dataSource={officer?.transfers || []} 
@@ -218,7 +235,7 @@ export default function OfficerDetailsPage({ params }) {
             
             <Divider />
 
-            <Title level={5}>Assignment Designations</Title>
+            <Title level={5}>Taariikhda Goobaha Shaqada</Title>
             <Table 
                columns={assignmentCols} 
                dataSource={officer?.assignments || []} 
@@ -233,14 +250,14 @@ export default function OfficerDetailsPage({ params }) {
       </Card>
 
       <Modal
-          title={`Deploy/Transfer: ${officer?.full_name}`}
+          title={`Wareeji Askariga: ${officer?.full_name}`}
           open={isTransferModalOpen}
           onCancel={() => setIsTransferModalOpen(false)}
           onOk={handleTransfer}
-          okText="Confirm Transfer"
+          okText="Xaqiiji Wareejinta"
         >
            <Form form={transferForm} layout="vertical">
-              <Form.Item name="to_assignment_type" label="Target Level" rules={[requiredRule('Target level')]}>
+              <Form.Item name="to_assignment_type" label="Heerka Loo Wareejinayo" rules={[requiredRule('Heerka loo wareejinayo')]}>
                   <Select placeholder="e.g. City" onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, city_id: undefined, district_id: undefined })}>
                       {user?.role !== 'district_admin' && <Option value="State Administration">State Administration</Option>}
                       {user?.role !== 'district_admin' && <Option value="Region">Region</Option>}
@@ -282,10 +299,10 @@ export default function OfficerDetailsPage({ params }) {
                  </Form.Item>
                )}
 
-              <Form.Item name="transfer_reason" label="Reason for Transfer" rules={[requiredRule('Transfer reason'), textLengthRule('Transfer reason', 5, 1000)]}>
+              <Form.Item name="transfer_reason" label="Sababta Wareejinta" rules={[requiredRule('Sababta wareejinta'), textLengthRule('Sababta wareejinta', 5, 1000)]}>
                 <Input.TextArea rows={2} />
               </Form.Item>
-              <Form.Item name="remarks" label="Additional Remarks (Optional)" rules={[textLengthRule('Remarks', 3, 1000)]}>
+              <Form.Item name="remarks" label="Faallo Dheeraad ah (Ikhtiyaari)" rules={[textLengthRule('Faallooyinka', 3, 1000)]}>
                 <Input.TextArea rows={2} />
               </Form.Item>
            </Form>

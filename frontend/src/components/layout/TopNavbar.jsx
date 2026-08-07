@@ -207,7 +207,7 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     .toUpperCase();
 
   const roleLabels = {
-    admin: 'Maamulaha Nidaamka',
+    admin: 'Dawladda Dhexe',
     officer: 'Sarkaalka Booliska',
     cid: 'Baaraha CID-da',
     cid_director: 'Agaasimaha CID-da',

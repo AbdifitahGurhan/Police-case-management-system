@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, use, useCallback } from 'react';
 import { Card, Descriptions, Table, Typography, Tag, Space, Button, Modal, Form, Select, Input, App, Avatar, Row, Col, Divider, Image } from 'antd';
-import { SwapOutlined, ArrowLeftOutlined, AuditOutlined, EnvironmentOutlined } from '@ant-design/icons';
+import { SwapOutlined, ArrowLeftOutlined, AuditOutlined, EnvironmentOutlined, StarOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
@@ -12,6 +12,8 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const COMMISSIONED_CODES = new Set(['SG', 'SGS', 'SGT', 'GSH-S', 'GSH-DH', 'GSH', 'DHM', 'LXDG', 'XDG']);
+const STATE_ADMIN_RANK_CODES = new Set(['AL', 'SA', 'XDH', 'LXDH', 'LA', 'SXD']);
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
 
 const getImageUrl = (pathStr) => {
@@ -26,6 +28,7 @@ const getImageUrl = (pathStr) => {
 export default function OfficerDetailsPage({ params }) {
   const { message } = App.useApp();
   const { user } = useAuth();
+  const canUpdateEmploymentStatus = ['admin', 'state_admin', 'sub_admin'].includes(String(user?.role || '').toLowerCase());
   const canViewLocations = user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes('locations.view');
   const canTransfer = (user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes('officers.transfer')) && canViewLocations;
   const router = useRouter();
@@ -34,18 +37,19 @@ export default function OfficerDetailsPage({ params }) {
   const [loading, setLoading] = useState(true);
   
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isRankModalOpen, setIsRankModalOpen] = useState(false);
+  const [employmentStatusDraft, setEmploymentStatusDraft] = useState('active');
+  const [ranks, setRanks] = useState([]);
   const [transferForm] = Form.useForm();
+  const [rankForm] = Form.useForm();
   
   const [states, setStates] = useState([]);
   const [regions, setRegions] = useState([]);
-  const [cities, setCities] = useState([]);
   const [districts, setDistricts] = useState([]);
 
   const assignmentType = Form.useWatch('to_assignment_type', transferForm);
   const selectedState = Form.useWatch('state_id', transferForm);
   const selectedRegion = Form.useWatch('region_id', transferForm);
-  const selectedCity = Form.useWatch('city_id', transferForm);
-  const selectedDistrict = Form.useWatch('district_id', transferForm);
 
   useEffect(() => {
     if (isTransferModalOpen && canViewLocations && user?.role !== 'district_admin') {
@@ -56,23 +60,16 @@ export default function OfficerDetailsPage({ params }) {
   useEffect(() => {
     if (canViewLocations && selectedState) {
        api.get(`/regions?state_administration_id=${selectedState}`).then(res => setRegions(res.data.data)).catch(console.error);
-       transferForm.setFieldsValue({ region_id: undefined, city_id: undefined, district_id: undefined });
+       transferForm.setFieldsValue({ region_id: undefined, district_id: undefined });
     }
   }, [selectedState, transferForm, canViewLocations]);
 
   useEffect(() => {
     if (canViewLocations && selectedRegion) {
-       api.get(`/cities?region_id=${selectedRegion}`).then(res => setCities(res.data.data)).catch(console.error);
-       transferForm.setFieldsValue({ city_id: undefined, district_id: undefined });
-    }
-  }, [selectedRegion, transferForm, canViewLocations]);
-
-  useEffect(() => {
-    if (canViewLocations && selectedCity) {
-       api.get(`/districts?city_id=${selectedCity}`).then(res => setDistricts(res.data.data)).catch(console.error);
+       api.get(`/districts?region_id=${selectedRegion}`).then(res => setDistricts(res.data.data)).catch(console.error);
        transferForm.setFieldsValue({ district_id: undefined });
     }
-  }, [selectedCity, transferForm, canViewLocations]);
+  }, [selectedRegion, transferForm, canViewLocations]);
 
 
   const fetchOfficerDetails = useCallback(async () => {
@@ -80,6 +77,7 @@ export default function OfficerDetailsPage({ params }) {
     try {
       const res = await api.get(`/police-officers/${id}`);
       setOfficer(res.data.data);
+      setEmploymentStatusDraft(String(res.data.data?.employment_status || 'active').toLowerCase());
     } catch (err) {
       if (err.response?.status !== 403) {
         message.error("Failed to load officer details.");
@@ -100,7 +98,6 @@ export default function OfficerDetailsPage({ params }) {
       let targetId = null;
       if (values.to_assignment_type === 'State Administration') targetId = values.state_id;
       if (values.to_assignment_type === 'Region') targetId = values.region_id;
-      if (values.to_assignment_type === 'City') targetId = values.city_id;
       if (values.to_assignment_type === 'District') targetId = values.district_id;
       if (values.to_assignment_type === 'District Station') targetId = values.district_id;
       if (user?.role === 'district_admin' && ['District', 'District Station'].includes(values.to_assignment_type)) {
@@ -115,16 +112,49 @@ export default function OfficerDetailsPage({ params }) {
         officer_id: officer.id,
         to_assignment_type: values.to_assignment_type,
         to_assignment_id: targetId,
-        transfer_reason: values.transfer_reason,
         remarks: values.remarks
       });
       message.success("Officer successfully transferred.");
       setIsTransferModalOpen(false);
       transferForm.resetFields();
-      fetchOfficerDetails(); // Reload data to show updated histories
+      fetchOfficerDetails();
     } catch (err) {
       if (err.errorFields) return;
       message.error(err.response?.data?.message || "Transfer failed.");
+    }
+  };
+
+  const handleOpenRankModal = () => {
+    rankForm.setFieldsValue({ rank_id: officer?.rank_id });
+    if (!ranks.length) {
+      api.get('/ranks').then((res) => setRanks(res.data.data || [])).catch(() => {});
+    }
+    setIsRankModalOpen(true);
+  };
+
+  const handleSaveRank = async () => {
+    try {
+      const values = await rankForm.validateFields();
+      await api.post(`/police-officers/${officer.id}/rank`, values);
+      message.success("Darajada sarkaalka waa la badalay.");
+      setIsRankModalOpen(false);
+      fetchOfficerDetails();
+    } catch (err) {
+      if (!err.errorFields) {
+        message.error(err.response?.data?.message || "Badalaadda darajada waa ay guuldarraysatay.");
+      }
+    }
+  };
+
+  const handleSaveStatus = async () => {
+    try {
+      const response = await api.patch(`/police-officers/${officer.id}/employment-status`, {
+        employment_status: employmentStatusDraft,
+      });
+      message.success(response.data?.message || 'Xaaladda shaqada waa la beddelay.');
+      fetchOfficerDetails();
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Xaaladda shaqada lama beddeli karin.');
     }
   };
 
@@ -143,12 +173,11 @@ export default function OfficerDetailsPage({ params }) {
   const transferCols = [
     { title: 'Laga soo Wareejiyey', key: 'from', render: (_, record) => record.from_assignment_type ? `${record.from_assignment_name || record.from_assignment_type} · ${record.from_assignment_type}` : 'Diiwaangelin Cusub' },
     { title: 'Loo Wareejiyey', key: 'to', render: (_, record) => `${record.to_assignment_name || record.to_assignment_type} · ${record.to_assignment_type}` },
-    { title: 'Sababta', dataIndex: 'transfer_reason', key: 'reason' },
     { title: 'Taariikhda', dataIndex: 'transferred_at', key: 'date', render: d => dayjs(d).format('DD MMM YYYY') }
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'state_admin', 'region_admin', 'region_commander', 'city_admin', 'district_admin', 'neighborhood_admin']}>
+    <ProtectedRoute requiredPermissions={['officers.update']}>
       <Card loading={loading} variant="none">
         
         <Space orientation="vertical" size="large" style={{ width: '100%' }}>
@@ -166,55 +195,107 @@ export default function OfficerDetailsPage({ params }) {
               />
               <div>
                 <Title level={2} style={{ margin: 0 }}>{officer?.full_name}</Title>
-                <Text type="secondary"><Tag color="blue">{officer?.force_number}</Tag> {officer?.rank_name}</Text>
+                <Space wrap style={{ marginTop: 6 }}>
+                  <Tag color="cyan" style={{ fontSize: 13, padding: '2px 10px', fontWeight: 600 }}>{officer?.force_number}</Tag>
+                  <Tag color="gold" style={{ fontSize: 13, padding: '2px 10px', fontWeight: 600 }}>
+                    {officer?.rank_name ? `${officer.rank_name}${officer.rank_code ? ` (${officer.rank_code})` : ''}` : 'Darajo lama siin'}
+                  </Tag>
+                </Space>
               </div>
             </Space>
             
-            {canTransfer && <Button type="primary" icon={<SwapOutlined />} size="large" onClick={() => setIsTransferModalOpen(true)}>
-              Wareeji Askariga
-            </Button>}
+            <Space>
+              {(user?.role === 'admin' || user?.role === 'state_admin') && (
+                <Button icon={<StarOutlined />} size="large" onClick={handleOpenRankModal}>
+                  Darajo
+                </Button>
+              )}
+              {canTransfer && <Button type="primary" icon={<SwapOutlined />} size="large" onClick={() => setIsTransferModalOpen(true)}>
+                Wareeji Askariga
+              </Button>}
+            </Space>
           </div>
 
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={16}>
               <Card title="Xogta Askariga" variant="borderless" className="shadow-sm">
-                <Descriptions column={2}>
-                  <Descriptions.Item label="Darajada"><Tag color="blue">{officer?.rank_name || 'Darajo lama siin'}</Tag></Descriptions.Item>
-                  <Descriptions.Item label="Lambarka Ciidanka">{officer?.force_number}</Descriptions.Item>
+                <Descriptions column={2} bordered size="small">
+                  <Descriptions.Item label="Magaca oo Buuxa"><Typography.Text strong>{officer?.full_name}</Typography.Text></Descriptions.Item>
+                  <Descriptions.Item label="Magaca Hooyada">{officer?.mother_name || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Darajada"><Tag color="gold" style={{ fontWeight: 600 }}>{officer?.rank_name ? `${officer.rank_name}${officer.rank_code ? ` (${officer.rank_code})` : ''}` : 'Darajo lama siin'}</Tag></Descriptions.Item>
+                  <Descriptions.Item label="Lambarka Ciidanka"><Tag color="cyan">{officer?.force_number}</Tag></Descriptions.Item>
+                  <Descriptions.Item label="Jinsiga">{String(officer?.gender).toLowerCase() === 'male' || officer?.gender === 'Lab' ? 'Lab' : String(officer?.gender).toLowerCase() === 'female' || officer?.gender === 'Dhedig' ? 'Dhedig' : (officer?.gender || '—')}</Descriptions.Item>
+                  <Descriptions.Item label="Taariikhda Dhalashada / Da’da">
+                    {officer?.date_of_birth ? `${dayjs(officer.date_of_birth).format('DD MMM YYYY')} (${officer?.age || dayjs().diff(officer.date_of_birth, 'year')} sano)` : '—'}
+                  </Descriptions.Item>
                   <Descriptions.Item label="Lambarka Telefoonka">{officer?.phone || 'Ma jiro'}</Descriptions.Item>
-                  <Descriptions.Item label="Email-ka">{officer?.email || 'Ma jiro'}</Descriptions.Item>
-                  <Descriptions.Item label="Jinsiga">{officer?.gender || 'Ma jiro'}</Descriptions.Item>
-                  <Descriptions.Item label="Taariikhda Dhalashada">{officer?.date_of_birth ? dayjs(officer.date_of_birth).format('DD MMM YYYY') : 'Ma jiro'}</Descriptions.Item>
+                  <Descriptions.Item label="National ID">{officer?.national_id || 'Ma jiro'}</Descriptions.Item>
                   <Descriptions.Item label="Cinwaanka Hoyga" span={2}>{officer?.address || 'Ma jiro'}</Descriptions.Item>
-                  <Descriptions.Item label="Xaaladda Shaqada"><Tag color={String(officer?.employment_status).toLowerCase() === 'active' ? 'green' : 'red'}>{officer?.employment_status}</Tag></Descriptions.Item>
+                  <Descriptions.Item label="Xaaladda Shaqada">
+                    <Space wrap align="center">
+                      <Tag color={String(officer?.employment_status).toLowerCase() === 'active' ? 'green' : 'red'}>
+                        {officer?.employment_status || 'Active'}
+                      </Tag>
+                      {canUpdateEmploymentStatus && (
+                        <>
+                          <Select
+                            size="small"
+                            value={employmentStatusDraft}
+                            onChange={setEmploymentStatusDraft}
+                            style={{ width: 150 }}
+                            options={[
+                              { value: 'active', label: 'Active' },
+                              { value: 'suspended', label: 'Suspended' },
+                              { value: 'retired', label: 'Retired' },
+                              { value: 'inactive', label: 'Inactive' },
+                            ]}
+                          />
+                          <Button
+                            size="small"
+                            type="primary"
+                            onClick={handleSaveStatus}
+                            disabled={employmentStatusDraft === String(officer?.employment_status || 'active').toLowerCase()}
+                          >
+                            Kaydi
+                          </Button>
+                        </>
+                      )}
+                    </Space>
+                  </Descriptions.Item>
                 </Descriptions>
-                <Divider />
-                <Title level={5}>Goobtii Laga Diiwaangeliyey</Title>
-                <Descriptions column={3}>
-                  <Descriptions.Item label="Dawlad-goboleedka">{officer?.registration_state_name || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Gobolka">{officer?.registration_region_name || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Degmada">{officer?.registration_district_name || '—'}</Descriptions.Item>
-                </Descriptions>
+                <Divider style={{ margin: '16px 0' }} />
+                <Title level={5} style={{ marginBottom: 12 }}>Goobtii Laga Diiwaangeliyey</Title>
+                {String(officer?.created_by).toLowerCase() === 'admin' || !officer?.registration_state_administration_id ? (
+                  <Tag color="gold" style={{ fontSize: 13, padding: '6px 14px', fontWeight: 600, borderRadius: 6 }}>
+                    Dawladda Dhexe (Taliska Guud)
+                  </Tag>
+                ) : (
+                  <Descriptions column={3} size="small" bordered>
+                    <Descriptions.Item label="Dawlad-goboleedka">{officer?.registration_state_name || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Gobolka">{officer?.registration_region_name || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Degmada">{officer?.registration_district_name || '—'}</Descriptions.Item>
+                  </Descriptions>
+                )}
               </Card>
             </Col>
             
             <Col xs={24} lg={8}>
               <Card 
-                title={<><EnvironmentOutlined /> Goobta Hadda</>} 
+                title={<><EnvironmentOutlined /> Goobta Hadda (Deployment)</>} 
                 variant="borderless"
-                style={{ height: '100%', background: '#f0f2f5' }}
+                style={{ height: '100%', background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', border: '1px solid #e2e8f0', borderRadius: 8 }}
               >
                 {officer?.current_assignment_type === 'Unassigned' ? (
-                   <Text type="warning">Weli goob shaqo looma qoondeyn</Text>
+                   <Text type="warning" strong>Weli goob shaqo looma qoondeyn</Text>
                 ) : (
                   <>
-                    <Title level={4} style={{ marginTop: 0 }}>{officer?.current_assignment_name}</Title>
-                    <Text type="secondary">{officer?.current_assignment_type}</Text>
-                    <Divider />
-                    <Space orientation="vertical" size={4}>
-                      <Text><strong>Dawlad-goboleedka:</strong> {officer?.current_state_name || '—'}</Text>
-                      <Text><strong>Gobolka:</strong> {officer?.current_region_name || '—'}</Text>
-                      <Text><strong>Degmada:</strong> {officer?.current_district_name || '—'}</Text>
+                    <Title level={4} style={{ marginTop: 0, color: '#1e293b' }}>{officer?.current_assignment_name}</Title>
+                    <Tag color="geekblue" style={{ marginBottom: 12 }}>{officer?.current_assignment_type}</Tag>
+                    <Divider style={{ margin: '12px 0' }} />
+                    <Space orientation="vertical" size={6} style={{ width: '100%' }}>
+                      {officer?.current_state_name && <Text><strong>Dawlad-goboleedka:</strong> {officer.current_state_name}</Text>}
+                      {officer?.current_region_name && <Text><strong>Gobolka:</strong> {officer.current_region_name}</Text>}
+                      {officer?.current_district_name && <Text><strong>Degmada:</strong> {officer.current_district_name}</Text>}
                     </Space>
                   </>
                 )}
@@ -258,10 +339,9 @@ export default function OfficerDetailsPage({ params }) {
         >
            <Form form={transferForm} layout="vertical">
               <Form.Item name="to_assignment_type" label="Heerka Loo Wareejinayo" rules={[requiredRule('Heerka loo wareejinayo')]}>
-                  <Select placeholder="e.g. City" onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, city_id: undefined, district_id: undefined })}>
+                  <Select placeholder="Dooro heerka" onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, district_id: undefined })}>
                       {user?.role !== 'district_admin' && <Option value="State Administration">State Administration</Option>}
                       {user?.role !== 'district_admin' && <Option value="Region">Region</Option>}
-                      {user?.role !== 'district_admin' && <Option value="City">City</Option>}
                       <Option value="District">District</Option>
                       <Option value="District Station">District Station</Option>
                   </Select>
@@ -275,37 +355,56 @@ export default function OfficerDetailsPage({ params }) {
                 </Form.Item>
               )}
 
-               {user?.role !== 'district_admin' && assignmentType && ['Region', 'City', 'District', 'District Station'].includes(assignmentType) && (
+               {user?.role !== 'district_admin' && assignmentType && ['Region', 'District', 'District Station'].includes(assignmentType) && (
                  <Form.Item name="region_id" label="Region" rules={[requiredRule('Region')]}>
                    <Select placeholder="Select Region" showSearch optionFilterProp="children" disabled={!selectedState}>
                      {regions.map(r => <Option key={r.id} value={r.id}>{r.region_name}</Option>)}
                    </Select>
                  </Form.Item>
                )}
- 
-               {user?.role !== 'district_admin' && assignmentType && ['City', 'District', 'District Station'].includes(assignmentType) && (
-                 <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
-                   <Select placeholder="Select City" showSearch optionFilterProp="children" disabled={!selectedRegion}>
-                     {cities.map(c => <Option key={c.id} value={c.id}>{c.city_name}</Option>)}
-                   </Select>
-                 </Form.Item>
-               )}
- 
+
                {user?.role !== 'district_admin' && assignmentType && ['District', 'District Station'].includes(assignmentType) && (
                  <Form.Item name="district_id" label="District Station" rules={[requiredRule('District Station')]}>
-                   <Select placeholder="Select District Station" showSearch optionFilterProp="children" disabled={!selectedCity}>
+                   <Select placeholder="Select District Station" showSearch optionFilterProp="children" disabled={!selectedRegion}>
                      {districts.map(d => <Option key={d.id} value={d.id}>{d.district_name}</Option>)}
                    </Select>
                  </Form.Item>
                )}
 
-              <Form.Item name="transfer_reason" label="Sababta Wareejinta" rules={[requiredRule('Sababta wareejinta'), textLengthRule('Sababta wareejinta', 5, 1000)]}>
-                <Input.TextArea rows={2} />
-              </Form.Item>
               <Form.Item name="remarks" label="Faallo Dheeraad ah (Ikhtiyaari)" rules={[textLengthRule('Faallooyinka', 3, 1000)]}>
                 <Input.TextArea rows={2} />
               </Form.Item>
            </Form>
+      </Modal>
+
+      {/* Change Rank Modal */}
+      <Modal
+        title={`Darajo: ${officer?.full_name}`}
+        open={isRankModalOpen}
+        onCancel={() => setIsRankModalOpen(false)}
+        onOk={handleSaveRank}
+        okText="Kaydi Darajada"
+        cancelText="Jooji"
+      >
+        <Form form={rankForm} layout="vertical">
+          <Form.Item name="rank_id" label="Dooro Darajada" rules={[{ required: true, message: 'Dooro darajada.' }]}>
+            <Select
+              placeholder="Dooro darajada"
+              options={(ranks || [])
+                .filter(r => {
+                  const code = String(r.rank_code || '').trim().toUpperCase();
+                  const name = String(r.rank_name || '').toLowerCase();
+                  const isCommissioned = COMMISSIONED_CODES.has(code) || name.includes('sareeye') || name.includes('gaashaanle') || name.includes('dhamme') || name.includes('xiddigle');
+                  if (user?.role === 'admin') {
+                    return isCommissioned;
+                  }
+                  return STATE_ADMIN_RANK_CODES.has(code) || !isCommissioned;
+                })
+                .map(r => ({ value: r.id, label: `${r.rank_name} (${r.rank_code || ''})` }))
+              }
+            />
+          </Form.Item>
+        </Form>
       </Modal>
 
     </ProtectedRoute>

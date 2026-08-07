@@ -14,8 +14,9 @@ const permissions=[
 ];
 const grants={
  admin:['*'], sub_admin:['users.manage','officers.view','officers.create','reports.view'],
- state_admin:['officers.view','officers.update','officers.transfer','officers.approve','officers.activate','ranks.assign','reports.view','locations.view'],
- region_admin:['users.manage','officers.view','officers.transfer','ob.view','cases.view','reports.view','locations.view','locations.manage'], district_admin:['users.manage','officers.update','officers.transfer','ob.view','cases.view','cases.investigate','station_jail.view','reports.view','locations.view'],
+ state_admin:['officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ranks.assign','ranks.manage','reports.view','locations.view','locations.manage','ob.view','cases.view'],
+ region_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ob.view','cases.view','reports.view','locations.view','locations.manage'],
+ district_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','ob.view','cases.view','cases.investigate','station_jail.view','reports.view','locations.view'],
  personnel_registry:['officers.view','officers.create'], ob_staff:['ob.view','ob.create','ob.update','ob.print'],
  investigator:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.manage'],
  cid:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.manage','reports.view'], cid_director:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.manage','reports.view'], cid_supervisor:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.manage','reports.view'], cid_officer:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.manage'],
@@ -27,7 +28,8 @@ async function run(){
  await db.query(`CREATE TABLE IF NOT EXISTS permissions(id INT PRIMARY KEY AUTO_INCREMENT,permission_key VARCHAR(100) NOT NULL UNIQUE,description VARCHAR(255),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
  await db.query(`CREATE TABLE IF NOT EXISTS role_permissions(role_id INT NOT NULL,permission_id INT NOT NULL,granted_by VARCHAR(100),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(role_id,permission_id),CONSTRAINT fk_rp_role FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE,CONSTRAINT fk_rp_permission FOREIGN KEY(permission_id) REFERENCES permissions(id) ON DELETE CASCADE)`);
  await db.query(`CREATE TABLE IF NOT EXISTS user_permissions(user_id INT NOT NULL,permission_id INT NOT NULL,effect ENUM('ALLOW','DENY') NOT NULL,granted_by VARCHAR(100),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,permission_id),CONSTRAINT fk_up_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,CONSTRAINT fk_up_permission FOREIGN KEY(permission_id) REFERENCES permissions(id) ON DELETE CASCADE)`);
- await db.query(`CREATE TABLE IF NOT EXISTS permission_change_history(id INT PRIMARY KEY AUTO_INCREMENT,actor VARCHAR(100) NOT NULL,target_type ENUM('ROLE','USER') NOT NULL,target_id INT NOT NULL,permission_key VARCHAR(100) NOT NULL,old_effect VARCHAR(20),new_effect VARCHAR(20),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+ await db.query(`CREATE TABLE IF NOT EXISTS permission_change_history(id INT PRIMARY KEY AUTO_INCREMENT,actor VARCHAR(100) NOT NULL,target_type ENUM('ROLE','USER') NOT NULL,target_id INT NOT NULL,permission_key VARCHAR(100) NOT NULL,old_effect TEXT,new_effect TEXT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+ await db.query(`ALTER TABLE permission_change_history MODIFY COLUMN old_effect TEXT NULL, MODIFY COLUMN new_effect TEXT NULL`);
  for(const [name,description] of permissions)await db.query('INSERT INTO permissions(permission_key,description) VALUES(?,?) ON DUPLICATE KEY UPDATE description=VALUES(description)',[name,description]);
  for(const role of ['sub_admin','state_admin','region_admin','district_admin','personnel_registry','ob_staff','investigator','station_jail'])await db.query('INSERT INTO roles(name,description) VALUES(?,?) ON DUPLICATE KEY UPDATE description=VALUES(description)',[role,role.replaceAll('_',' ')]);
  for(const [role,keys] of Object.entries(grants)){

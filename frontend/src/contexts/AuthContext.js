@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }) => {
       
       const roleRedirects = {
         admin: '/dashboard/admin',
-        sub_admin: '/dashboard/admin',
+        sub_admin: '/police-officers',
         personnel_registry: '/police-officers',
         investigator: '/dashboard/cid',
         station_jail: '/dashboard/jail',
@@ -105,7 +105,7 @@ export const AuthProvider = ({ children }) => {
         staff: '/cases'
       };
       
-      router.push(roleRedirects[normalizedUser.role] || '/cases');
+      router.push(roleRedirects[normalizedUser.role] || '/police-officers');
       return { success: true };
     } catch (error) {
       return { 

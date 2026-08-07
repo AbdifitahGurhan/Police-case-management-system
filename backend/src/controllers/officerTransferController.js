@@ -3,15 +3,17 @@ const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 
 const STATE_ADMIN_RANK_CODES = new Set(['AL', 'SA', 'XDH', 'LXDH', 'LA', 'SXD']);
+const DISTRICT_DEPLOY_TARGET_ROLES = new Set(['sub_admin', 'personnel_registry', 'ob_staff', 'investigator', 'station_jail']);
 
 exports.transferOfficer = async (req, res, next) => {
   const connection = await db.pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    const { officer_id, to_assignment_type, to_assignment_id, transfer_reason, remarks } = req.body;
+    let { officer_id, to_assignment_type, to_assignment_id, transfer_reason, remarks } = req.body;
+    transfer_reason = transfer_reason || 'Hawlgelin / Deployment';
 
-    if (!officer_id || !to_assignment_type || !transfer_reason) {
+    if (!officer_id || !to_assignment_type) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
@@ -39,38 +41,83 @@ exports.transferOfficer = async (req, res, next) => {
         });
       }
     }
+    if (req.user.role === 'district_admin' && to_assignment_type !== 'Sub-Admin') {
+      await connection.rollback();
+      return res.status(403).json({
+        success: false,
+        message: 'Maamulaha Degmada wuxuu askari u deploy gareyn karaa oo keliya User Degmo degmadiisa ah.',
+      });
+    }
 
     // 1. Get current active assignment for transfer history
     const [currentRows] = await connection.query('SELECT * FROM officer_assignments WHERE officer_id = ? AND is_current = 1 ORDER BY assigned_at DESC LIMIT 1', [officer_id]);
     const currentAssignment = currentRows.length ? currentRows[0] : null;
 
-    let targetLocation = null;
+    let targetLocation = { state_administration_id: null, region_id: null, district_id: null };
+    let targetUser = null;
     if (to_assignment_type === 'State Administration') {
-      [[targetLocation]] = await connection.query(
-        'SELECT id AS state_administration_id,NULL AS region_id,NULL AS district_id FROM state_administrations WHERE id=?',
-        [to_assignment_id]
+      const [[sa]] = await connection.query('SELECT id FROM state_administrations WHERE id = ?', [to_assignment_id]);
+      if (sa) targetLocation.state_administration_id = sa.id;
+      else targetLocation = null;
+    } else if (to_assignment_type === 'Sub-Admin') {
+      const subAdminParams = [to_assignment_id, ...DISTRICT_DEPLOY_TARGET_ROLES];
+      let subAdminScopeWhere = '';
+      if (req.user.role === 'district_admin') {
+        subAdminScopeWhere = ' AND u.district_id = ?';
+        subAdminParams.push(req.user.scopeId);
+      }
+      const [[saUser]] = await connection.query(
+        `SELECT u.id, u.state_administration_id, u.region_id, u.district_id
+         FROM users u
+          JOIN roles r ON r.id = u.role_id
+          WHERE u.id = ?
+            AND LOWER(REPLACE(r.name, '-', '_')) IN (${[...DISTRICT_DEPLOY_TARGET_ROLES].map(() => '?').join(',')})
+            AND u.is_active = 1
+            AND UPPER(COALESCE(u.status, 'ACTIVE')) = 'ACTIVE'
+            ${subAdminScopeWhere}`,
+        subAdminParams
       );
+      if (saUser) {
+        targetUser = saUser;
+        targetLocation.state_administration_id = saUser.state_administration_id || null;
+        targetLocation.region_id = saUser.region_id || null;
+        targetLocation.district_id = saUser.district_id || null;
+      } else targetLocation = null;
     } else if (to_assignment_type === 'Region') {
-      [[targetLocation]] = await connection.query(
-        'SELECT state_administration_id,id AS region_id,NULL AS district_id FROM regions WHERE id=?',
-        [to_assignment_id]
-      );
+      const [[rg]] = await connection.query('SELECT id, state_administration_id FROM regions WHERE id = ?', [to_assignment_id]);
+      if (rg) {
+        targetLocation.region_id = rg.id;
+        targetLocation.state_administration_id = rg.state_administration_id;
+      } else targetLocation = null;
     } else if (to_assignment_type === 'City') {
-      [[targetLocation]] = await connection.query(
-        `SELECT r.state_administration_id,c.region_id,NULL AS district_id
-         FROM cities c JOIN regions r ON r.id=c.region_id WHERE c.id=?`,
+      const [[ct]] = await connection.query(
+        `SELECT c.id, c.region_id, r.state_administration_id
+         FROM cities c LEFT JOIN regions r ON r.id = c.region_id WHERE c.id = ?`,
         [to_assignment_id]
       );
+      if (ct) {
+        targetLocation.region_id = ct.region_id;
+        targetLocation.state_administration_id = ct.state_administration_id;
+      } else targetLocation = null;
     } else if (['District', 'District Station'].includes(to_assignment_type)) {
-      [[targetLocation]] = await connection.query(
-        `SELECT r.state_administration_id,c.region_id,d.id AS district_id
-         FROM districts d JOIN cities c ON c.id=d.city_id JOIN regions r ON r.id=c.region_id WHERE d.id=?`,
+      const [[dt]] = await connection.query(
+        `SELECT d.id, c.region_id, r.state_administration_id
+         FROM districts d
+         LEFT JOIN cities c ON c.id = d.city_id
+         LEFT JOIN regions r ON r.id = c.region_id
+         WHERE d.id = ?`,
         [to_assignment_id]
       );
+      if (dt) {
+        targetLocation.district_id = dt.id;
+        targetLocation.region_id = dt.region_id;
+        targetLocation.state_administration_id = dt.state_administration_id;
+      } else targetLocation = null;
     }
-    if (!targetLocation) {
+
+    if (!to_assignment_id || !targetLocation) {
       await connection.rollback();
-      return res.status(400).json({ success: false, message: 'Goobta transfer-ka la doortay lama helin.' });
+      return res.status(400).json({ success: false, message: 'Dooro goobta la wareejinayo oo dhameystiran.' });
     }
 
     // 2. Deactivate ALL previous active assignments for this officer to ensure single active location
@@ -94,6 +141,34 @@ exports.transferOfficer = async (req, res, next) => {
        WHERE id=?`,
       [targetLocation.state_administration_id, targetLocation.region_id, targetLocation.district_id, officer_id]
     );
+
+    if (targetUser) {
+      const [[deployedOfficer]] = await connection.query(
+        `SELECT po.id, po.full_name, po.phone, rk.rank_name
+         FROM police_officers po
+         LEFT JOIN ranks rk ON rk.id = po.rank_id
+         WHERE po.id = ?`,
+        [officer_id]
+      );
+      if (deployedOfficer) {
+        await connection.query('UPDATE users SET police_officer_id = NULL WHERE police_officer_id = ? AND id <> ?', [officer_id, targetUser.id]);
+        await connection.query(
+          `UPDATE users
+           SET police_officer_id = ?,
+               full_name = ?,
+               phone = COALESCE(?, phone),
+               \`rank\` = COALESCE(?, \`rank\`)
+           WHERE id = ?`,
+          [
+            deployedOfficer.id,
+            deployedOfficer.full_name,
+            deployedOfficer.phone || null,
+            deployedOfficer.rank_name || null,
+            targetUser.id,
+          ]
+        );
+      }
+    }
 
     // 5. Record transfer in history
     await connection.query(

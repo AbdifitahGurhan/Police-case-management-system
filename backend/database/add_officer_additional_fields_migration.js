@@ -20,7 +20,7 @@
     if(!r.length) await db.query("ALTER TABLE police_officers ADD COLUMN blood_group VARCHAR(10) NULL AFTER weapons_issued");
 
     [r]=await db.query("SHOW COLUMNS FROM police_officers LIKE 'station_id'");
-    if(!r.length) await db.query("ALTER TABLE police_officers ADD COLUMN station_id INT NULL AFTER district_id");
+    if(!r.length) await db.query("ALTER TABLE police_officers ADD COLUMN station_id INT NULL");
 
     console.log('Added officer additional fields if missing.');
   }catch(e){console.error(e);}

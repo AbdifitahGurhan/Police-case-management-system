@@ -46,7 +46,8 @@ exports.getAll = async (req, res, next) => {
           (SELECT 'Region' FROM regions WHERE commander_officer_id = o.id LIMIT 1),
           (SELECT 'State Administration' FROM state_administrations WHERE commander_officer_id = o.id LIMIT 1),
           'Unassigned'
-        ) AS current_assignment_type
+        ) AS current_assignment_type,
+        (EXISTS(SELECT 1 FROM officer_transfers ot WHERE ot.officer_id = o.id AND LOWER(ot.transferred_by) IN ('admin', 'system')) OR LOWER(o.created_by) IN ('admin', 'system')) AS is_deployed_by_admin
       FROM police_officers o
       LEFT JOIN ranks r ON o.rank_id = r.id
       WHERE 1=1 ${scope}
@@ -60,7 +61,7 @@ exports.getById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const [rows] = await db.query(`
-      SELECT o.*, TIMESTAMPDIFF(YEAR,o.date_of_birth,CURDATE()) AS age, r.rank_name,
+      SELECT o.*, TIMESTAMPDIFF(YEAR,o.date_of_birth,CURDATE()) AS age, r.rank_name, r.rank_code,
              registration_state.state_name AS registration_state_name,
              registration_region.region_name AS registration_region_name,
              registration_district.district_name AS registration_district_name,
@@ -245,11 +246,126 @@ exports.reviewApproval = async (req, res, next) => {
   }
 };
 
+exports.assignRank = async (req, res, next) => {
+  try {
+    const { rank_id, notes } = req.body;
+    if (!rank_id) {
+      return res.status(400).json({ success: false, message: 'Dooro darajada cusub.' });
+    }
+    const [[officer]] = await db.query('SELECT * FROM police_officers WHERE id = ?', [req.params.id]);
+    if (!officer) return res.status(404).json({ success: false, message: 'Askariga lama helin.' });
+
+    const [[rank]] = await db.query('SELECT id, rank_name, rank_code FROM ranks WHERE id = ?', [rank_id]);
+    if (!rank) return res.status(400).json({ success: false, message: 'Darajada la doortay lama helin.' });
+
+    if (req.user.role === 'state_admin') {
+      const code = String(rank.rank_code || '').trim().toUpperCase();
+      if (!STATE_ADMIN_RANK_CODES.has(code)) {
+        return res.status(403).json({
+          success: false,
+          message: 'State Administration wuxuu bixin karaa oo keliya darajooyinka Al, SA, XDH, LXDH, LA iyo SXD.',
+        });
+      }
+    }
+
+    await db.query(
+      `UPDATE police_officers
+       SET rank_id = ?, approval_status = 'APPROVED', employment_status = 'active',
+           approved_by = COALESCE(approved_by, ?), approved_at = COALESCE(approved_at, NOW())
+       WHERE id = ?`,
+      [rank_id, req.user.username, officer.id]
+    );
+
+    if (officer.approval_status !== 'APPROVED') {
+      await db.query(
+        'INSERT INTO officer_approval_history(officer_id, previous_status, new_status, notes, performed_by) VALUES(?, ?, ?, ?, ?)',
+        [officer.id, officer.approval_status, 'APPROVED', notes || 'Darajo ayaa la siiyey, status-kiina wuxuu noqday APPROVED.', req.user.username]
+      );
+    }
+
+    await writeAuditLog({
+      userId: req.user.username,
+      userEmail: req.user.email,
+      action: 'UPDATE_OFFICER_RANK',
+      entityType: 'police_officers',
+      entityId: officer.id,
+      oldData: { rank_id: officer.rank_id, approval_status: officer.approval_status },
+      newData: { rank_id, rank_name: rank.rank_name, approval_status: 'APPROVED', notes },
+    });
+
+    res.json({ success: true, message: `Darajada sarkaalka waa la bixiyey/badalay (${rank.rank_name}), status-kiisiina wuxuu noqday APPROVED.` });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.updateEmploymentStatus = async (req, res, next) => {
+  try {
+    const allowedRoles = new Set(['admin', 'state_admin', 'sub_admin']);
+    if (!allowedRoles.has(String(req.user.role || '').toLowerCase())) {
+      return res.status(403).json({
+        success: false,
+        message: 'Xaaladda shaqada waxaa beddeli kara oo keliya Admin, State Admin ama Sub-Admin.',
+      });
+    }
+
+    const { employment_status } = req.body;
+    const allowedStatuses = new Set(['active', 'suspended', 'retired', 'inactive']);
+    const normalizedStatus = String(employment_status || '').trim().toLowerCase();
+
+    if (!allowedStatuses.has(normalizedStatus)) {
+      return res.status(400).json({ success: false, message: 'Xaaladda shaqada sax ah dooro.' });
+    }
+
+    const [[officer]] = await db.query(
+      'SELECT id, full_name, employment_status FROM police_officers WHERE id = ?',
+      [req.params.id]
+    );
+    if (!officer) {
+      return res.status(404).json({ success: false, message: 'Askariga lama helin.' });
+    }
+
+    await db.query(
+      'UPDATE police_officers SET employment_status = ? WHERE id = ?',
+      [normalizedStatus, officer.id]
+    );
+
+    await writeAuditLog({
+      userId: req.user.username,
+      userEmail: req.user.email,
+      action: 'UPDATE_OFFICER_EMPLOYMENT_STATUS',
+      entityType: 'police_officers',
+      entityId: officer.id,
+      oldData: { employment_status: officer.employment_status },
+      newData: { employment_status: normalizedStatus },
+    });
+
+    res.json({
+      success: true,
+      message: `Xaaladda shaqada ee ${officer.full_name} waxaa loo beddelay ${normalizedStatus}.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 exports.update = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { full_name, mother_name, phone, gender, date_of_birth, address,
-      national_id, department, position, employment_date, employment_status, weapons_issued, blood_group, station_id } = req.body;
+    const [[officer]] = await db.query('SELECT id, created_by FROM police_officers WHERE id = ?', [id]);
+    if (!officer) return res.status(404).json({ success: false, message: 'Askariga lama helin.' });
+
+    if (req.user.role !== 'admin') {
+      const [[adminTransfer]] = await db.query(
+        `SELECT id FROM officer_transfers WHERE officer_id = ? AND LOWER(transferred_by) IN ('admin', 'system') LIMIT 1`,
+        [id]
+      );
+      if (adminTransfer || ['admin', 'system'].includes(String(officer.created_by || '').toLowerCase())) {
+        return res.status(403).json({
+          success: false,
+          message: 'Ma beddeli kartid xogta sarkaalka uu Admin-ku soo wareejiyey ama soo qoondeeyey.'
+        });
+      }
+    }
 
     const validationError = validateOfficerInput(phone, date_of_birth);
     if (validationError) {

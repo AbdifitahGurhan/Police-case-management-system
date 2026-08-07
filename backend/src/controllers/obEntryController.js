@@ -20,6 +20,14 @@ const parseList = (value, field) => {
   try { const parsed = JSON.parse(value); if (Array.isArray(parsed)) return parsed; } catch (_) {}
   const error = new Error(`${field} must be a valid array.`); error.status = 400; throw error;
 };
+const formatDateForDb = (value) => {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  const dateObj = new Date(str);
+  if (isNaN(dateObj.getTime())) return str.slice(0, 19).replace('T', ' ');
+  return dateObj.toISOString().slice(0, 19).replace('T', ' ');
+};
 const validPhone = value => !value || /^\+?[0-9][0-9\s-]{6,19}$/.test(String(value));
 const OB_SUPERVISOR_ROLES = new Set(['admin','district_admin','state_commander','region_commander','district_commander','police_station_commander']);
 const audit = (req, action, entityType, entityId, oldData, newData) => writeAuditLog({
@@ -242,7 +250,7 @@ const getDeployedOfficersForLocation = async (req, res, next) => {
 const createObEntry = async (req, res, next) => {
   let connection;
   try {
-    const { incident_type, incident_location, description, reported_by, reporter_phone, case_title, case_type, case_level,
+    const { incident_type, incident_location, description, reported_by, reporter_phone, reporter_gender, case_title, case_type, case_level,
       reporter_id_type, reporter_id_number, reporter_email, reporter_address, respondent_name, respondent_id_type,
       respondent_id_number, respondent_phone, respondent_email, respondent_address, incident_datetime, claim_value,
       registered_by_name, registered_by_rank, court_level } = req.body;
@@ -280,16 +288,16 @@ const createObEntry = async (req, res, next) => {
         [result] = await connection.query(
           `INSERT INTO ob_entries
             (ob_number, case_title, case_type, court_level, case_level, incident_type, incident_location, incident_datetime, claim_value,
-             description, reported_by, reporter_phone, reporter_id_type, reporter_id_number, reporter_email, reporter_address,
+             description, reported_by, reporter_phone, reporter_gender, reporter_id_type, reporter_id_number, reporter_email, reporter_address,
              respondent_name, respondent_id_type, respondent_id_number, respondent_phone, respondent_email, respondent_address,
              registered_by_user_id, registered_by_name, registered_by_role, registered_by_rank,
              state_administration_id, region_id, district_id,
              registration_date, registration_time, status, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REGISTERED', ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REGISTERED', ?)`,
           [
             obNumber, case_title, case_type, court_level, case_level || 'normal', incident_type, incident_location,
-            incident_datetime || null, claim_value || null, description || null, reported_by, reporter_phone || null,
-            reporter_id_type || null, reporter_id_number || null, reporter_email || null, reporter_address || null,
+            formatDateForDb(incident_datetime), claim_value || null, description || null, reported_by, reporter_phone || null,
+            reporter_gender || null, reporter_id_type || null, reporter_id_number || null, reporter_email || null, reporter_address || null,
             respondent_name || null, respondent_id_type || null, respondent_id_number || null, respondent_phone || null,
             respondent_email || null, respondent_address || null,
             req.user.id,
@@ -322,7 +330,7 @@ const createObEntry = async (req, res, next) => {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,${inCustody ? 'NULL' : 'NOW()'},?,?,?)`,
         [result.insertId, String(person.full_name || 'Lama aqoonsan').trim(), person.phone || null, person.id_type || null, person.id_number || null, person.gender || null,
           person.address || null, person.description || null, person.identifying_information || null, inCustody ? 'IN_CUSTODY' : 'NOT_IN_CUSTODY', status,
-          inCustody ? person.arrest_date : null, inCustody ? person.arrest_location : null, inCustody ? person.arresting_officer : null,
+          inCustody ? formatDateForDb(person.arrest_date) : null, inCustody ? person.arrest_location : null, inCustody ? person.arresting_officer : null,
           inCustody ? 1 : 0, req.user.username, req.user.username]
       );
       await connection.query('INSERT INTO ob_accused_status_history (ob_entry_id,accused_id,previous_status,new_status,action,performed_by) VALUES (?,?,NULL,?,?,?)',

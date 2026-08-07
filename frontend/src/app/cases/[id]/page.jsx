@@ -10,7 +10,8 @@ import {
 import {
   ArrowLeftOutlined, EditOutlined, ShareAltOutlined, PlusOutlined,
   UserAddOutlined, SolutionOutlined, FileAddOutlined, HistoryOutlined,
-  DownloadOutlined, TeamOutlined, UserOutlined, CheckCircleOutlined
+  DownloadOutlined, TeamOutlined, UserOutlined, CheckCircleOutlined,
+  PrinterOutlined, EyeOutlined, MinusCircleOutlined
 } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
@@ -58,6 +59,8 @@ export default function CaseDetailsPage() {
   const [isArrestModalOpen, setIsArrestModalOpen] = useState(false);
   const [isReleaseModalOpen, setIsReleaseModalOpen] = useState(false);
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
+  const [isInvestigationModalOpen, setIsInvestigationModalOpen] = useState(false);
+  const [previewInvestigation, setPreviewInvestigation] = useState(null);
   const [selectedSuspect, setSelectedSuspect] = useState(null);
   const [suspectFaceImage, setSuspectFaceImage] = useState('');
   const [editingSuspect, setEditingSuspect] = useState(null);
@@ -73,6 +76,7 @@ export default function CaseDetailsPage() {
   const [arrestForm] = Form.useForm();
   const [releaseSuspectForm] = Form.useForm();
   const [assignmentForm] = Form.useForm();
+  const [investigationForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -489,6 +493,169 @@ export default function CaseDetailsPage() {
     }
   };
 
+  const handleOpenInvestigationModal = async () => {
+    investigationForm.resetFields();
+    const defaultInvestigatorName = data.officer_name || user?.fullName || user?.username || '';
+    investigationForm.setFieldsValue({
+      investigation_number: `INV-${dayjs().format('YYYY')}-${Math.floor(10000 + Math.random() * 90000)}`,
+      ob_number: data.ob_number || '',
+      investigator_name: defaultInvestigatorName,
+      investigation_date: dayjs(),
+      status: 'Socota',
+      evidence_data: [],
+      witnesses_data: [],
+      steps_data: [],
+    });
+    setIsInvestigationModalOpen(true);
+    if (!data.officer_name && user?.role === 'district_admin') {
+      try {
+        const res = await api.get('/users/sub-admins');
+        const investigator = (res.data.data || []).find(item => String(item.role || '').toLowerCase().replace('-', '_') === 'investigator');
+        if (investigator?.full_name) {
+          investigationForm.setFieldsValue({ investigator_name: investigator.full_name });
+        }
+      } catch {
+        // Keep the visible fallback name; failing to prefill should not block the form.
+      }
+    }
+  };
+
+  const handleCreateInvestigation = async (values) => {
+    setSubmitting(true);
+    try {
+      const payload = {
+        ...values,
+        ob_number: data.ob_number || '',
+        investigation_date: values.investigation_date ? values.investigation_date.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+      };
+      await api.post(`/cases/${id}/investigations`, payload);
+      message.success("Warbixinta baaritaanka si guul leh ayaa loo diiwaangeliyey.");
+      setIsInvestigationModalOpen(false);
+      investigationForm.resetFields();
+      fetchCaseDetails();
+    } catch (err) {
+      message.error(err.response?.data?.message || "Diiwaangelinta baaritaanka way fashilantay.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePrintInvestigationReport = (inv) => {
+    if (!inv) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      message.warning('Fadlan ogolow popups-ka si aad u daabacdo warbixinta baaritaanka.');
+      return;
+    }
+
+    const evList = typeof inv.evidence_data === 'string' ? JSON.parse(inv.evidence_data || '[]') : (inv.evidence_data || inv.evList || []);
+    const witList = typeof inv.witnesses_data === 'string' ? JSON.parse(inv.witnesses_data || '[]') : (inv.witnesses_data || inv.witList || []);
+    const stepList = typeof inv.steps_data === 'string' ? JSON.parse(inv.steps_data || '[]') : (inv.steps_data || inv.stepList || []);
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Warbixinta Baaritaanka #${inv.investigation_number}</title>
+          <style>
+            @page { size: A4; margin: 15mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #111; padding: 20px; line-height: 1.5; }
+            .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px; }
+            .header h1 { margin: 0; font-size: 22px; text-transform: uppercase; color: #002B49; }
+            .header h2 { margin: 4px 0 0 0; font-size: 16px; font-weight: normal; color: #555; }
+            .section-title { font-size: 14px; font-weight: bold; background: #eef2f6; padding: 6px 10px; margin-top: 20px; margin-bottom: 10px; border-left: 4px solid #002B49; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 13px; }
+            th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: left; vertical-align: top; }
+            th { background-color: #f7f9fa; font-weight: 600; width: 30%; }
+            .box { border: 1px solid #ccc; padding: 10px; background: #fafafa; border-radius: 4px; font-size: 13px; white-space: pre-wrap; margin-bottom: 10px; }
+            .footer { margin-top: 40px; display: flex; justify-content: space-between; }
+            .signature-block { width: 45%; text-align: center; border-top: 1px dashed #777; padding-top: 8px; margin-top: 50px; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>CIIDANKA BOOLISKA SOOMAALIYEED</h1>
+            <h2>Diiwaanka Rasmiga ah ee Baaritaanka Kiisaska (Police Investigation Report)</h2>
+          </div>
+
+          <div class="section-title">1. XOGTA OTOMAATIG AH EE OB-GA IYO BAARITAANKA</div>
+          <table>
+            <tr><th>Lambarka Baaritaanka (Investigation No.)</th><td><b>${inv.investigation_number}</b></td></tr>
+            <tr><th>Lambarka OB</th><td>${inv.ob_number || data.ob_number || '—'}</td></tr>
+            <tr><th>Cinwaanka Dacwadda</th><td>${data.title || '—'}</td></tr>
+            <tr><th>Nooca Dacwadda</th><td>${data.case_type || '—'}</td></tr>
+            <tr><th>Goobta Dhacdada</th><td>${data.incident_location || '—'}</td></tr>
+            <tr><th>Taariikhda & Waqtiga Dhacdada</th><td>${data.incident_date ? dayjs(data.incident_date).format('DD/MM/YYYY HH:mm') : '—'}</td></tr>
+            <tr><th>Soo Dacwoodaha (Complainant)</th><td>${data.complainant_name ? `${data.complainant_name} (${data.complainant_phone || ''})` : '—'}</td></tr>
+            <tr><th>Laga Dacwooday (Accused)</th><td>${(data.suspects || []).map(s => s.full_name).join(', ') || '—'}</td></tr>
+            <tr><th>Dhibbanaha/Dhibbanayaasha</th><td>${(data.victims || []).map(v => v.full_name).join(', ') || '—'}</td></tr>
+            <tr><th>Faahfaahinta Dacwadda (OB Summary)</th><td>${data.description || '—'}</td></tr>
+          </table>
+
+          <div class="section-title">2. CADDEYMAHA LA HELAY (EVIDENCE COLLECTED)</div>
+          ${evList.length === 0 ? '<p style="font-size:13px; color:#666;">Wax caddeymo ah oo la qaray ma jiraan.</p>' : `
+            <table>
+              <thead><tr><th style="width:10%">#</th><th style="width:50%">Faahfaahinta Caddaynta</th><th style="width:40%">Faylka / Sawirka Attached</th></tr></thead>
+              <tbody>
+                ${evList.map((e, idx) => `<tr><td>${idx + 1}</td><td>${e.description || '—'}</td><td>${e.file_url ? `<a href="${e.file_url}" target="_blank">Eeg Faylka</a>` : 'File ma leh'}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          `}
+
+          <div class="section-title">3. MARKHAATIYAASHA IYO WARBIXINTOODA (WITNESSES & STATEMENTS)</div>
+          ${witList.length === 0 ? '<p style="font-size:13px; color:#666;">Wax markhaatiyo ah oo la qaray ma jiraan.</p>' : `
+            <table>
+              <thead><tr><th style="width:30%">Magaca Markhaatiga</th><th style="width:25%">Telefoonka</th><th style="width:45%">Hadalka / Warbixinta Markhaatiga</th></tr></thead>
+              <tbody>
+                ${witList.map(w => `<tr><td><b>${w.full_name || '—'}</b></td><td>${w.phone || '—'}</td><td>${w.statement || '—'}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          `}
+
+          <div class="section-title">4. TALLAABOOYINKA BAARITAANKA (INVESTIGATION STEPS)</div>
+          ${stepList.length === 0 ? '<p style="font-size:13px; color:#666;">Wax tallaabooyin ah oo la qaray ma jiraan.</p>' : `
+            <table>
+              <thead><tr><th style="width:30%">Magaca Tallaabada</th><th style="width:20%">Nooca</th><th style="width:50%">Faahfaahinta / Attachments</th></tr></thead>
+              <tbody>
+                ${stepList.map(s => `<tr><td><b>${s.step_label || '—'}</b></td><td>${s.type === 'file' ? 'Sawir/Fayl' : 'Qoraal'}</td><td>${s.type === 'file' ? (s.step_file ? `<a href="${s.step_file}" target="_blank">Eeg Attachment</a>` : 'Fayl ma leh') : (s.step_text || '—')}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          `}
+
+          <div class="section-title">5. GUNGAARKA BAARITAANKA (INVESTIGATION SUMMARY)</div>
+          <div class="box">${inv.summary || '—'}</div>
+
+          <div class="section-title">6. NATIIJADA BAARITAANKA (INVESTIGATION OUTCOME)</div>
+          <div class="box">${inv.outcome || '—'}</div>
+
+          <div class="section-title">7. GO'AANKA BAARAHA (INVESTIGATOR RECOMMENDATION)</div>
+          <div class="box">${inv.recommendation || '—'}</div>
+
+          <table>
+            <tr><th>Xaaladda Baaritaanka</th><td><b>${inv.status || 'Socota'}</b></td></tr>
+            <tr><th>Magaca Baaraha</th><td><b>${inv.investigator_name || '—'}</b></td></tr>
+            <tr><th>Taariikhda Baaritaanka la Furay</th><td>${inv.investigation_date ? dayjs(inv.investigation_date).format('DD/MM/YYYY') : '—'}</td></tr>
+          </table>
+
+          <div class="footer">
+            <div class="signature-block">
+              Saxiixa Sarkaalka Baaraha<br />
+              <b>${inv.investigator_name || 'Sarkaal Baare'}</b>
+            </div>
+            <div class="signature-block">
+              Xaqiijinta & Shaambadda Saldhigga<br />
+              <b>Taliyaha Saldhigga / CID</b>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   const submitForReview = async () => {
     try {
       await api.post('/confirmations/submit', { case_id: id });
@@ -576,7 +743,7 @@ export default function CaseDetailsPage() {
   const canAssignCase = ['admin', 'district_admin', 'district_commander', 'police_station_commander'].includes(role);
   const canUpdateStatus = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
   const canReferCase = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
-  const canManageInvestigation = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
+  const canManageInvestigation = ['admin', 'sub_admin', 'officer', 'investigator', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...stationOperationRoles, ...commanderRoles].includes(role) || user?.permissions?.includes('*') || user?.permissions?.includes('cases.investigate');
   const canAddWitness = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
   const caseEndedAtCourtReferral = data.status === 'referred_to_court';
 
@@ -751,6 +918,82 @@ export default function CaseDetailsPage() {
     </Space>
   );
 
+  const investigationTab = (
+    <Space orientation="vertical" style={{ width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>Diiwaanka Baaritaanka Kiiska</Title>
+          <Text type="secondary">Maamul oo diiwaangeli warbixinta baaritaanka nidaamka</Text>
+        </div>
+        {canManageInvestigation && !caseEndedAtCourtReferral && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleOpenInvestigationModal}
+          >
+            Ku dar baaris
+          </Button>
+        )}
+      </div>
+
+      {(data.investigations || []).length === 0 ? (
+        <Card size="small" style={{ textAlign: 'center', padding: 32 }}>
+          <Space orientation="vertical" size="middle">
+            <Text type="secondary">Wali ma jiro baaritaan la diiwaangeliyey kiiskan. Taabo batoonka hoose si aad u furto foomka baaritaanka cusub.</Text>
+            {canManageInvestigation && !caseEndedAtCourtReferral && (
+              <Button type="primary" size="large" icon={<PlusOutlined />} onClick={handleOpenInvestigationModal}>
+                Ku dar baaris
+              </Button>
+            )}
+          </Space>
+        </Card>
+      ) : (
+        <Space orientation="vertical" style={{ width: '100%' }}>
+          {(data.investigations || []).map((inv, idx) => {
+            const statusColor = inv.status === 'Dhammaystiran' ? 'green' : inv.status === 'Xiran' ? 'red' : 'blue';
+
+            return (
+              <Card key={`inv-${inv.id || idx}`} size="small" title={`Warbixinta Baaritaanka #${inv.investigation_number}`} extra={
+                <Space>
+                  <Tag color={statusColor}>{inv.status}</Tag>
+                  <Button size="small" icon={<PrinterOutlined />} onClick={() => handlePrintInvestigationReport(inv)}>
+                    Preview / Daabac Dukumentiga
+                  </Button>
+                </Space>
+              }>
+                <Descriptions column={2} size="small" bordered style={{ marginBottom: 12 }}>
+                  <Descriptions.Item label="Lambarka Baaritaanka"><b>{inv.investigation_number}</b></Descriptions.Item>
+                  <Descriptions.Item label="Lambarka OB">{inv.ob_number || data.ob_number || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Magaca Baaraha">{inv.investigator_name || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Taariikhda la Furay">{inv.investigation_date ? dayjs(inv.investigation_date).format('DD MMM YYYY') : '—'}</Descriptions.Item>
+                </Descriptions>
+                
+                {inv.summary && (
+                  <div style={{ marginTop: 8 }}>
+                    <Text strong style={{ fontSize: 13 }}>Gungaarka Baaritaanka:</Text>
+                    <Paragraph style={{ background: '#1c1c1c', padding: 8, borderRadius: 6, marginTop: 4, marginBottom: 8, fontSize: 13 }}>{inv.summary}</Paragraph>
+                  </div>
+                )}
+                {inv.outcome && (
+                  <div style={{ marginTop: 8 }}>
+                    <Text strong style={{ fontSize: 13 }}>Natiijada Baaritaanka:</Text>
+                    <Paragraph style={{ background: '#1c1c1c', padding: 8, borderRadius: 6, marginTop: 4, marginBottom: 8, fontSize: 13 }}>{inv.outcome}</Paragraph>
+                  </div>
+                )}
+                {inv.recommendation && (
+                  <div style={{ marginTop: 8 }}>
+                    <Text strong style={{ fontSize: 13 }}>Go'aanka Baaraha:</Text>
+                    <Paragraph style={{ background: '#1c1c1c', padding: 8, borderRadius: 6, marginTop: 4, marginBottom: 8, fontSize: 13 }}>{inv.recommendation}</Paragraph>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </Space>
+      )}
+    </Space>
+  );
+
   return (
     <ProtectedRoute allowedRoles={[
       'admin', 'staff', 'officer', 'investigator', 'station_jail', 'district_admin',
@@ -894,7 +1137,7 @@ export default function CaseDetailsPage() {
                     ),
                   },
                   { key: 'suspects', label: `Suspects (${data.suspects?.length || 0})`, children: suspectsTab },
-                  { key: 'evidence', label: `Evidence (${data.evidence?.length || 0})`, children: evidenceTab },
+                  { key: 'investigation', label: `Baaritaan (${(data.investigations || []).length})`, children: investigationTab },
                   { key: 'court', label: 'Court status', children: courtStatusTab },
                 ]}
               />
@@ -1379,6 +1622,182 @@ export default function CaseDetailsPage() {
           </Form.Item>
           <Form.Item name="release_notes" label="Sharaxaad Dheeraad ah (Release Notes)">
             <Input.TextArea rows={3} placeholder="Faahfaahin ku saabsan sii daaynta eedeysanaha..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Ku Dar Baaris Modal */}
+      <Modal
+        title="Ku Dar Warbixinta Baaritaanka (Add Investigation Record)"
+        open={isInvestigationModalOpen}
+        onCancel={() => setIsInvestigationModalOpen(false)}
+        onOk={() => investigationForm.submit()}
+        confirmLoading={submitting}
+        width={950}
+        okText="Kaydi Baaritaanka"
+        cancelText="Jooji"
+      >
+        <Alert
+          message="Xogta si Otomaatig ah looga soo qaaday OB-ga (Read-Only for Verification)"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          description={
+            <Descriptions column={2} size="small" style={{ marginTop: 8 }}>
+              <Descriptions.Item label="Lambarka OB"><b>{data.ob_number || '—'}</b></Descriptions.Item>
+              <Descriptions.Item label="Cinwaanka Dacwadda">{data.title || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Nooca Dacwadda">{data.case_type || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Goobta Dhacdada">{data.incident_location || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Taariikhda & Waqtiga Dhacdada">{data.incident_date ? dayjs(data.incident_date).format('YYYY-MM-DD HH:mm') : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Soo Dacwoodaha">{data.complainant_name ? `${data.complainant_name} (${data.complainant_phone || ''})` : '—'}</Descriptions.Item>
+              <Descriptions.Item label="Laga Dacwooday (Accused)">{(data.suspects || []).map(s => s.full_name).join(', ') || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Dhibbanayaasha">{(data.victims || []).map(v => v.full_name).join(', ') || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Faahfaahinta OB" span={2}>{data.description || '—'}</Descriptions.Item>
+            </Descriptions>
+          }
+        />
+
+        <Form form={investigationForm} onFinish={handleCreateInvestigation} layout="vertical">
+          <Row gutter={12}>
+            <Col xs={24} md={6}>
+              <Form.Item name="investigation_number" label="Lambarka Baaritaanka (Auto)" rules={[requiredRule('Lambarka baaritaanka')]}>
+                <Input readOnly />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
+              <Form.Item name="investigator_name" label="Magaca Baaraha" rules={[requiredRule('Magaca baaraha')]}>
+                <Input placeholder="Magaca sarkaalka baaraha" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Item name="investigation_date" label="Taariikhda la Furay" rules={[requiredRule('Taariikhda baaritaanka')]}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Item name="status" label="Xaaladda Baaritaanka" rules={[requiredRule('Xaaladda baaritaanka')]}>
+                <Select options={[
+                  { value: 'Socota', label: 'Socota (Ongoing)' },
+                  { value: 'Dhammaystiran', label: 'Dhammaystiran (Completed)' },
+                  { value: 'Xiran', label: 'Xiran (Closed)' },
+                ]} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Card size="small" title="1. Caddeymaha la Helay (Evidence Collected)" style={{ marginBottom: 16 }}>
+            <Form.List name="evidence_data">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(({ key, name, ...rest }) => (
+                    <Row gutter={8} key={key} style={{ marginBottom: 8 }} align="middle">
+                      <Col span={14}>
+                        <Form.Item {...rest} name={[name, 'description']} label="Faahfaahinta Caddaynta (Sawir/CCTV/Fayl)" style={{ marginBottom: 0 }}>
+                          <Input placeholder="Qor faahfaahinta caddaynta..." />
+                        </Form.Item>
+                      </Col>
+                      <Col span={9}>
+                        <Form.Item {...rest} name={[name, 'file_url']} label="URL/Path-ka Faylka ama Sawirka" style={{ marginBottom: 0 }}>
+                          <Input placeholder="URL ama Path-ka faylka..." />
+                        </Form.Item>
+                      </Col>
+                      <Col span={1} style={{ textAlign: 'center', marginTop: 22 }}>
+                        <Button danger type="text" icon={<MinusCircleOutlined />} onClick={() => remove(name)} />
+                      </Col>
+                    </Row>
+                  ))}
+                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({})}>
+                    Ku Dar Caddayn Kale
+                  </Button>
+                </>
+              )}
+            </Form.List>
+          </Card>
+
+          <Card size="small" title="2. Markhaatiyaasha (Witnesses)" style={{ marginBottom: 16 }}>
+            <Form.List name="witnesses_data">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(({ key, name, ...rest }) => (
+                    <Row gutter={8} key={key} style={{ marginBottom: 8 }} align="middle">
+                      <Col span={7}>
+                        <Form.Item {...rest} name={[name, 'full_name']} label="Magaca Markhaatiga" style={{ marginBottom: 0 }}>
+                          <Input placeholder="Magaca oo buuxa..." />
+                        </Form.Item>
+                      </Col>
+                      <Col span={6}>
+                        <Form.Item {...rest} name={[name, 'phone']} label="Telefoonka" style={{ marginBottom: 0 }}>
+                          <Input placeholder="Lambarka telefoonka..." />
+                        </Form.Item>
+                      </Col>
+                      <Col span={10}>
+                        <Form.Item {...rest} name={[name, 'statement']} label="Hadalka / Warbixinta Markhaatiga" style={{ marginBottom: 0 }}>
+                          <Input placeholder="Hadalkii uu qaray markhaatigu..." />
+                        </Form.Item>
+                      </Col>
+                      <Col span={1} style={{ textAlign: 'center', marginTop: 22 }}>
+                        <Button danger type="text" icon={<MinusCircleOutlined />} onClick={() => remove(name)} />
+                      </Col>
+                    </Row>
+                  ))}
+                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({})}>
+                    Ku Dar Markhaati Kale (Add More)
+                  </Button>
+                </>
+              )}
+            </Form.List>
+          </Card>
+
+          <Card size="small" title="3. Tallaabooyinka Baaritaanka (Investigation Steps)" style={{ marginBottom: 16 }}>
+            <Form.List name="steps_data">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(({ key, name, ...rest }) => {
+                    const stepType = investigationForm.getFieldValue(['steps_data', name, 'type']);
+                    return (
+                      <Row gutter={8} key={key} style={{ marginBottom: 8 }} align="middle">
+                        <Col span={7}>
+                          <Form.Item {...rest} name={[name, 'step_label']} label="Label-ka Tallaabada" style={{ marginBottom: 0 }}>
+                            <Input placeholder="tusaale Goob baaris, Wareysi..." />
+                          </Form.Item>
+                        </Col>
+                        <Col span={5}>
+                          <Form.Item {...rest} name={[name, 'type']} label="Ikhtiyaarka" style={{ marginBottom: 0 }}>
+                            <Select options={[
+                              { value: 'text', label: '1. Qoraal (Text)' },
+                              { value: 'file', label: '2. Sawir/Fayl (File)' }
+                            ]} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={11}>
+                          <Form.Item {...rest} name={[name, stepType === 'file' ? 'step_file' : 'step_text']} label="Faahfaahinta Tallaabada / Faylka" style={{ marginBottom: 0 }}>
+                            <Input placeholder={stepType === 'file' ? 'URL/Path-ka sawirka ama faylka...' : 'Qor faahfaahinta tallaabada...'} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={1} style={{ textAlign: 'center', marginTop: 22 }}>
+                          <Button danger type="text" icon={<MinusCircleOutlined />} onClick={() => remove(name)} />
+                        </Col>
+                      </Row>
+                    );
+                  })}
+                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ type: 'text' })}>
+                    Ku Dar Tallaabo Kale (Add More)
+                  </Button>
+                </>
+              )}
+            </Form.List>
+          </Card>
+
+          <Form.Item name="summary" label="Gungaarka Baaritaanka (Investigation Summary / Conclusion)" rules={[requiredRule('Gungaarka baaritaanka')]}>
+            <TextArea rows={3} placeholder="Warbixin kooban oo Baaraha qoro oo sheegaysa gunaanadka guud ee baaritaanka..." />
+          </Form.Item>
+
+          <Form.Item name="outcome" label="Natiijada Baaritaanka (Investigation Outcome)" rules={[requiredRule('Natiijada baaritaanka')]}>
+            <TextArea rows={3} placeholder="Warbixinta guud ee natiijada baaritaanku keenay..." />
+          </Form.Item>
+
+          <Form.Item name="recommendation" label="Go'aanka Baaraha (Investigator Recommendation)" rules={[requiredRule('Go\'aanka baaraha')]}>
+            <TextArea rows={3} placeholder="Go'aanka ama talada uu Baaraha soo bandhigayo..." />
           </Form.Item>
         </Form>
       </Modal>

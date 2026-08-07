@@ -14,6 +14,7 @@ const REGION_ASSIGNABLE_ROLES = new Set([
 
 const REGION_ASSIGNABLE_USER_TYPES = new Set(['OB_STAFF', 'STAFF', 'COMMANDER']);
 const DISTRICT_OPERATIONAL_ROLES = new Set(['personnel_registry','ob_staff','investigator','station_jail']);
+const DISTRICT_DEPLOY_TARGET_ROLES = new Set(['sub_admin', 'personnel_registry', 'ob_staff', 'investigator', 'station_jail']);
 
 const HIERARCHY_PROFILE_TARGETS = {
   state_administration: { table: 'state_administrations', nameColumn: 'profile_name' },
@@ -74,11 +75,16 @@ const getUsers = async (req, res, next) => {
     const params = [];
     let where = '1=1';
     if (req.user.scopeType === 'region') {
-      where += ' AND u.region_id = ?';
-      params.push(req.user.scopeId);
-    } else if (req.user.scopeType === 'district') { where += ' AND u.district_id = ?'; params.push(req.user.scopeId); }
-    else if (req.user.role !== 'admin' && !(req.user.permissions || []).includes('users.manage')) {
+      where += ' AND u.region_id = ? AND u.id != ? AND u.username != ?';
+      params.push(req.user.scopeId, req.user.id, req.user.username);
+    } else if (req.user.scopeType === 'district') {
+      where += ' AND u.district_id = ? AND u.id != ? AND u.username != ?';
+      params.push(req.user.scopeId, req.user.id, req.user.username);
+    } else if (req.user.role !== 'admin' && !(req.user.permissions || []).includes('users.manage')) {
       where += ' AND 1=0';
+    } else if (['region_admin', 'district_admin', 'state_admin'].includes(req.user.role)) {
+      where += ' AND u.id != ? AND u.username != ?';
+      params.push(req.user.id, req.user.username);
     }
 
     const [rows] = await db.query(
@@ -106,7 +112,7 @@ const getUsers = async (req, res, next) => {
 const getUserById = async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT u.id, u.username, NULL AS badge_number, u.full_name, u.email, u.profile_image,
+      `SELECT u.id, u.username, u.police_officer_id, NULL AS badge_number, u.full_name, u.email, u.profile_image,
               u.phone, u.\`rank\`, u.user_type, u.assigned_level, u.is_commander,
               u.is_active, u.status, u.last_login, u.created_by,
               u.created_at, r.id AS role_id, r.name AS role,
@@ -157,11 +163,66 @@ const createUser = async (req, res, next) => {
       const [[role]]=await db.query('SELECT id,name FROM roles WHERE id=?',[role_id]);
       const roleName=normalizeRole(role?.name);
       if(!DISTRICT_OPERATIONAL_ROLES.has(roleName))return res.status(403).json({success:false,message:'Degmadu waxay abuuri kartaa oo keliya Diiwaanka Ciidanka, OB Register, Baare ama Station Jail.'});
-      if(!police_officer_id)return res.status(400).json({success:false,message:'Dooro sarkaal State Administration ansixiyey.'});
-      const [[officer]]=await db.query(`SELECT po.*,r.rank_name FROM police_officers po LEFT JOIN ranks r ON r.id=po.rank_id LEFT JOIN users u ON u.police_officer_id=po.id WHERE po.id=? AND po.district_id=? AND po.approval_status='APPROVED' AND LOWER(po.employment_status)='active' AND u.id IS NULL`,[police_officer_id,district_id]);
-      if(!officer)return res.status(409).json({success:false,message:'Sarkaalka lama heli karo, lama ansixin, ama user kale ayaa loo qoondeeyey.'});
-      full_name=officer.full_name; rank=officer.rank_name; state_administration_id=officer.state_administration_id;
+      if (police_officer_id) {
+        const [[officer]]=await db.query(
+          `SELECT po.*, r.rank_name
+           FROM police_officers po
+           LEFT JOIN ranks r ON r.id = po.rank_id
+           LEFT JOIN users u ON u.police_officer_id = po.id
+           LEFT JOIN officer_assignments oa ON oa.officer_id = po.id
+            AND oa.is_current = 1
+            AND oa.assignment_type IN ('District', 'District Station')
+           WHERE po.id = ?
+            AND (
+              po.district_id = ?
+              OR po.registration_district_id = ?
+              OR oa.assignment_id = ?
+            )
+            AND po.approval_status = 'APPROVED'
+            AND LOWER(po.employment_status) = 'active'
+            AND u.id IS NULL`,
+          [police_officer_id, district_id, district_id, district_id]
+        );
+        if(!officer)return res.status(409).json({success:false,message:'Sarkaalka lama heli karo, lama ansixin, ama user kale ayaa loo qoondeeyey.'});
+        full_name=officer.full_name; rank=officer.rank_name; state_administration_id=officer.state_administration_id; region_id=officer.region_id||region_id;
+      } else {
+        const operationalNames = {
+          personnel_registry: 'Diiwaanka Ciidanka',
+          ob_staff: 'OB Register',
+          investigator: 'Baare',
+          station_jail: 'Station Jail',
+        };
+        full_name = full_name || operationalNames[roleName] || username || 'User Degmo';
+        state_administration_id = state_administration_id || req.user.location?.stateId || null;
+        region_id = region_id || req.user.location?.regionId || null;
+        rank = rank || null;
+      }
       user_type=roleName==='ob_staff'?'OB_STAFF':'STAFF';
+    }
+    const [[selectedRole]] = await db.query('SELECT name FROM roles WHERE id = ?', [role_id]);
+    const selectedRoleName = normalizeRole(selectedRole?.name);
+    if (selectedRoleName === 'sub_admin') {
+      if (!police_officer_id) {
+        return res.status(400).json({ success: false, message: 'Dooro sarkaalka loo sameynayo Sub-Admin.' });
+      }
+      const [[officer]] = await db.query(
+        `SELECT po.full_name, po.phone, po.state_administration_id, po.region_id, po.district_id, r.rank_name
+         FROM police_officers po
+         LEFT JOIN ranks r ON r.id = po.rank_id
+         WHERE po.id = ? AND po.approval_status = 'APPROVED' AND LOWER(po.employment_status) = 'active'`,
+        [police_officer_id]
+      );
+      if (!officer) {
+        return res.status(409).json({ success: false, message: 'Sarkaalka Sub-Admin lama heli karo ama weli lama ansixin.' });
+      }
+      full_name = officer.full_name;
+      phone = phone || officer.phone || null;
+      rank = officer.rank_name || rank || null;
+      user_type = 'STAFF';
+      assigned_level = assigned_level || 'ADMINISTRATION';
+      state_administration_id = state_administration_id || officer.state_administration_id || null;
+      region_id = region_id || officer.region_id || null;
+      district_id = district_id || officer.district_id || null;
     }
     await ensureCommanderAssignment({ role_id, user_type, is_commander, district_id, state_administration_id });
     const hash = await bcrypt.hash(password, 12);
@@ -244,6 +305,7 @@ const updateUser = async (req, res, next) => {
     if (region_id !== undefined) { params.push(['region_id', region_id || null]); }
     if (district_id !== undefined) { params.push(['district_id', district_id || null]); }
     if (is_commander !== undefined) { params.push(['is_commander', is_commander ? 1 : 0]); }
+    if (req.body.police_officer_id !== undefined) { params.push(['police_officer_id', req.body.police_officer_id || null]); }
 
     if (!params.length && !password) {
       return res.status(400).json({ success: false, message: 'No update fields provided.' });
@@ -447,6 +509,74 @@ const getRoles = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-const getAssignableOfficers=async(req,res,next)=>{try{if(req.user.scopeType!=='district'&&req.user.role!=='admin')return res.status(403).json({success:false,message:'Degmo keliya ayaa saraakiil u xilsaari karta roles-kan.'});const params=[];let where="po.approval_status='APPROVED' AND LOWER(po.employment_status)='active' AND u.id IS NULL";if(req.user.scopeType==='district'){where+=' AND po.district_id=?';params.push(req.user.scopeId)}const[rows]=await db.query(`SELECT po.id,po.full_name,po.force_number,r.rank_name,po.district_id FROM police_officers po LEFT JOIN ranks r ON r.id=po.rank_id LEFT JOIN users u ON u.police_officer_id=po.id WHERE ${where} ORDER BY po.full_name`,params);res.json({success:true,data:rows})}catch(e){next(e)}};
+const getAssignableOfficers = async (req, res, next) => {
+  try {
+    if (req.user.scopeType !== 'district' && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Degmo keliya ayaa saraakiil u xilsaari karta roles-kan.' });
+    }
+    const params = [];
+    let where = "po.approval_status='APPROVED' AND LOWER(po.employment_status)='active' AND u.id IS NULL";
+    let assignmentJoin = '';
+    if (req.user.scopeType === 'district') {
+      assignmentJoin = `
+       LEFT JOIN officer_assignments oa ON oa.officer_id = po.id
+        AND oa.is_current = 1
+        AND oa.assignment_type IN ('District', 'District Station')`;
+      where += ' AND (po.district_id=? OR po.registration_district_id=? OR oa.assignment_id=?)';
+      params.push(req.user.scopeId, req.user.scopeId, req.user.scopeId);
+    }
+    const [rows] = await db.query(
+      `SELECT DISTINCT po.id, po.full_name, po.force_number, r.rank_name, r.rank_code, po.district_id
+       FROM police_officers po
+       LEFT JOIN ranks r ON r.id = po.rank_id
+       LEFT JOIN users u ON u.police_officer_id = po.id
+       ${assignmentJoin}
+       WHERE ${where}
+       ORDER BY po.full_name`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    next(e);
+  }
+};
 
-module.exports = { getUsers, getUserById, createUser, updateUser, updateMyProfile, updateMyProfileImage, deleteUser, getRoles, getAssignableOfficers };
+const getSubAdmins = async (req, res, next) => {
+  try {
+    let where = `u.is_active = 1
+      AND UPPER(COALESCE(u.status, 'ACTIVE')) = 'ACTIVE'
+      AND LOWER(REPLACE(r.name, '-', '_')) IN (${[...DISTRICT_DEPLOY_TARGET_ROLES].map(() => '?').join(',')})`;
+    const params = [...DISTRICT_DEPLOY_TARGET_ROLES];
+
+    if (req.user?.scopeType === 'district') {
+      where += ` AND u.district_id = ?`;
+      params.push(req.user.scopeId);
+    } else if (req.user?.scopeType === 'region') {
+      where += ` AND u.region_id = ?`;
+      params.push(req.user.scopeId);
+    }
+
+    const [rows] = await db.query(
+      `SELECT u.id, u.username,
+              COALESCE(NULLIF(u.full_name, ''), po.full_name, u.username) AS full_name,
+              u.email,
+              COALESCE(NULLIF(u.rank, ''), rk.rank_name) AS \`rank\`,
+              u.user_type,
+              u.police_officer_id,
+              u.state_administration_id,
+              u.region_id,
+              u.district_id,
+              r.name AS role
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       LEFT JOIN police_officers po ON po.id = u.police_officer_id
+       LEFT JOIN ranks rk ON rk.id = po.rank_id
+       WHERE ${where}
+       ORDER BY full_name, u.username`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
+module.exports = { getUsers, getUserById, createUser, updateUser, updateMyProfile, updateMyProfileImage, deleteUser, getRoles, getAssignableOfficers, getSubAdmins };

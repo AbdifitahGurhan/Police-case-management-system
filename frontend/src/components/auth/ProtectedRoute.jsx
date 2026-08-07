@@ -36,6 +36,7 @@ const ProtectedRoute = ({ children, allowedRoles = [], requiredPermissions = [] 
   if (isDenied) {
     const roleRedirects = {
       admin: '/dashboard/admin',
+      sub_admin: '/police-officers',
       officer: '/dashboard/officer',
       cid: '/dashboard/cid',
       cid_director: '/dashboard/cid',
@@ -62,7 +63,7 @@ const ProtectedRoute = ({ children, allowedRoles = [], requiredPermissions = [] 
       investigator: '/dashboard/cid',
     };
 
-    const homeRoute = roleRedirects[user.role] || '/cases';
+    const homeRoute = roleRedirects[user.role] || '/police-officers';
 
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>

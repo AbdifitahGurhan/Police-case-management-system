@@ -17,6 +17,8 @@ export default function Home() {
       } else {
         const roleRedirects = {
           admin: '/dashboard/admin',
+          sub_admin: '/police-officers',
+          ob_staff: '/ob-register',
           state_admin: '/dashboard/unit',
           region_admin: '/dashboard/unit',
           city_admin: '/dashboard/unit',
@@ -32,7 +34,7 @@ export default function Home() {
           prosecutor_liaison: '/dashboard/cid',
           jail: '/dashboard/jail'
         };
-        router.push(roleRedirects[user.role] || '/cases');
+        router.push(roleRedirects[user.role] || '/police-officers');
       }
     }
   }, [user, loading, router]);

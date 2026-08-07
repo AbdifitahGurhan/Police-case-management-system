@@ -51,6 +51,10 @@ exports.getAll = async (req, res, next) => {
     `;
     const params = [];
     
+    if (req.query.region_id) {
+      query += ` AND ci.region_id = ?`;
+      params.push(req.query.region_id);
+    }
     if (req.query.city_id) {
       query += ` AND c.city_id = ?`;
       params.push(req.query.city_id);

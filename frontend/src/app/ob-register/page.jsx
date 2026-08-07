@@ -37,16 +37,18 @@ function AccusedFields({ field, remove, form }) {
       <Row gutter={12}>
         <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'full_name']} label="Magaca oo Buuxa" rules={[{ validator: (_, value) => custody !== 'IN_CUSTODY' || value?.trim() ? Promise.resolve() : Promise.reject(new Error('Magaca eedaysanaha xabsiga ku jira geli.')) }]}><Input /></Form.Item></Col>
         <Col xs={12} md={4}><Form.Item {...rest} name={[name, 'phone']} label="Telefoonka" rules={phoneRules}><Input /></Form.Item></Col>
-        <Col xs={12} md={4}><Form.Item {...rest} name={[name, 'gender']} label="Jinsiga"><Select options={[{value:'Male',label:'Lab'},{value:'Female',label:'Dhedig'},{value:'Other',label:'Kale'}]} /></Form.Item></Col>
+        <Col xs={12} md={4}><Form.Item {...rest} name={[name, 'gender']} label="Jinsiga"><Select options={[{value:'Male',label:'Lab'},{value:'Female',label:'Dhedig'}]} /></Form.Item></Col>
         <Col xs={20} md={5}><Form.Item {...rest} name={[name, 'custody_state']} label="Xaaladda Qabashada" rules={[{ required: true, message: 'Xaaladda dooro.' }]}><Select options={custodyOptions} /></Form.Item></Col>
         <Col xs={4} md={1}><Button danger type="text" aria-label="Ka saar eedaysanaha" icon={<MinusCircleOutlined />} onClick={() => remove(name)} style={{ marginTop: 30 }} /></Col>
-        <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'address']} label="Cinwaanka"><Input /></Form.Item></Col>
-        <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'description']} label="Sharaxaadda"><Input /></Form.Item></Col>
-        <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'identifying_information']} label="Astaamaha Lagu Garto"><Input /></Form.Item></Col>
+        <Col xs={24} md={8}><Form.Item {...rest} name={[name, 'address']} label="Cinwaanka"><Input /></Form.Item></Col>
+        {custody !== 'IN_CUSTODY' && <>
+          <Col xs={24} md={8}><Form.Item {...rest} name={[name, 'description']} label="Sharaxaadda"><Input /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item {...rest} name={[name, 'identifying_information']} label="Astaamaha Lagu Garto"><Input /></Form.Item></Col>
+        </>}
         {custody === 'IN_CUSTODY' && <>
-          <Col xs={24} md={6}><Form.Item {...rest} name={[name, 'arrest_date']} label="Taariikhda iyo Waqtiga Qabashada" rules={[{ required: true, message: 'Waqtiga qabashada geli.' }]}><DatePicker showTime style={{ width: '100%' }} disabledDate={disabledFutureDate} /></Form.Item></Col>
-          <Col xs={12} md={6}><Form.Item {...rest} name={[name, 'arrest_location']} label="Goobta Lagu Qabtay" rules={[{ required: true, message: 'Goobta qabashada geli.' }]}><Input /></Form.Item></Col>
-          <Col xs={12} md={6}><Form.Item {...rest} name={[name, 'arresting_officer']} label="Sarkaalka Qabtay" rules={[{ required: true, message: 'Sarkaalka qabtay geli.' }]}><Input /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item {...rest} name={[name, 'arrest_date']} label="Taariikhda iyo Waqtiga Qabashada" rules={[{ required: true, message: 'Waqtiga qabashada geli.' }]}><DatePicker showTime style={{ width: '100%' }} disabledDate={disabledFutureDate} /></Form.Item></Col>
+          <Col xs={12} md={8}><Form.Item {...rest} name={[name, 'arrest_location']} label="Goobta Lagu Qabtay" rules={[{ required: true, message: 'Goobta qabashada geli.' }]}><Input /></Form.Item></Col>
+          <Col xs={12} md={8}><Form.Item {...rest} name={[name, 'arresting_officer']} label="Sarkaalka Qabtay" rules={[{ required: true, message: 'Sarkaalka qabtay geli.' }]}><Input /></Form.Item></Col>
         </>}
       </Row>
     </Card>
@@ -56,7 +58,7 @@ function AccusedFields({ field, remove, form }) {
 function ConfirmationSummary({ values }) {
   return <Space orientation="vertical" style={{ width: '100%' }}>
     <Card size="small" title="Xogta Dacwadda"><b>{values.case_title}</b><br />{values.case_type} · {values.court_level}<br />{values.incident_location} · {values.incident_datetime?.format('YYYY-MM-DD HH:mm')}<br />{values.description}</Card>
-    <Card size="small" title="Dacwoodaha">{values.reported_by} · {values.reporter_phone}<br />{values.reporter_id_type} {values.reporter_id_number || ''}<br />{values.reporter_address || ''}</Card>
+    <Card size="small" title="Dacwoodaha">{values.reported_by} {values.reporter_gender ? `(${values.reporter_gender})` : ''} · {values.reporter_phone}<br />{values.reporter_id_type} {values.reporter_id_number || ''}<br />{values.reporter_address || ''}</Card>
     <Card size="small" title={`Dhibbanayaasha (${values.victims?.length || 0})`}>{values.victims?.map((v, i) => <div key={i}>{i + 1}. {v.full_name} · {v.phone || 'Telefoon ma leh'} · {v.details}</div>)}</Card>
     <Card size="small" title={`Eedaysanayaasha (${values.accused?.length || 0})`}>{values.accused?.map((a, i) => <div key={i}>{i + 1}. {a.full_name} · <Tag color={a.custody_state === 'IN_CUSTODY' ? 'red' : 'orange'}>{a.custody_state === 'IN_CUSTODY' ? 'Xabsi Ku Jira' : 'La Raadinayo'}</Tag></div>)}</Card>
   </Space>;
@@ -93,7 +95,10 @@ export default function ObRegisterPage() {
     setSaving(true);
     try {
       const victims = (review.victims || []).filter(v => Object.values(v || {}).some(value => value !== undefined && value !== null && String(value).trim() !== ''));
-      const accused = (review.accused || []).filter(a => Object.entries(a || {}).some(([key, value]) => key !== 'custody_state' && key !== 'status' && value !== undefined && value !== null && String(value).trim() !== ''));
+      const accused = (review.accused || []).filter(a => Object.entries(a || {}).some(([key, value]) => key !== 'custody_state' && key !== 'status' && value !== undefined && value !== null && String(value).trim() !== '')).map(a => ({
+        ...a,
+        arrest_date: a.arrest_date ? (a.arrest_date.format ? a.arrest_date.format('YYYY-MM-DD HH:mm:ss') : String(a.arrest_date).slice(0, 19).replace('T', ' ')) : null
+      }));
       const payload = { ...review, incident_datetime: review.incident_datetime.format('YYYY-MM-DD HH:mm:ss'), victims, accused };
       const response = await api.post('/ob-entries', payload);
       message.success(`Waa la diiwaangeliyey: OB ${response.data.obNumber} · Kiis ${response.data.caseNumber}`);
@@ -145,11 +150,12 @@ export default function ObRegisterPage() {
           <Col span={24}><Form.Item name="description" label="Sharaxaadda Dacwadda" rules={[requiredRule('Sharaxaadda'), textLengthRule('Sharaxaadda', 10, 5000)]}><TextArea rows={4} /></Form.Item></Col>
         </Section>
         <Section title="2. Xogta Dacwoodaha">
-          <Col xs={24} md={8}><Form.Item name="reported_by" label="Magaca oo Buuxa" rules={[requiredRule('Magaca')]}><Input /></Form.Item></Col>
-          <Col xs={12} md={8}><Form.Item name="reporter_phone" label="Lambarka Telefoonka" rules={[requiredRule('Telefoonka'), ...phoneRules]}><Input /></Form.Item></Col>
-          <Col xs={12} md={8}><Form.Item name="reporter_id_type" label="Nooca Aqoonsiga" rules={[requiredRule('Nooca aqoonsiga')]}><Select options={idTypes.map(value => ({ value, label: value }))} /></Form.Item></Col>
-          <Col xs={12} md={8}><Form.Item name="reporter_id_number" label="Lambarka Aqoonsiga (Ikhtiyaari)"><Input /></Form.Item></Col>
-          <Col xs={24} md={16}><Form.Item name="reporter_address" label="Cinwaanka (Ikhtiyaari)"><Input /></Form.Item></Col>
+          <Col xs={24} md={6}><Form.Item name="reported_by" label="Magaca oo Buuxa" rules={[requiredRule('Magaca')]}><Input /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="reporter_phone" label="Lambarka Telefoonka" rules={[requiredRule('Telefoonka'), ...phoneRules]}><Input /></Form.Item></Col>
+          <Col xs={12} md={4}><Form.Item name="reporter_gender" label="Jinsiga"><Select options={[{value:'Male',label:'Lab'},{value:'Female',label:'Dhedig'}]} /></Form.Item></Col>
+          <Col xs={12} md={4}><Form.Item name="reporter_id_type" label="Nooca Aqoonsiga" rules={[requiredRule('Nooca aqoonsiga')]}><Select options={idTypes.map(value => ({ value, label: value }))} /></Form.Item></Col>
+          <Col xs={12} md={4}><Form.Item name="reporter_id_number" label="Lambarka Aqoonsiga (Ikhtiyaari)"><Input /></Form.Item></Col>
+          <Col xs={24} md={24}><Form.Item name="reporter_address" label="Cinwaanka (Ikhtiyaari)"><Input /></Form.Item></Col>
         </Section>
         <Card size="small" title="3. Xogta Dhibbanayaasha" style={{ marginBottom: 16 }}><Form.List name="victims">{(fields, { add, remove }) => <>
           {fields.map(({ key, name, ...rest }) => <Card key={key} size="small" style={{ marginBottom: 10 }}><Row gutter={12}>

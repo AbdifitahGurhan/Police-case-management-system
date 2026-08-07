@@ -35,7 +35,7 @@ const Sidebar = ({ collapsed }) => {
   const role = user?.role;
   const dashboardPathMap = {
     admin: '/dashboard/admin',
-    sub_admin: '/dashboard/admin',
+    sub_admin: '/police-officers',
     personnel_registry: '/police-officers',
     investigator: '/dashboard/cid',
     station_jail: '/dashboard/jail',
@@ -65,7 +65,7 @@ const Sidebar = ({ collapsed }) => {
   const dashboardPath = dashboardPathMap[role] || '/cases';
 
   const roleNames = {
-    admin: 'Maamulaha Nidaamka',
+    admin: 'Dawladda Dhexe',
     sub_admin: 'Maamule Hoosaad',
     personnel_registry: 'Diiwaanka Ciidanka',
     investigator: 'Baare',
@@ -120,7 +120,7 @@ const Sidebar = ({ collapsed }) => {
     const canViewJail = hasPermission('station_jail.view') || hasPermission('station_jail.intake') || hasPermission('station_jail.assign_cell');
 
     const primaryItems = [
-      ...(role !== 'personnel_registry' && dashboardPath !== '/cases' ? [{
+      ...(role !== 'personnel_registry' && role !== 'sub_admin' && dashboardPath !== '/cases' ? [{
         key: dashboardPath,
         icon: dashboardPath === '/ob-register' ? <DatabaseOutlined /> : <DashboardOutlined />,
         label: isCourtRole ? 'Dashboard-ka Maxkamadda' : (dashboardPath === '/ob-register' ? 'Diiwaanka OB-da' : 'Dashboard-ka Guud'),
@@ -191,7 +191,7 @@ const Sidebar = ({ collapsed }) => {
       adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Garsoorayaasha & Xeer-ilaaliyaasha' });
     }
 
-    if (canViewReports) {
+    if (canViewReports && role !== 'sub_admin') {
       adminMenus.push({
         key: 'reports_menu',
         icon: <BarChartOutlined />,
@@ -228,7 +228,7 @@ const Sidebar = ({ collapsed }) => {
     }
 
     return [
-      { key: 'main', title: 'Nidaamka Waaweyn', items: primaryItems },
+      ...(primaryItems.length ? [{ key: 'main', title: 'Nidaamka Waaweyn', items: primaryItems }] : []),
       ...(adminMenus.length ? [{ key: 'administration', title: 'Maamulka & Hantida', items: adminMenus }] : []),
     ];
   }, [dashboardPath, role, user]);
@@ -288,7 +288,7 @@ const Sidebar = ({ collapsed }) => {
       collapsible
       collapsed={collapsed}
       collapsedWidth={64}
-      width={220}
+      width={276}
     >
       <div className="police-sidebar-shell">
         <div className="police-sidebar-brand">
@@ -311,7 +311,7 @@ const Sidebar = ({ collapsed }) => {
 
         {!collapsed && (
           <div className="police-sidebar-role">
-            <span>You are signed in as</span>
+            <span>Signed in as</span>
             <Tag className="status-tag status-tag--open">{roleLabel}</Tag>
           </div>
         )}

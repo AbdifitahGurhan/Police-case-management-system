@@ -1,0 +1,388 @@
+--- PAGE 1 ---
+ 
+1 | P a g e 
+ 
+CHAPTER III: METHODOLOGY 
+3.1 Introduction 
+This chapter presents the methodology used in the design and development of the proposed 
+Police Station Management System (PSMS), also known as the Criminal Case Management 
+System (CMS). The chapter explains the techniques, architectural design, development tools, 
+security mechanisms, functional modules, database structure, and implementation approach used 
+during the development process. 
+The proposed system is designed to modernize police station operations by replacing manual 
+paper-based procedures with a centralized digital platform capable of managing criminal cases, 
+officer records, evidence tracking, investigation workflows, and administrative operations. The 
+methodology adopted ensures that the system remains secure, scalable, efficient, and suitable for 
+modern law enforcement environments. 
+The system integrates advanced technologies such as blockchain-based integrity verification, 
+role-based access control, audit logging, and secure authentication mechanisms to ensure 
+confidentiality, accountability, and transparency in police operations. Similar criminal records 
+and police management methodologies emphasize structured workflows, centralized information 
+systems, and secure database management for law enforcement institutions. (Qeios) 
+3.2 System Overview 
+The Police Station Management System is a secure web-based criminal case management 
+platform developed to support law enforcement agencies in managing police operations digitally. 
+The system is designed using a hierarchical administrative structure that ensures proper 
+supervision, controlled data visibility, and secure access to criminal records. 
+The system operates using a five-tier administrative hierarchy consisting of: 
+
+--- PAGE 2 ---
+ 
+2 | P a g e 
+ 
+1. State Administration 
+2. Regional Administration 
+3. City Administration 
+4. District Administration 
+5. Neighborhood / Police Station Level 
+This hierarchical model ensures that users can only access information related to their 
+jurisdiction and subordinate administrative levels. Peer-level access restrictions prevent 
+unauthorized viewing of records belonging to other regions or districts. 
+The system automates the complete criminal case workflow beginning from incident reporting 
+and Occurrence Book (OB) generation to investigation, prosecution referral, and case closure. 
+The platform also supports evidence tracking, officer deployment management, chain of custody 
+recording, blockchain integrity verification, and audit logging. 
+The system is accessible through modern web browsers and can operate on desktop computers, 
+laptops, tablets, and smartphones. The centralized structure improves operational efficiency, 
+reduces paperwork, strengthens data security, and improves coordination between police 
+departments and specialized investigation units. 
+The proposed system also incorporates blockchain-based cryptographic verification using SHA-
+256 hashing algorithms to prevent unauthorized modification of critical case records. Similar 
+approaches have been recommended in modern criminal database systems to improve integrity 
+protection and accountability. (KIU Institutional Repository) 
+3.3 System Features 
+The proposed Police Station Management System contains multiple integrated modules that 
+collectively support law enforcement activities and administrative management. 
+3.3.1 User Authentication and Access Control 
+
+--- PAGE 3 ---
+ 
+3 | P a g e 
+ 
+The system allows secure user registration, login, and logout functionalities. Access is controlled 
+through role-based authorization mechanisms ensuring that users only access permitted modules 
+according to their roles and jurisdictions. 
+3.3.2 Administrative Hierarchy Management 
+The system manages five administrative levels including State, Region, City, District, and 
+Station. The hierarchy ensures proper command structures and restricted visibility across 
+organizational units. 
+3.3.3 Occurrence Book (OB) Management 
+The platform automatically generates unique OB numbers for every reported incident. OB 
+records contain complaint details, timestamps, assigned officers, and case references. 
+3.3.4 Criminal Case Management 
+The system manages the entire lifecycle of criminal cases including: 
+ Draft Stage 
+ Commander Review 
+ Investigation 
+ CID Referral 
+ Prosecutor Referral 
+ Court Review 
+ Case Closure 
+3.3.5 Complainant Management 
+The module stores complainant information including personal details, contact information, 
+identification records, and submitted complaints. 
+
+--- PAGE 4 ---
+ 
+4 | P a g e 
+ 
+3.3.6 Victim Management 
+The system records victim profiles, statements, medical reports, and related case evidence. 
+3.3.7 Suspect Management 
+The suspect module stores criminal suspect records including personal information, charges, 
+photographs, arrest details, and criminal history. 
+3.3.8 Witness Management 
+Witness statements and contact details are securely stored to support investigations and court 
+proceedings. 
+3.3.9 Evidence Management System 
+The evidence module manages physical and digital evidence linked to criminal investigations. 
+Evidence categories include documents, photographs, videos, fingerprints, and seized items. 
+3.3.10 Chain of Custody Tracking 
+The chain of custody module tracks all evidence transfers between officers and departments. 
+Each movement is recorded with timestamps, officer identities, and transfer descriptions. 
+3.3.11 Officer Registry Management 
+The system maintains a centralized registry of police officers including: 
+ Force Number 
+ Rank 
+ Deployment Location 
+ Transfer History 
+
+--- PAGE 5 ---
+ 
+5 | P a g e 
+ 
+ Service Status 
+3.3.12 Officer Deployment and Transfer Management 
+The platform supports reassignment and transfer of officers across administrative levels while 
+maintaining historical deployment records. 
+3.3.13 CID Investigation Module 
+Complex criminal cases can be referred to Criminal Investigation Department (CID) officers for 
+advanced investigations and specialized handling. 
+3.3.14 Prosecutor and Court Module 
+Approved criminal cases can be forwarded to prosecutors and court officers for legal review and 
+prosecution management. 
+3.3.15 Jail and Corrections Module 
+The system tracks arrested suspects, detention records, custody periods, and correctional status 
+updates. 
+3.3.16 Blockchain Integrity Verification 
+Critical case events generate SHA-256 cryptographic hashes stored in blockchain records to 
+prevent tampering and unauthorized modifications. 
+3.3.17 Audit Logging System 
+Every system activity including login attempts, updates, evidence uploads, transfers, and 
+deletions is recorded in the audit trail. 
+
+--- PAGE 6 ---
+ 
+6 | P a g e 
+ 
+3.3.18 Dashboard and Analytics 
+The dashboard provides crime statistics, investigation summaries, officer counts, evidence 
+reports, and operational analytics in real time. 
+3.3.19 Report Generation 
+The system generates printable and exportable reports including: 
+ Crime Reports 
+ Investigation Reports 
+ Officer Reports 
+ Evidence Reports 
+ Court Referral Reports 
+3.3.20 Notification and Alert System 
+Automated notifications alert officers and administrators regarding case updates, transfer 
+approvals, pending investigations, and evidence submissions. 
+3.4 System Architecture 
+The Police Station Management System follows a Three-Tier Architecture Model consisting of: 
+1. Presentation Layer 
+2. Application Layer 
+3. Data Layer 
+This architecture improves maintainability, scalability, and security. 
+Presentation Layer 
+
+--- PAGE 7 ---
+ 
+7 | P a g e 
+ 
+The presentation layer provides graphical user interfaces for police officers, investigators, 
+prosecutors, administrators, and correctional officers. 
+The frontend is developed using: 
+ Next.js 
+ React.js 
+ Ant Design (AntD) 
+The interface is responsive and accessible through modern web browsers on multiple devices. 
+Application Layer 
+The application layer contains the business logic of the system. It processes requests, validates 
+user permissions, manages workflows, and handles system operations. 
+Technologies used include: 
+ Node.js 
+ Express.js 
+ RESTful APIs 
+Core functionalities implemented in this layer include: 
+ JWT Authentication 
+ Role-Based Access Control 
+ Blockchain Hash Generation 
+ Audit Logging 
+ Case Processing 
+Data Layer 
+The data layer uses MySQL as the relational database management system. 
+
+--- PAGE 8 ---
+ 
+8 | P a g e 
+ 
+The database stores: 
+ User Accounts 
+ Criminal Cases 
+ Evidence Records 
+ Officer Information 
+ Blockchain Hashes 
+ Audit Logs 
+ Transfer Histories 
+Indexes and foreign key constraints are implemented to improve query performance and 
+maintain referential integrity. 
+Modern police information management systems commonly apply centralized database 
+architectures and layered designs to improve scalability and operational efficiency. (Office of 
+Justice Programs 
+3.5 System Requirements 
+3.5.1 Hardware Requirements 
+No Component Specification 
+1 Processor Intel Core i5 or AMD Ryzen 5 
+2 RAM Minimum 8 GB DDR4 
+3 Storage 256 GB SSD 
+4 Display 14-inch Full HD Monitor 
+5 Internet Stable Broadband Connection 
+6 Input Devices Keyboard and Mouse 
+7 Backup Device External Storage Device 
+ 
+
+--- PAGE 9 ---
+ 
+9 | P a g e 
+ 
+3.5.2 Software Requirements 
+No Software Purpose 
+1 Ubuntu Linux Server Operating System 
+2 Node.js Backend Runtime 
+3 Express.js API Framework 
+4 Next.js Frontend Framework 
+5 React.js User Interface 
+6 MySQL Relational Database 
+7 JWT Authentication 
+8 bcrypt Password Encryption 
+9 Git Version Control 
+10 Visual Studio Code Development Environment 
+11 Postman API Testing 
+12 Google Chrome Browser Testing 
+ 
+3.6 Functional and Non-Functional 
+Requirements 
+3.6.1 Functional Requirements 
+R1 
+The system shall allow secure user authentication using usernames and passwords. 
+R2 
+
+--- PAGE 10 ---
+ 
+10 | P a g e 
+ 
+The system shall generate unique OB numbers for all incidents. 
+R3 
+The system shall support criminal case registration and management. 
+R4 
+The system shall allow evidence upload and tracking. 
+R5 
+The system shall maintain chain of custody records. 
+R6 
+The system shall support officer deployment and transfers. 
+R7 
+The system shall allow CID officers to manage referred cases. 
+R8 
+The system shall support prosecutor and court review processes. 
+R9 
+The system shall generate operational reports. 
+R10 
+The system shall log all user activities for auditing purposes. 
+R11 
+
+--- PAGE 11 ---
+ 
+11 | P a g e 
+ 
+The system shall generate blockchain hashes for critical events. 
+R12 
+The system shall support hierarchical data visibility restrictions. 
+3.6.2 Non-Functional Requirements 
+NFR1 — Security 
+The system must secure sensitive information using JWT authentication and bcrypt password 
+hashing. 
+NFR2 — Performance 
+The system should process requests efficiently with minimal response time. 
+NFR3 — Scalability 
+The system should support increasing numbers of users and criminal records. 
+NFR4 — Reliability 
+The platform must maintain data consistency and availability. 
+NFR5 — Availability 
+The system should be accessible continuously through web browsers. 
+NFR6 — Maintainability 
+The application architecture should support future modifications and updates. 
+NFR7 — Integrity 
+
+--- PAGE 12 ---
+ 
+12 | P a g e 
+ 
+Blockchain verification mechanisms must protect critical records from tampering. 
+NFR8 — Usability 
+The interface should remain simple and understandable for police personnel. 
+3.7 Feasibility Study 
+Technical Feasibility 
+The project is technically feasible because it uses modern web technologies including Node.js, 
+Express.js, React.js, Next.js, and MySQL. These technologies are widely supported and suitable 
+for enterprise-level web applications. Similar police systems and criminal databases have 
+successfully adopted centralized digital platforms and layered architectures. (KIU Institutional 
+Repository) 
+Economic Feasibility 
+The system minimizes operational costs by reducing paperwork, manual record keeping, and 
+administrative delays. Since most technologies used are open-source, licensing costs are 
+minimal. 
+Operational Feasibility 
+The system is operationally feasible because police officers and administrators can easily use the 
+web interface with minimal technical training. 
+Schedule Feasibility 
+The project can be completed within the proposed academic timeline using incremental 
+development and modular implementation approaches. Incremental methodologies are 
+commonly used in crime management system development projects. (SuPlus) 
+
+--- PAGE 13 ---
+ 
+13 | P a g e 
+ 
+3.8 UML Diagrams 
+Unified Modeling Language (UML) diagrams are used to visually represent the structure and 
+behavior of the proposed system. 
+3.8.1 Use Case Diagram 
+The Use Case Diagram illustrates interactions between: 
+ System Administrator 
+ Police Officer 
+ CID Investigator 
+ Prosecutor 
+ Jail Officer 
+and the modules they can access. 
+3.8.2 Activity Diagram 
+The Activity Diagram illustrates the sequence of operations involved in criminal case 
+registration, investigation, evidence handling, and prosecution. 
+3.8.3 Sequence Diagram 
+The Sequence Diagram shows communication between users, APIs, and the database during 
+system operations. 
+3.8.4 Entity Relationship Diagram (ERD) 
+The ERD defines relationships between system entities including users, officers, cases, evidence, 
+suspects, witnesses, and blockchain records. 
+
+--- PAGE 14 ---
+ 
+14 | P a g e 
+ 
+3.8.5 Role-Based Access Control Diagram 
+This diagram illustrates role permissions and hierarchical access restrictions across 
+administrative levels. 
+Research on crime management systems commonly recommends UML modeling techniques 
+including ERDs, use case diagrams, and activity diagrams for structured software design and 
+criminal workflow analysis. (IIETA) 
+3.9 Database Design 
+The proposed system uses MySQL as the relational database management system. The database 
+is normalized to reduce redundancy and improve consistency. 
+The database contains multiple interconnected tables including: 
+Table Name Purpose 
+Users Stores system users and roles 
+Officers Stores police officer records 
+Cases Stores criminal case information 
+OB_Records Stores occurrence book entries 
+Evidence Stores evidence details 
+Chain_of_Custody Tracks evidence transfers 
+Witnesses Stores witness records 
+Suspects Stores suspect records 
+Victims Stores victim information 
+Audit_Logs Stores user activity logs 
+Blockchain_Records Stores SHA-256 hashes 
+Transfers Stores officer transfer history 
+
+--- PAGE 15 ---
+ 
+15 | P a g e 
+ 
+Table Name Purpose 
+Notifications Stores system alerts 
+Prosecutor_Reviews Stores legal reviews 
+Jail_Records Stores detention information 
+Primary keys and foreign key relationships are implemented to maintain referential integrity. 
+Indexes are applied to frequently queried columns to improve performance. 
+Centralized police databases and criminal information systems typically rely on relational 
+database designs for maintaining secure and structured criminal records. (KIU Institutional 
+Repository) 
+3.10 Chapter Summary 
+This chapter presented the methodology used in the design and development of the Police Station 
+Management System. The chapter explained the system overview, architecture, major features, 
+requirements, feasibility study, UML diagrams, and database design. 
+The proposed system provides a secure and scalable platform capable of improving criminal case 
+management, evidence tracking, officer coordination, administrative monitoring, and 
+organizational accountability within police institutions. The integration of blockchain 
+verification, hierarchical access control, and audit logging ensures high levels of integrity, 
+transparency, and operational security. 
+ 

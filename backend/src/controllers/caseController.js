@@ -293,6 +293,7 @@ const getCaseById = async (req, res, next) => {
        ORDER BY ws.statement_date DESC, ws.created_at DESC`,
       [caseId]
     );
+    const [investigations] = await db.query('SELECT * FROM case_investigations WHERE case_id = ? ORDER BY created_at DESC', [caseId]);
 
     res.json({
       success: true,
@@ -305,6 +306,7 @@ const getCaseById = async (req, res, next) => {
         actions,
         referrals,
         witnesses,
+        investigations,
         allowed_next_statuses: getAllowedNextStatuses(caseRow.status),
       },
     });
@@ -769,5 +771,61 @@ const getCaseStats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getCases, getMyAssignedCases, getAssignableOfficers, getCaseById, createCase, updateCase, assignCaseOfficer, exportCasePackage, recordCourtDecision, getCaseStats };
+const getCaseInvestigations = async (req, res, next) => {
+  try {
+    const caseId = req.params.id;
+    const [rows] = await db.query('SELECT * FROM case_investigations WHERE case_id = ? ORDER BY created_at DESC', [caseId]);
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
+const createCaseInvestigation = async (req, res, next) => {
+  try {
+    const caseId = req.params.id;
+    const {
+      investigation_number, ob_number, investigator_name, investigation_date,
+      evidence_data, witnesses_data, steps_data, summary, outcome, recommendation, status
+    } = req.body;
+
+    const invNo = investigation_number || `INV-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    const [result] = await db.query(
+      `INSERT INTO case_investigations
+       (case_id, investigation_number, ob_number, investigator_name, investigation_date,
+        evidence_data, witnesses_data, steps_data, summary, outcome, recommendation, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        caseId,
+        invNo,
+        ob_number || null,
+        investigator_name || req.user.fullName || req.user.username,
+        investigation_date || new Date().toISOString().slice(0, 10),
+        JSON.stringify(evidence_data || []),
+        JSON.stringify(witnesses_data || []),
+        JSON.stringify(steps_data || []),
+        summary || null,
+        outcome || null,
+        recommendation || null,
+        status || 'Socota',
+        req.user.username
+      ]
+    );
+
+    // Record timeline action
+    await db.query(
+      `INSERT INTO case_actions (case_id, action_type, description, performed_by)
+       VALUES (?, 'INVESTIGATION_CREATED', ?, ?)`,
+      [caseId, `Baaritaan cusub oo leh #${invNo} ayaa la furay.`, req.user.username]
+    );
+
+    const [[newRecord]] = await db.query('SELECT * FROM case_investigations WHERE id = ?', [result.insertId]);
+    res.status(201).json({ success: true, message: 'Baaritaanka waa la diiwaangeliyey.', data: newRecord });
+  } catch (err) { next(err); }
+};
+
+module.exports = {
+  getCases, getMyAssignedCases, getAssignableOfficers, getCaseById, createCase,
+  updateCase, assignCaseOfficer, exportCasePackage, recordCourtDecision, getCaseStats,
+  getCaseInvestigations, createCaseInvestigation
+};
 

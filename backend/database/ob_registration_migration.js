@@ -6,6 +6,7 @@ async function run() {
   await add('case_title','VARCHAR(255) NULL AFTER ob_number'); await add('case_type','VARCHAR(100) NULL AFTER case_title');
   await add('case_level',"ENUM('normal','urgent','critical') DEFAULT 'normal' AFTER case_type");
   await add('reporter_id_type',"ENUM('National ID','Passport') NULL AFTER reporter_phone"); await add('reporter_id_number','VARCHAR(100) NULL AFTER reporter_id_type');
+  await add('reporter_gender','VARCHAR(30) NULL AFTER reporter_phone');
   await add('reporter_email','VARCHAR(150) NULL AFTER reporter_id_number'); await add('reporter_address','VARCHAR(255) NULL AFTER reporter_email');
   await add('respondent_name','VARCHAR(150) NULL AFTER reporter_address'); await add('respondent_id_type',"ENUM('National ID','Passport') NULL AFTER respondent_name");
   await add('respondent_id_number','VARCHAR(100) NULL AFTER respondent_id_type'); await add('respondent_phone','VARCHAR(30) NULL AFTER respondent_id_number'); await add('respondent_email','VARCHAR(150) NULL AFTER respondent_phone'); await add('respondent_address','VARCHAR(255) NULL AFTER respondent_email');

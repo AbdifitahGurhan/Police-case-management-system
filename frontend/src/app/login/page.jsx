@@ -20,6 +20,8 @@ export default function LoginPage() {
     if (user) {
       const roleRedirects = {
         admin: '/dashboard/admin',
+        sub_admin: '/police-officers',
+        ob_staff: '/ob-register',
         state_admin: '/dashboard/unit',
         region_admin: '/dashboard/unit',
         city_admin: '/dashboard/unit',
@@ -40,7 +42,7 @@ export default function LoginPage() {
         district_commander: '/dashboard/unit',
         police_station_commander: '/dashboard/unit'
       };
-      router.replace(roleRedirects[user.role] || '/cases');
+      router.replace(roleRedirects[user.role] || '/police-officers');
     }
   }, [user, router]);
 

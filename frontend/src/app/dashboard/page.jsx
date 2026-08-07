@@ -19,6 +19,8 @@ export default function DashboardIndexPage() {
 
     const roleRedirects = {
       admin: '/dashboard/admin',
+      sub_admin: '/police-officers',
+      ob_staff: '/ob-register',
       officer: '/dashboard/officer',
       state_admin: '/dashboard/unit',
       region_admin: '/dashboard/unit',
@@ -35,7 +37,7 @@ export default function DashboardIndexPage() {
       jail: '/dashboard/jail',
     };
 
-    router.replace(roleRedirects[user.role] || '/cases');
+    router.replace(roleRedirects[user.role] || '/police-officers');
   }, [loading, router, user]);
 
   return (

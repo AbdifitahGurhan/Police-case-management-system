@@ -1,0 +1,533 @@
+--- PAGE 1 ---
+1 | P a g e  
+ 
+CHAPTER II: LITERATURE REVIEW 
+2.1 Introduction 
+This chapter presents a comprehensive review of literature related to criminal case management 
+systems, digital transformation in law enforcement institutions, web-based information systems, 
+blockchain technology, and secure digital evidence management. The purpose of this chapter is 
+to examine previous scholarly studies, technological developments, and practical 
+implementations relevant to the proposed Police Station Management System (PSMS). 
+The rapid advancement of Information and Communication Technology (ICT) has transformed 
+the operational structures of organizations globally, including institutions within the criminal 
+justice sector. Law enforcement agencies increasingly depend on digital technologies to improve 
+operational efficiency, transparency, accountability, communication, and data security. 
+Traditional paper-based methods are gradually being replaced by computerized systems capable 
+of managing large volumes of sensitive criminal information effectively. 
+Criminal case management systems play an important role in supporting police investigations, 
+evidence handling, suspect tracking, and administrative coordination. Efficient criminal 
+information management contributes significantly to justice administration, public trust, 
+institutional accountability, and crime prevention. Poor management of criminal records may 
+lead to delayed investigations, loss of evidence, information inconsistency, corruption, and weak 
+coordination among security institutions. 
+Modern policing environments require integrated digital platforms capable of supporting real-
+time communication, centralized data management, and secure information sharing across 
+administrative levels. As a result, many governments and security agencies have adopted web-
+based management systems to automate criminal case registration, officer deployment, evidence 
+tracking, and reporting activities. 
+Recently, blockchain technology has emerged as one of the most promising innovations for 
+improving digital security and data integrity. Blockchain provides decentralized and tamper-
+resistant data storage mechanisms that help protect sensitive information from unauthorized 
+modifications. In criminal justice environments, blockchain technology supports evidence 
+protection, audit logging, chain of custody management, identity verification, and accountability 
+mechanisms. 
+Despite these technological advancements, many developing countries still face major challenges 
+in implementing secure and integrated criminal case management systems. In Somalia, numerous 
+police stations continue to rely on manual or semi-digital processes characterized by fragmented 
+
+--- PAGE 2 ---
+2 | P a g e  
+ 
+records, weak security mechanisms, limited accessibility, and poor coordination among 
+administrative institutions. These limitations create opportunities for information loss, 
+unauthorized data manipulation, operational inefficiency, and corruption risks. 
+The proposed Police Station Management System is designed to address these challenges by 
+integrating modern web technologies with blockchain-based integrity mechanisms. The system 
+introduces a structured five-tier administrative hierarchy that controls access to information and 
+ensures secure management of criminal investigations across multiple organizational levels. 
+This chapter therefore reviews relevant literature related to: 
+ Criminal Case Management Systems (CCMS) 
+ Manual record-keeping systems in policing 
+ Digital transformation in law enforcement 
+ Web-based information systems 
+ Blockchain technology 
+ Digital evidence and chain of custody management 
+ Authentication and cybersecurity mechanisms 
+ Hierarchical information systems 
+ Related studies and existing research gaps 
+The chapter concludes by identifying limitations in existing systems and justifying the need for a 
+secure, scalable, blockchain-integrated criminal case management system tailored for Somali law 
+enforcement institutions. 
+2.2 Overview of Criminal Case Management 
+Systems 
+A Criminal Case Management System (CCMS) refers to a computerized platform designed to 
+support the recording, tracking, monitoring, investigation, and reporting of criminal cases 
+throughout their lifecycle. These systems are widely used by police departments, investigative 
+agencies, courts, correctional institutions, and prosecutors to improve criminal justice operations. 
+The primary objective of a CCMS is to improve operational efficiency while ensuring secure and 
+accurate documentation of criminal investigations. Modern systems automate administrative 
+activities and reduce reliance on manual paperwork. 
+A standard criminal case management system commonly includes the following functionalities: 
+ Criminal case registration 
+
+--- PAGE 3 ---
+3 | P a g e  
+ 
+ Occurrence Book (OB) generation 
+ Suspect management 
+ Victim profiling 
+ Witness statement recording 
+ Evidence documentation 
+ Investigation tracking 
+ Officer assignment 
+ Reporting and analytics 
+ Access control 
+ Audit logging 
+ Case lifecycle monitoring 
+Modern CCMS platforms typically rely on centralized databases and web-based interfaces that 
+allow authorized personnel to retrieve and update information in real time. These systems 
+support collaboration among departments and improve institutional coordination. 
+Research indicates that digital criminal management systems significantly reduce record 
+duplication, improve accessibility, minimize human errors, and strengthen accountability 
+mechanisms. Electronic systems also improve crime analysis and strategic decision-making 
+through automated reporting and statistical analysis. 
+However, the effectiveness of a CCMS depends on several factors including: 
+ System security 
+ Infrastructure reliability 
+ User training 
+ Organizational readiness 
+ Data integrity protection 
+ Scalability 
+Poorly designed systems remain vulnerable to unauthorized access, cyberattacks, and data 
+tampering. Therefore, modern criminal management systems increasingly integrate cybersecurity 
+technologies and cryptographic protection mechanisms. 
+2.3 Traditional Manual Record-Keeping 
+Systems in Law Enforcement 
+
+--- PAGE 4 ---
+4 | P a g e  
+ 
+Before the emergence of computerized systems, police institutions relied heavily on paper-based 
+documentation to manage criminal investigations and administrative records. Police officers 
+manually recorded incidents in physical registers, files, and archives. 
+Although manual systems were initially manageable in small-scale environments, they became 
+increasingly inefficient as criminal records expanded. 
+2.3.1 Risk of Data Loss 
+Paper-based records are vulnerable to: 
+ Fire damage 
+ Flooding 
+ Theft 
+ Physical deterioration 
+ Human negligence 
+Missing records can delay investigations and weaken institutional accountability. 
+2.3.2 Slow Information Retrieval 
+Manual archives require significant time and human effort to retrieve information. Officers often 
+experience delays when searching historical case records or generating reports. 
+2.3.3 Data Duplication and Inconsistency 
+Repeated manual data entry frequently creates duplicate files and inconsistent information across 
+departments. 
+2.3.4 Weak Security Mechanisms 
+Traditional systems often lack proper access control mechanisms. Unauthorized individuals may 
+access confidential files, and documents can be altered without detection. 
+2.3.5 Limited Coordination 
+Manual systems make information sharing between police departments difficult, reducing 
+operational collaboration and investigation effectiveness. 
+
+--- PAGE 5 ---
+5 | P a g e  
+ 
+These challenges have encouraged governments worldwide to adopt digital transformation 
+strategies aimed at modernizing law enforcement operations. 
+2.4 Digital Transformation in Law 
+Enforcement 
+Digital transformation refers to the integration of digital technologies into organizational 
+processes to improve operational efficiency, service delivery, communication, and decision-
+making. 
+In policing environments, digital transformation involves replacing manual procedures with 
+electronic systems capable of supporting modern law enforcement activities. 
+Over the past two decades, law enforcement institutions have adopted technologies such as: 
+ Web-based management systems 
+ Cloud computing 
+ Geographic Information Systems (GIS) 
+ Artificial intelligence 
+ Digital forensics 
+ Blockchain technology 
+ Biometric authentication systems 
+2.4.1 Improved Operational Efficiency 
+Digital systems automate repetitive tasks and reduce paperwork, improving workflow 
+management. 
+2.4.2 Faster Communication 
+Integrated platforms support real-time communication between officers, departments, 
+prosecutors, and courts. 
+2.4.3 Enhanced Transparency and Accountability 
+Electronic systems maintain traceable records of all transactions and activities, reducing 
+corruption risks. 
+
+--- PAGE 6 ---
+6 | P a g e  
+ 
+2.4.4 Better Data Analytics 
+Modern platforms generate crime statistics and reports that support evidence-based policing and 
+strategic planning. 
+2.4.5 Increased Accessibility 
+Authorized users can access centralized databases remotely regardless of location. 
+Despite these advantages, many developing countries continue to face challenges including: 
+ Limited ICT infrastructure 
+ Financial constraints 
+ Weak cybersecurity frameworks 
+ Lack of technical expertise 
+ Organizational resistance to change 
+2.5 Hierarchical Information Systems in Law 
+Enforcement 
+Hierarchical information systems are organizational systems where access permissions and 
+operational visibility are structured according to administrative levels. 
+The proposed Police Station Management System adopts a strict five-tier administrative 
+hierarchy consisting of: 
+1. State Administration 
+2. Regional Administration 
+3. City Administration 
+4. District Administration 
+5. Neighborhood/Police Station 
+Hierarchical systems provide several advantages: 
+2.5.1 Controlled Data Visibility 
+Users can only access information within their administrative scope and subordinate levels. 
+
+--- PAGE 7 ---
+7 | P a g e  
+ 
+2.5.2 Improved Security 
+Sensitive criminal information remains compartmentalized, reducing unauthorized exposure. 
+2.5.3 Better Officer Management 
+Commanders can supervise officers assigned within their administrative jurisdictions. 
+2.5.4 Efficient Organizational Coordination 
+Hierarchical systems support structured communication and reporting channels. 
+2.5.5 Accountability and Oversight 
+Administrative supervisors can monitor activities occurring within their jurisdiction. 
+Strict hierarchical separation is particularly important in criminal justice systems because it 
+prevents unauthorized access to investigations and protects operational confidentiality. 
+2.6 Web-Based Information Systems 
+A web-based information system is a software application accessed through internet browsers 
+and hosted on servers. 
+Web technologies have become highly popular because they provide: 
+ Scalability 
+ Remote accessibility 
+ Multi-user support 
+ Centralized updates 
+ Cross-platform compatibility 
+Web-based criminal management systems allow officers to: 
+ Register criminal cases online 
+ Upload evidence 
+ Track investigations 
+ Generate reports 
+ Monitor officer assignments 
+
+--- PAGE 8 ---
+8 | P a g e  
+ 
+ Coordinate interdepartmental activities 
+The architecture of web-based systems generally consists of: 
+1. Frontend Interface 
+2. Backend Application Logic 
+3. Database Management System 
+4. Network Infrastructure 
+The proposed Police Station Management System uses: 
+ Next.js and React for frontend development 
+ Node.js and Express.js for backend services 
+ MySQL relational database 
+ RESTful APIs for communication 
+Despite their advantages, web-based systems face several cybersecurity threats including: 
+ SQL injection attacks 
+ Unauthorized access 
+ Malware attacks 
+ Data breaches 
+ Session hijacking 
+ Data tampering 
+Therefore, integrating advanced security mechanisms is essential. 
+2.7 Authentication and Access Control 
+Systems 
+Authentication and access control mechanisms are critical components of secure criminal 
+management systems. 
+Authentication refers to verifying user identity before granting access to system resources. 
+Modern systems commonly use: 
+ Username/password authentication 
+ Multi-factor authentication 
+ JSON Web Tokens (JWT) 
+
+--- PAGE 9 ---
+9 | P a g e  
+ 
+ Biometric verification 
+The proposed system uses: 
+ JWT-based stateless authentication 
+ bcrypt password hashing 
+ Role-based access control (RBAC) 
+Role-Based Access Control ensures users only access information relevant to their 
+responsibilities. 
+System roles include: 
+ System Administrator 
+ State Commander 
+ Regional Commander 
+ District Commander 
+ CID Investigator 
+ Prosecutor 
+ Jail Officer 
+ Station Officer 
+Access control significantly improves: 
+ Security 
+ Accountability 
+ Operational integrity 
+ Confidentiality 
+2.8 Blockchain Technology 
+Blockchain is a distributed ledger technology that stores records in linked cryptographic blocks. 
+Each block contains: 
+ Transaction data 
+ Timestamp 
+ Cryptographic hash 
+ Previous block hash 
+Blockchain possesses several important characteristics. 
+
+--- PAGE 10 ---
+10 | P a g e  
+ 
+2.8.1 Decentralization 
+Data is distributed across multiple nodes instead of a single centralized server. 
+2.8.2 Immutability 
+Recorded data cannot easily be altered without consensus. 
+2.8.3 Transparency 
+Transactions can be verified and audited. 
+2.8.4 Security 
+Cryptographic hashing protects records from tampering. 
+2.8.5 Traceability 
+Blockchain maintains permanent historical records. 
+These characteristics make blockchain highly suitable for criminal justice systems where data 
+integrity and accountability are essential. 
+2.9 Blockchain Applications in Criminal 
+Justice Systems 
+Researchers increasingly explore blockchain applications in law enforcement and judicial 
+environments. 
+2.9.1 Evidence Management 
+Blockchain secures digital evidence and maintains chain of custody records. 
+2.9.2 Criminal Record Protection 
+Sensitive records can be protected against unauthorized modifications. 
+
+--- PAGE 11 ---
+11 | P a g e  
+ 
+2.9.3 Audit Logging 
+Blockchain provides transparent logs for user activities and system transactions. 
+2.9.4 Identity Verification 
+Blockchain-based authentication improves trust and verification mechanisms. 
+2.9.5 Smart Contracts 
+Smart contracts automate permissions and access control operations. 
+The proposed Police Station Management System integrates blockchain integrity verification 
+using SHA-256 cryptographic hashing for: 
+ Case creation 
+ Case transfer 
+ Evidence updates 
+ Confirmation activities 
+This guarantees that critical criminal records cannot be secretly modified. 
+2.10 Evidence Management and Chain of 
+Custody 
+Chain of custody refers to the chronological documentation of evidence handling from collection 
+to court presentation. 
+Proper chain of custody management ensures: 
+ Evidence authenticity 
+ Accountability 
+ Court admissibility 
+ Investigation transparency 
+Digital evidence management systems help track: 
+ Evidence ownership 
+ Transfer history 
+
+--- PAGE 12 ---
+12 | P a g e  
+ 
+ Access logs 
+ Storage locations 
+Blockchain integration strengthens chain of custody management by creating immutable 
+transaction histories. 
+2.11 Audit Logging Systems 
+Audit logging refers to recording all user activities and system transactions. 
+Examples include: 
+ User logins 
+ Case updates 
+ Evidence uploads 
+ Officer transfers 
+ Record deletions 
+Audit logs improve: 
+ Transparency 
+ Accountability 
+ Security monitoring 
+ Incident investigation 
+The proposed system records: 
+ User ID 
+ Timestamp 
+ Action description 
+ IP information 
+ Administrative location 
+2.12 Officer and Personnel Management 
+Systems 
+Personnel management systems help institutions manage: 
+ Officer records 
+
+--- PAGE 13 ---
+13 | P a g e  
+ 
+ Ranks 
+ Assignments 
+ Transfers 
+ Deployment history 
+The proposed system includes centralized officer management supporting: 
+ Dynamic deployments 
+ Transfer tracking 
+ Administrative visibility filtering 
+ Command hierarchy supervision 
+These capabilities improve workforce coordination and accountability. 
+2.13 Related Work 
+Several studies have explored blockchain-based criminal management systems and digital 
+evidence platforms. 
+Alyas et al. (2025) proposed a multi-blockchain judicial management architecture using smart 
+contracts to improve scalability and transparency. 
+Liu and Zheng (2024) developed a blockchain-based judicial evidence preservation framework 
+integrating off-chain storage for secure evidence handling. 
+Ratul et al. (2024) examined blockchain-based digital evidence management in cybercrime 
+investigations using Ethereum and Polygon technologies. 
+Patil et al. (2024) explored blockchain applications for maintaining forensic chain of custody. 
+Previous studies on web-based police systems demonstrate improvements in: 
+ Operational efficiency 
+ Record accessibility 
+ Automated reporting 
+ Administrative coordination 
+However, many existing systems either: 
+ Lack strong tamper-proof security mechanisms, or 
+ Focus on blockchain without practical law enforcement workflow integration. 
+
+--- PAGE 14 ---
+14 | P a g e  
+ 
+Very limited research specifically addresses Somalia’s policing environment. 
+2.14 Comparison of Existing Studies 
+Table 2.1 Comparison of Existing Studies 
+Author & 
+Year System Focus Technology Used Strengths Limitations 
+Alyas et 
+al. (2025) 
+Judicial Case 
+Management 
+Multi-Blockchain & 
+Smart Contracts 
+Transparency and 
+scalability 
+Limited police 
+station focus 
+Liu & 
+Zheng 
+(2024) 
+Evidence 
+Preservation 
+Blockchain + Off-
+chain Storage 
+Strong 
+immutability 
+Does not manage 
+full case lifecycle 
+Ratul et al. 
+(2024) 
+Cybercrime 
+Evidence 
+Management 
+Ethereum/Polygon 
+Blockchain 
+Tamper-proof 
+evidence handling 
+Focused on 
+cybercrime only 
+Patil et al. 
+(2024) 
+Forensic Chain of 
+Custody 
+Blockchain Ledger 
+Technology 
+Evidence 
+traceability 
+Limited practical 
+implementation 
+2.15 Challenges Facing Criminal Case 
+Management Systems in Somalia 
+Somali law enforcement institutions face several technological and operational challenges. 
+2.15.1 Dependence on Manual Systems 
+Many police stations still rely on paper-based documentation. 
+2.15.2 Weak Information Security 
+Sensitive records remain vulnerable to unauthorized access and manipulation. 
+2.15.3 Lack of Centralized Databases 
+Information sharing remains fragmented. 
+
+--- PAGE 15 ---
+15 | P a g e  
+ 
+2.15.4 Limited Infrastructure 
+Insufficient ICT infrastructure limits digital transformation. 
+2.15.5 Inadequate Technical Training 
+Many officers lack digital system management skills. 
+2.15.6 Poor Coordination 
+Interdepartmental communication is often inefficient. 
+These challenges highlight the urgent need for a secure and scalable digital solution. 
+2.16 Research Gap 
+The reviewed literature demonstrates that digital criminal management systems improve 
+operational efficiency, while blockchain technology enhances security, transparency, and 
+integrity. 
+However, several important gaps remain. 
+First, many web-based criminal systems lack strong tamper-proof mechanisms capable of 
+protecting sensitive records from unauthorized modifications. 
+Second, blockchain-focused studies often remain conceptual without practical integration into 
+daily police workflows. 
+Third, existing systems rarely implement strict hierarchical visibility structures suitable for law 
+enforcement institutions. 
+Fourth, limited research addresses operational realities within developing countries, particularly 
+Somalia. 
+Finally, few systems integrate: 
+ Criminal case tracking 
+ Blockchain integrity verification 
+ Officer deployment management 
+ Audit logging 
+
+--- PAGE 16 ---
+16 | P a g e  
+ 
+ Chain of custody management 
+ Hierarchical access control 
+within a single scalable platform. 
+Therefore, this study aims to fill these gaps by developing a secure, scalable, blockchain-
+integrated Police Station Management System specifically tailored to Somali law enforcement 
+institutions. 
+The proposed system seeks to improve: 
+ Criminal investigation management 
+ Evidence integrity 
+ Transparency and accountability 
+ Institutional coordination 
+ Officer supervision 
+ Secure information sharing 
+References 
+Alyas, T., Abbas, Q., Niazi, S., Alqahtany, S. S., Alghamdi, T., Alzahrani, A., Tabassum, N., & 
+Ibrahim, A. M. (2025). Multi blockchain architecture for judicial case management using smart 
+contracts. Scientific Reports, 15(1). 
+Liu, S., & Zheng, Q. (2024). A study of a blockchain-based judicial evidence preservation 
+scheme. Blockchain: Research and Applications, 5(2). 
+Patil, H., Kohli, R. K., Puri, S., & Puri, P. (2024). Potential applicability of blockchain 
+technology in the maintenance of chain of custody in forensic casework. Egyptian Journal of 
+Forensic Sciences, 14(1). 
+Ratul, M. H. A., Mollajafari, S., & Wynn, M. (2024). Managing Digital Evidence in Cybercrime: 
+Efforts Towards a Sustainable Blockchain-Based Solution. Sustainability, 16(24). 
+Bharadwaj, A. (2000). A resource-based perspective on information technology capability and 
+firm performance. 
+DeLone, W. H., & McLean, E. R. (2003). The DeLone and McLean model of information 
+systems success. 
+Laudon, K. C., & Laudon, J. P. (2014). Management Information Systems. 
+
+--- PAGE 17 ---
+17 | P a g e  
+ 
+Pressman, R. S. (2010). Software Engineering: A Practitioner’s Approach. 
+Sommerville, I. (2011). Software Engineering. 
+Turban, E., Volonino, L., & Wood, G. (2011). Information Technology for Management. 
+ 

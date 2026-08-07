@@ -1,7 +1,7 @@
 // src/app/users/page.jsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Table, Card, Typography, Space, Button, Tag, Modal, Form, Input, Select, Popconfirm, Row, Col, App, Avatar, Descriptions } from 'antd';
 import { UserAddOutlined, EditOutlined, DeleteOutlined, LockOutlined, EyeOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -22,7 +22,7 @@ export default function UserManagementPage() {
   const [states, setStates] = useState([]);
   const [regions, setRegions] = useState([]);
   const [districts, setDistricts] = useState([]);
-  const [assignableOfficers,setAssignableOfficers]=useState([]);
+  const [allOfficers, setAllOfficers] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,14 +31,41 @@ export default function UserManagementPage() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [regionalForm] = Form.useForm();
-  const [regionalOpen,setRegionalOpen]=useState(false);
-  const regionalRoleId=Form.useWatch('role_id',regionalForm);
-  const selectedRegionalRole=roles.find(role=>role.id===regionalRoleId);
+  const [regionalOpen, setRegionalOpen] = useState(false);
+  const regionalRoleId = Form.useWatch('role_id', regionalForm);
+  const selectedRegionalRole = roles.find((role) => role.id === regionalRoleId);
   const isDistrictCreate = user?.role === 'district_admin' && !editingUser;
 
+  const selectedRoleId = Form.useWatch('role_id', form);
+  const selectedRoleName = useMemo(() => {
+    const found = roles.find((r) => r.id === selectedRoleId);
+    return found ? String(found.name).toLowerCase() : '';
+  }, [roles, selectedRoleId]);
+
+  const generalLevelOfficers = useMemo(() => {
+    const allowedCodes = new Set(['SGT', 'SGS', 'SG']);
+    return (allOfficers || []).filter((o) => {
+      if (editingUser && (Number(o.id) === Number(editingUser.police_officer_id) || Number(o.id) === Number(editingUser.officer_id))) {
+        return true;
+      }
+      const code = String(o.rank_code || '').trim().toUpperCase();
+      const name = String(o.rank_name || '').toLowerCase();
+      return allowedCodes.has(code) || name.includes('sareeye');
+    });
+  }, [allOfficers, editingUser]);
+
+  const districtOfficers = useMemo(() => {
+    return (allOfficers || []).filter((o) => {
+      if (editingUser && (Number(o.id) === Number(editingUser.police_officer_id) || Number(o.id) === Number(editingUser.officer_id))) {
+        return true;
+      }
+      const isApproved = String(o.approval_status || '').toUpperCase() === 'APPROVED';
+      const isActive = String(o.employment_status || '').toLowerCase() === 'active';
+      return isApproved && isActive;
+    });
+  }, [allOfficers, editingUser]);
+
   const operationalRoleLabel = (role) => ({
-    personnel_registry: 'Diiwaanka Ciidanka',
-    ob_staff: 'OB Register',
     investigator: 'Baare',
     station_jail: 'Station Jail',
   }[String(role?.name || '').toLowerCase()] || role?.name);
@@ -46,12 +73,13 @@ export default function UserManagementPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [uRes, rRes, stateRes, regionRes, districtRes] = await Promise.allSettled([
+      const [uRes, rRes, stateRes, regionRes, districtRes, officerRes] = await Promise.allSettled([
         api.get('/users'),
         api.get('/users/roles'),
         api.get('/state-administrations'),
         api.get('/regions'),
         api.get('/districts'),
+        api.get('/police-officers'),
       ]);
       if (uRes.status === 'rejected' || rRes.status === 'rejected') {
         throw uRes.reason || rRes.reason;
@@ -61,14 +89,14 @@ export default function UserManagementPage() {
       setStates(stateRes.status === 'fulfilled' ? stateRes.value.data.data : []);
       setRegions(regionRes.status === 'fulfilled' ? regionRes.value.data.data : []);
       setDistricts(districtRes.status === 'fulfilled' ? districtRes.value.data.data : []);
-      if(user?.role==='district_admin'){const officers=await api.get('/users/assignable-officers');setAssignableOfficers(officers.data.data||[])}
+      setAllOfficers(officerRes.status === 'fulfilled' ? officerRes.value.data.data : []);
     } catch (err) {
       console.error(err);
       message.error("Failed to load user data.");
     } finally {
       setLoading(false);
     }
-  }, [message,user?.role]);
+  }, [message]);
 
   useEffect(() => {
     fetchData();
@@ -95,6 +123,9 @@ export default function UserManagementPage() {
   const handleOpenEdit = async (record) => {
     const hide = message.loading("Fetching user details...", 0);
     try {
+      if (!allOfficers.length) {
+        api.get('/police-officers').then((res) => setAllOfficers(res.data.data || [])).catch(() => {});
+      }
       const res = await api.get(`/users/${record.id}`);
       hide();
       if (res.data?.success) {
@@ -103,6 +134,7 @@ export default function UserManagementPage() {
         form.setFieldsValue({
           ...fullUser,
           role_id: fullUser.role_id || roles.find(r => r.name === fullUser.role)?.id,
+          police_officer_id: fullUser.police_officer_id || undefined,
           password: '********', // Show dummy placeholder indicating a password is set
         });
         setIsModalOpen(true);
@@ -119,6 +151,9 @@ export default function UserManagementPage() {
   const handleOpenAdd = () => {
     setEditingUser(null);
     form.resetFields();
+    if (!allOfficers.length) {
+      api.get('/police-officers').then((res) => setAllOfficers(res.data.data || [])).catch(() => {});
+    }
     setIsModalOpen(true);
   };
 
@@ -236,7 +271,7 @@ export default function UserManagementPage() {
         </div>
 
         <Card variant="none">
-          <Table columns={columns} dataSource={users} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
+          <Table columns={columns} dataSource={(users || []).filter(u => String(u.id) !== String(user?.id) && String(u.username).toLowerCase() !== String(user?.username || '').toLowerCase())} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
         </Card>
 
         {/* View Details Modal */}
@@ -286,17 +321,12 @@ export default function UserManagementPage() {
 
               <Descriptions column={2} bordered size="small" layout="horizontal">
                 <Descriptions.Item label="Username" span={2}>{viewingUser.username}</Descriptions.Item>
-                <Descriptions.Item label="Email" span={2}>{viewingUser.email || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Phone" span={2}>{viewingUser.phone || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Assigned Level" span={2}>
                   <Tag color="blue">{viewingUser.assigned_level || 'ADMINISTRATION'}</Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="State" span={2}>{viewingUser.state_name || 'All States'}</Descriptions.Item>
                 <Descriptions.Item label="Region" span={2}>{viewingUser.region_name || 'All Regions'}</Descriptions.Item>
                 <Descriptions.Item label="District / Station" span={2}>{viewingUser.district_police_station_name || 'All Districts'}</Descriptions.Item>
-                <Descriptions.Item label="Commander Status" span={2}>
-                  {viewingUser.is_commander ? 'Yes (Commander)' : 'No'}
-                </Descriptions.Item>
                 <Descriptions.Item label="Created By" span={2}>{viewingUser.created_by || 'System'}</Descriptions.Item>
                 <Descriptions.Item label="Last Login" span={2}>
                   {viewingUser.last_login ? new Date(viewingUser.last_login).toLocaleString() : 'Never'}
@@ -315,7 +345,6 @@ export default function UserManagementPage() {
             <Space style={{width:'100%',justifyContent:'flex-end',marginTop:16}}><Button onClick={()=>setRegionalOpen(false)}>Jooji</Button><Button type="primary" htmlType="submit">Abuur Account</Button></Space>
           </Form>
         </Modal>
-
         {/* Create/Edit Modal */}
         <Modal 
           title={editingUser ? "Wax ka Beddel User-ka" : isDistrictCreate ? "Abuur User Degmo" : "Onboard New Staff"} 
@@ -328,113 +357,108 @@ export default function UserManagementPage() {
         >
           <Form form={form} layout="vertical" onFinish={handleSave}>
             {isDistrictCreate && <>
-              <Form.Item name="police_officer_id" label="Sarkaalka State Administration Ansixiyey" rules={[{required:true,message:'Dooro sarkaalka.'}]}>
-                <Select showSearch optionFilterProp="label" placeholder="Dooro sarkaalka" options={assignableOfficers.map(o=>({value:o.id,label:`${o.full_name} · ${o.rank_name||'Darajo la’aan'} · ${o.force_number}`}))}/>
-              </Form.Item>
               <Form.Item name="role_id" label="Role-ka Shaqada" rules={[{required:true,message:'Dooro role-ka shaqada.'}]}>
                 <Select placeholder="Dooro role-ka" options={roles.map(role=>({value:role.id,label:operationalRoleLabel(role)}))}/>
               </Form.Item>
+              <Form.Item
+                name="police_officer_id"
+                label="Sarkaalka / Askariga Loo Deploy Gareeynayo (Ikhtiyaari)"
+              >
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Dooro sarkaalka (ikhtiyaari)"
+                  options={districtOfficers.map((o) => ({
+                    value: o.id,
+                    label: `${o.full_name} · ${o.rank_name || 'Darajo la’aan'} (${o.force_number})`,
+                  }))}
+                />
+              </Form.Item>
               <Form.Item name="username" label="Username" rules={usernameRules}><Input /></Form.Item>
               <Form.Item name="password" label="Password" rules={passwordRules}><Input.Password /></Form.Item>
-              <Typography.Text type="secondary">Magaca, darajada iyo degmada uu ka hawlgalayo system-ka ayaa si otomaatig ah uga qaadanaya xogta sarkaalka.</Typography.Text>
+              <Typography.Text type="secondary">Account-kan wuxuu si otomaatig ah ugu xirnaanayaa degmada aad maamusho.</Typography.Text>
             </>}
-            {!isDistrictCreate && <Row gutter={16}>
-              <Col xs={24} sm={12}>
-                <Form.Item name="full_name" label="Full Name" rules={nameRules('Full name')}>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="email" label="Email Address" rules={[requiredRule('Email address'), emailRule]}>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="username" label="Username" rules={usernameRules}>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="rank" label="Rank" rules={[requiredRule('Rank'), textLengthRule('Rank', 2, 100)]}>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="role_id" label="System Role" rules={[requiredRule('System role')]}>
-                  <Select>
-                    {roles.map(r => <Option key={r.id} value={r.id}>{r.name.toUpperCase()}</Option>)}
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="user_type" label="User Type" rules={[requiredRule('User type')]}>
-                  <Select>
-                    <Option value="COMMANDER">Commander</Option>
-                    <Option value="OB_STAFF">OB Staff</Option>
-                    <Option value="STAFF">Staff</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="phone" label="Phone Number" rules={phoneRules}>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="assigned_level" label="Assigned Level">
-                  <Select allowClear>
-                    <Option value="STATE">State</Option>
-                    <Option value="REGION">Region</Option>
-                    <Option value="DISTRICT_POLICE_STATION">District / Police Station</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="state_administration_id" label="Assigned State">
-                  <Select allowClear showSearch optionFilterProp="children">
-                    {states.map(s => <Option key={s.id} value={s.id}>{s.state_name}</Option>)}
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="region_id" label="Assigned Region">
-                  <Select allowClear showSearch optionFilterProp="children">
-                    {regions.map(r => <Option key={r.id} value={r.id}>{r.region_name}</Option>)}
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item name="district_id" label="Assigned District / Police Station">
-                  <Select allowClear showSearch optionFilterProp="children">
-                    {districts.map(d => <Option key={d.id} value={d.id}>{d.district_name}</Option>)}
-                  </Select>
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} sm={12}>
-                <Form.Item name="is_commander" label="Commander Status">
-                  <Select>
-                    <Option value={1}>Yes</Option>
-                    <Option value={0}>No</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col xs={24}>
-                <Form.Item name="password" label={editingUser ? "Change Password (optional)" : "Password"} rules={editingUser ? optionalPasswordRules : passwordRules}>
-                  <Input.Password />
-                </Form.Item>
-              </Col>
-              {editingUser && (
+            {!isDistrictCreate && (
+              <Row gutter={16}>
                 <Col xs={24}>
-                  <Form.Item name="is_active" label="Status" valuePropName="checked">
-                    <Select>
-                       <Option value={1}>ACTIVE</Option>
-                       <Option value={0}>INACTIVE</Option>
+                  <Form.Item name="role_id" label="Select Role" rules={[requiredRule('Select role')]}>
+                    <Select placeholder="Dooro role-ka">
+                      {roles.map((r) => (
+                        <Option key={r.id} value={r.id}>
+                          {r.name.toUpperCase()}
+                        </Option>
+                      ))}
                     </Select>
                   </Form.Item>
                 </Col>
-              )}
-            </Row>}
+
+                {selectedRoleName === 'sub_admin' ? (
+                  <Col xs={24}>
+                    <Form.Item
+                      name="police_officer_id"
+                      label="Sarkaalka Booliska (Sareeye Guuto iyo wuxi ka sareeya)"
+                      rules={[{ required: true, message: 'Dooro sarkaalka Booliska.' }]}
+                    >
+                      <Select
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Dooro sarkaalka (Sareeye Guuto+)"
+                        options={generalLevelOfficers.map((o) => ({
+                          value: o.id,
+                          label: `${o.full_name} · ${o.rank_name || 'Darajo la’aan'} (${o.rank_code || ''}) · ${o.force_number}`,
+                        }))}
+                      />
+                    </Form.Item>
+                  </Col>
+                ) : (
+                  <Col xs={24}>
+                    <Form.Item
+                      name="police_officer_id"
+                      label="Sarkaalka / Askariga Loo Deploy Gareeynayo (Ikhtiyaari)"
+                    >
+                      <Select
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Dooro sarkaalka Booliska (ikhtiyaari)"
+                        options={districtOfficers.map((o) => ({
+                          value: o.id,
+                          label: `${o.full_name} · ${o.rank_name || 'Darajo la’aan'} (${o.force_number})`,
+                        }))}
+                      />
+                    </Form.Item>
+                  </Col>
+                )}
+
+                <Col xs={24}>
+                  <Form.Item name="username" label="Username" rules={usernameRules}>
+                    <Input placeholder="Qor username" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24}>
+                  <Form.Item
+                    name="password"
+                    label={editingUser ? 'Change Password (optional)' : 'Password'}
+                    rules={editingUser ? optionalPasswordRules : passwordRules}
+                  >
+                    <Input.Password placeholder="Qor password-ka" />
+                  </Form.Item>
+                </Col>
+
+                {editingUser && (
+                  <Col xs={24}>
+                    <Form.Item name="is_active" label="Status" valuePropName="checked">
+                      <Select>
+                        <Option value={1}>ACTIVE</Option>
+                        <Option value={0}>INACTIVE</Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                )}
+              </Row>
+            )}
           </Form>
         </Modal>
       </Space>

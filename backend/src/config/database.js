@@ -4,20 +4,31 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'police_cms',
-  waitForConnections: true,
-  connectionLimit: 15,
-  queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-  // Return dates as strings
-  dateStrings: ['DATE', 'DATETIME'],
-});
+const dbUrl = process.env.MYSQL_PRIVATE_URL || process.env.MYSQL_URL || process.env.DATABASE_URL;
+
+const pool = dbUrl
+  ? mysql.createPool({
+      uri: dbUrl,
+      waitForConnections: true,
+      connectionLimit: 15,
+      queueLimit: 0,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0,
+      dateStrings: ['DATE', 'DATETIME'],
+    })
+  : mysql.createPool({
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT) || 3306,
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'fnwEEUNFXuhIXbuAhjwwwZonCsVKUdjU',
+      database: process.env.DB_NAME || 'railway' || 'police_cms',
+      waitForConnections: true,
+      connectionLimit: 15,
+      queueLimit: 0,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0,
+      dateStrings: ['DATE', 'DATETIME'],
+    });
 
 /**
  * Execute a parameterized query against the pool.

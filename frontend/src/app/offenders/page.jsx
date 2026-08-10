@@ -47,7 +47,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import { compressImageFile } from '@/utils/imageCompression';
-import { disabledUnder8DobDate, dynamicIdNumberRule, minimumAge8Rule } from '@/utils/validation';
+import { disabledUnder8DobDate, minimumAge8Rule } from '@/utils/validation';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -68,6 +68,8 @@ export default function OffendersPage() {
   const { message } = App.useApp();
   const messageRef = useRef(message);
   const { user } = useAuth();
+  const userPermissions = user?.permissions || [];
+  const hasPermission = (key) => user?.role === 'admin' || userPermissions.includes('*') || userPermissions.includes(key);
   const [form] = Form.useForm();
   const [releaseForm] = Form.useForm();
   const [sentenceForm] = Form.useForm();
@@ -89,7 +91,8 @@ export default function OffendersPage() {
   const [selectedArrest, setSelectedArrest] = useState(null);
   const [custodyAction, setCustodyAction] = useState(null);
   const [filters, setFilters] = useState({ search: '', gender: undefined, arrested: undefined, repeat: undefined });
-  const canManageOffenders = ['admin', 'officer', 'cid', 'district_admin', 'ob_staff'].includes(user?.role);
+  const canCreateOffenders = hasPermission('suspects.create') || hasPermission('suspects.manage');
+  const canUpdateOffenders = hasPermission('suspects.update') || hasPermission('suspects.manage');
   const canReleaseOffenders = ['admin', 'jail'].includes(user?.role);
   const canManageSentence = ['admin', 'court', 'jail'].includes(user?.role);
   const canManageCustody = ['admin', 'court', 'jail', 'cid', 'district_admin'].includes(user?.role);
@@ -298,8 +301,6 @@ export default function OffendersPage() {
         ...fullRecord,
         age: fullRecord.age ? Number(fullRecord.age) : null,
         date_of_birth: fullRecord.date_of_birth ? dayjs(fullRecord.date_of_birth) : null,
-        arrest_status: fullRecord.arrest_status || 'not_arrested',
-        description: fullRecord.description || fullRecord.profile_notes || '',
       });
       setModalOpen(true);
     } catch (err) {
@@ -404,10 +405,6 @@ export default function OffendersPage() {
         }
         if (value !== undefined && value !== null) payload.append(key, value);
       });
-      if (values.arrest_status) {
-        const isArrested = ['arrested', 'wanted'].includes(values.arrest_status);
-        payload.append('is_arrested', isArrested ? '1' : '0');
-      }
       const file = values.photo?.[0]?.originFileObj;
       if (file) payload.append('photo', file);
       if (suspectFaceImage && suspectFaceImage.startsWith('data:')) {
@@ -739,21 +736,21 @@ export default function OffendersPage() {
       width: 240,
       render: (_, row) => (
         <Space wrap size="small">
-          {canManageOffenders && <Button size="small" onClick={() => openEdit(row)}>Edit</Button>}
+          {canUpdateOffenders && <Button size="small" onClick={() => openEdit(row)}>Edit</Button>}
           <Button size="small" icon={<HistoryOutlined />} onClick={() => openHistory(row)}>History</Button>
           {canReleaseOffenders && Number(row.is_arrested) === 1 && (
             <Button size="small" type="primary" icon={<UnlockOutlined />} onClick={() => openRelease(row)}>
               Release
             </Button>
           )}
-          {!canManageOffenders && !(canReleaseOffenders && Number(row.is_arrested) === 1) && <Tag color="blue">View Only</Tag>}
+          {!canUpdateOffenders && !(canReleaseOffenders && Number(row.is_arrested) === 1) && <Tag color="blue">View Only</Tag>}
         </Space>
       ),
     },
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'region_commander', 'officer', 'cid', 'court', 'jail', 'district_admin', 'ob_staff']} requiredPermissions={['suspects.manage']}>
+    <ProtectedRoute allowedRoles={['admin', 'region_commander', 'officer', 'cid', 'court', 'jail', 'district_admin', 'ob_staff']} requiredPermissions={['suspects.view', 'suspects.manage']}>
       <div className="offenders-page">
         {loadError && (
           <Alert
@@ -785,7 +782,7 @@ export default function OffendersPage() {
           <Space wrap>
             <Button icon={<PrinterOutlined />} onClick={printList}>Print</Button>
             <Button icon={<DownloadOutlined />} onClick={exportCsv}>Export CSV</Button>
-            {canManageOffenders && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Register Offender</Button>}
+            {canCreateOffenders && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Register Offender</Button>}
           </Space>
         </div>
 
@@ -852,19 +849,16 @@ export default function OffendersPage() {
               <Col xs={24} md={8}><Form.Item name="age" label="Age" rules={[{ type: 'number', min: 8, max: 120, message: "Da'da waa in ay ahaataa ugu yaraan 8 jir." }]}><InputNumber style={{ width: '100%' }} min={8} max={120} /></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="nationality" label="Nationality" initialValue="Somali"><Input /></Form.Item></Col>
               <Col xs={24} md={12}>
-                <Form.Item name="id_type" label="ID Type" rules={[{ required: true, message: 'ID Type is required.' }]}>
+                <Form.Item name="id_type" label="ID Type">
                   <Select placeholder="Select ID type">
                     <Select.Option value="National ID">National ID</Select.Option>
                     <Select.Option value="Passport">Passport</Select.Option>
                   </Select>
                 </Form.Item>
               </Col>
-              <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number" dependencies={['id_type']} rules={[dynamicIdNumberRule('id_type')]}><Input placeholder="14 digits (National ID) / 9 chars (Passport)" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name="id_number" label="ID Number"><Input placeholder="Optional ID number" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="phone" label="Phone" rules={[{ pattern: /^[+\d][\d\s-]{6,24}$/, message: 'Use a valid phone number.' }]}><Input /></Form.Item></Col>
               <Col xs={24}><Form.Item name="address" label="Address"><Input /></Form.Item></Col>
-              <Col xs={24}><Form.Item name="description" label="Profile Notes / Description"><TextArea rows={3} placeholder="Enter description or profile notes about the offender" /></Form.Item></Col>
-
-
               <Col span={24}>
                 <Form.Item label="Offender Photo / Face Capture">
                   <div className="face-preview-panel" style={{

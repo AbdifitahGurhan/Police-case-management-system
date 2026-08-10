@@ -9,5 +9,6 @@ router.use(authMiddleware);
 
 router.post('/', requirePermission('officers.transfer'), controller.transferOfficer);
 router.get('/:officer_id', requirePermission('officers.view'), controller.getTransferHistory);
+router.get('/:officer_id/assignments', requirePermission('officers.view'), controller.getOfficerAssignments);
 
 module.exports = router;

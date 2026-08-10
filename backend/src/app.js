@@ -1,4 +1,4 @@
-// src/app.js — Main Express entry point
+// src/app.js - Main Express entry point
 'use strict';
 
 const express = require('express');
@@ -8,7 +8,6 @@ require('dotenv').config();
 
 const { testConnection, query } = require('./config/database');
 const { connectMongoDB } = require('./config/mongodb');
-const { syncAllCidCases } = require('./services/cidService');
 const { runOneTimeArrestStatusRepair, runOneTimeOfficerAssignmentRepair } = require('./utils/dataRepair');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -93,7 +92,7 @@ app.use('/api/permissions', permissionRoutes);
 
 // Root route
 app.get('/', (req, res) => {
-  res.json({ message: 'Police Case Management System API — Running' });
+  res.json({ message: 'Police Case Management System API - Running' });
 });
 
 // Error handling
@@ -102,22 +101,18 @@ app.use(errorHandler);
 // Start server
 const PORT = process.env.PORT || 5000;
 
+const autoInitializeDb = require('../database/autoInitDb');
+
 const start = async () => {
   try {
     await testConnection();
+    await autoInitializeDb();
     const db = require('./config/database');
     await runOneTimeArrestStatusRepair(db);
     await runOneTimeOfficerAssignmentRepair(db);
     await connectMongoDB();
-    try {
-      console.log('🔄 Running initial CID dashboard cases synchronization...');
-      const syncCount = await syncAllCidCases('system');
-      console.log(`✅ CID cases synchronized successfully: ${syncCount} cases populated.`);
-    } catch (syncErr) {
-      console.error('⚠️ CID dashboard case synchronization failed:', syncErr.message);
-    }
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`Server running on port ${PORT}`);
     });
   } catch (err) {
     console.error('Failed to start server:', err.message);

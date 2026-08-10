@@ -11,6 +11,7 @@ const getCidNotifications = async (req) => {
   const role = normalizeRole(req.user?.role);
   const params = [];
   let visibility = '1=1';
+  const includeAssignedAlerts = role !== 'investigator';
   if (role === 'cid_officer') {
     const names = actorNames(req.user);
     visibility = names.length ? `cid.assigned_officer IN (${names.map(() => '?').join(',')})` : '1=0';
@@ -41,7 +42,7 @@ const getCidNotifications = async (req) => {
      FROM cid_cases cid
      WHERE ${visibility}
        AND (
-         cid.assignment_status = 'assigned'
+         ${includeAssignedAlerts ? "cid.assignment_status = 'assigned'" : '0=1'}
          OR cid.investigation_status IN ('supervisor_review','approved')
        )
      ORDER BY cid.updated_at DESC, cid.created_at DESC
@@ -55,7 +56,7 @@ const getCidNotifications = async (req) => {
 const getNotifications = async (req, res, next) => {
   try {
     const role = normalizeRole(req.user?.role);
-    if (CID_ROLES.includes(role)) {
+    if (req.query.scope === 'cid' || CID_ROLES.includes(role)) {
       const data = await getCidNotifications(req);
       return res.json({ success: true, data: data.slice(0, Number(req.query.limit || 20)), unread: data.filter((item) => !item.is_read).length });
     }

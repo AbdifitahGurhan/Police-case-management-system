@@ -33,6 +33,8 @@ export default function ObDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const { user } = useAuth();
+  const userPermissions = user?.permissions || [];
+  const hasPermission = (key) => user?.role === 'admin' || userPermissions.includes('*') || userPermissions.includes(key);
   const { message } = App.useApp();
   const [ob, setOb] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +53,7 @@ export default function ObDetailPage() {
 
   const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
   const canReadCases = user && caseReadRoles.includes(user.role);
+  const canUpdateSuspects = hasPermission('suspects.update') || hasPermission('suspects.manage');
 
   const loadOb = useCallback(async () => {
     setLoading(true);
@@ -168,7 +171,7 @@ export default function ObDetailPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'investigator', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]} requiredPermissions={['ob.view', 'ob.update', 'ob.print', 'cases.investigate', 'suspects.manage']}>
+    <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'investigator', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]} requiredPermissions={['ob.view', 'ob.update', 'ob.print', 'cases.investigate']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <Space orientation="vertical">
@@ -250,7 +253,7 @@ export default function ObDetailPage() {
                 {title:'Sharaxaadda',dataIndex:'description',render:v=>v||'—'},
                 {title:'Astaamaha Lagu Garto',dataIndex:'identifying_information',render:v=>v||'—'},
                 {title:'Xaaladda',dataIndex:'status',render:v=><Tag color={v==='ARRESTED'?'red':'orange'}>{statusLabels[v]||v}</Tag>},
-                {title:'Qabashada',render:(_,r)=>r.status==='ARRESTED'?`${r.arrest_date || ''} · ${r.arrest_location || ''}`:<Button type="primary" size="small" onClick={()=>setArrestTarget(r)}>Diiwaangeli Qabashada</Button>}
+                {title:'Qabashada',render:(_,r)=>r.status==='ARRESTED'?`${r.arrest_date || ''} · ${r.arrest_location || ''}`:(canUpdateSuspects ? <Button type="primary" size="small" onClick={()=>setArrestTarget(r)}>Diiwaangeli Qabashada</Button> : <Tag color="blue">View Only</Tag>)}
               ]}/>
               <Text type="secondary">Qofka la raadinayo wuxuu ku xirnaanayaa OB-gan. Diiwaangelinta qabashadu isla eedaysanaha ayay cusboonaysiinaysaa, OB cusubna ma abuurayso.</Text>
             </Card>

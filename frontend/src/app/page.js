@@ -32,7 +32,7 @@ export default function Home() {
           court: '/dashboard/court',
           prosecutor: '/dashboard/court',
           prosecutor_liaison: '/dashboard/cid',
-          jail: '/dashboard/jail'
+          jail: '/dashboard/central-jail'
         };
         router.push(roleRedirects[user.role] || '/police-officers');
       }

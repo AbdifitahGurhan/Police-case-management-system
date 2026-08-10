@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, App, Upload, Avatar, Tag, DatePicker, Row, Col, Image } from 'antd';
+import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, App, Upload, Avatar, Tag, DatePicker, Row, Col, Image, Alert, Tabs } from 'antd';
 import { PlusOutlined, EditOutlined, UploadOutlined, SwapOutlined, EyeOutlined, StarOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -25,6 +25,65 @@ const COMMISSIONED_CODES = new Set(['SG', 'SGS', 'SGT', 'GSH-S', 'GSH-DH', 'GSH'
 const STATE_ADMIN_RANK_CODES = new Set(['AL', 'SA', 'XDH', 'LXDH', 'LA', 'SXD']);
 const DISTRICT_USER_ROLES = new Set(['sub_admin', 'personnel_registry', 'ob_staff', 'investigator', 'station_jail']);
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+
+const ROLE_DISPLAY_NAMES = {
+  ob_staff: 'OB Staff',
+  investigator: 'Baare',
+  personnel_registry: 'Diiwaanka Ciidanka',
+  sub_admin: 'Sub-Admin',
+  station_jail: 'Xabsiga Saldhigga'
+};
+
+const assignmentTypeLabel = (type) => (
+  type === 'District User Link' ? 'Operational Account' : type
+);
+
+const isSeniorOrAdminOfficer = (officer) => {
+  const rankCode = String(officer?.rank_code || '').trim().toUpperCase();
+  const rankName = String(officer?.rank_name || '').toLowerCase();
+  const assignmentType = String(officer?.current_assignment_type || '');
+  const creator = String(officer?.created_by || '').toLowerCase();
+  const isCommissioned = COMMISSIONED_CODES.has(rankCode)
+    || rankName.includes('sareeye')
+    || rankName.includes('gaashaanle')
+    || rankName.includes('dhamme')
+    || rankName.includes('xiddigle');
+  const isAdminAssignment = ['State Administration', 'Region', 'District', 'Sub-Admin', 'Admin'].includes(assignmentType);
+  const isCentralCreated = ['admin', 'system'].includes(creator);
+  return isCommissioned || isAdminAssignment || isCentralCreated;
+};
+
+const formatSubAdminList = (subAdminList) => {
+  const roleCounts = {};
+  subAdminList.forEach(sa => {
+    const roleKey = String(sa.role || '').toLowerCase().replace('-', '_');
+    roleCounts[roleKey] = (roleCounts[roleKey] || 0) + 1;
+  });
+
+  const roleIndexes = {};
+  return subAdminList.map(sa => {
+    const roleKey = String(sa.role || '').toLowerCase().replace('-', '_');
+    roleIndexes[roleKey] = (roleIndexes[roleKey] || 0) + 1;
+
+    const roleBaseName = ROLE_DISPLAY_NAMES[roleKey] || (sa.role ? String(sa.role).toUpperCase() : 'USER');
+    const totalForRole = roleCounts[roleKey] || 0;
+
+    let roleTitle = roleBaseName;
+    if (totalForRole > 1) {
+      roleTitle = `${roleBaseName} ${roleIndexes[roleKey]}`;
+    }
+
+    const statusSuffix = sa.status && sa.status !== 'ACTIVE' ? ` (${sa.status})` : '';
+    const assignmentSuffix = sa.police_officer_id ? ' (Sarkaal ku xiran)' : ' (Bannaan)';
+    const optionLabel = `${roleTitle}${statusSuffix}${assignmentSuffix}`;
+
+    return {
+      ...sa,
+      roleTitle,
+      optionLabel
+    };
+  });
+};
 
 const getImageUrl = (pathStr) => {
   if (!pathStr) return null;
@@ -78,20 +137,69 @@ export default function PoliceOfficersPage() {
   const officerDob = Form.useWatch('date_of_birth', form);
   const calculatedAge = officerDob ? dayjs().diff(officerDob, 'year') : '';
   const isDistrictAdmin = user?.role === 'district_admin';
-  const deploymentTargetOptions = isDistrictAdmin
-    ? [{ value: 'Sub-Admin', label: 'User Degmo (Staff / Operational User)' }]
-    : [
-        { value: 'Sub-Admin', label: 'Sub-Admin / User Degmo (Staff / Operational User)' },
-        { value: 'District Station', label: 'District Station (Saldhiga Degmada)' },
-        { value: 'District', label: 'District (Degmo)' },
-        { value: 'Region', label: 'Region (Gobol)' },
-        { value: 'State Administration', label: 'State Administration (Dowlad Goboleed)' },
-      ];
-  const eligibleSubAdmins = (subAdmins || []).filter(item => {
+  const selectedSubAdminId = Form.useWatch('sub_admin_id', transferForm);
+
+  let deploymentTargetOptions = [];
+  if (isDistrictAdmin) {
+    deploymentTargetOptions = [
+      {
+        label: 'Maamulka (ADMIN)',
+        options: [
+          { value: 'Sub-Admin', label: 'Sub-Admin (Maamul Hoose)' },
+        ],
+      },
+      {
+        label: 'Hawlgalka (OPERATIONAL)',
+        options: [
+          { value: 'District Station', label: 'District Station (Saldhigga Degmada)' },
+          { value: 'District User Link', label: 'Operational Account (OB / Baare / Station Jail)' },
+        ],
+      },
+    ];
+  } else {
+    deploymentTargetOptions = [
+      {
+        label: 'Maamulka (ADMIN)',
+        options: [
+          { value: 'State Administration', label: 'State Administration (Maamulka Dawlad-Goboleedka)' },
+          { value: 'Region', label: 'Region (Maamulka Gobolka)' },
+          { value: 'District', label: 'District (Maamulka Degmada / Taliye)' },
+          { value: 'Sub-Admin', label: 'Sub-Admin (Maamul Hoose)' },
+        ],
+      },
+      {
+        label: 'Hawlgalka (OPERATIONAL)',
+        options: [
+          { value: 'District Station', label: 'District Station (Saldhigga Degmada)' },
+          { value: 'District User Link', label: 'Operational Account (OB / Baare / Station Jail)' },
+          { value: 'Region Unit', label: 'Region Unit (Cutubka Gobolka)' },
+          { value: 'State Unit', label: 'State Unit (Cutubka Dawlad-Goboleedka)' },
+        ],
+      },
+    ];
+  }
+
+  const isOperationalStaffTarget = assignmentType === 'District User Link';
+  const isSubAdminTarget = assignmentType === 'Sub-Admin';
+
+  const filteredSubAdmins = (subAdmins || []).filter(item => {
     const role = String(item.role || '').toLowerCase().replace('-', '_');
+    if (isSubAdminTarget) {
+      return role === 'sub_admin';
+    }
+    if (isOperationalStaffTarget) {
+      const isStaffRole = ['personnel_registry', 'ob_staff', 'investigator', 'station_jail'].includes(role);
+      const activeDistrictId = selectedDistrict || (isDistrictAdmin ? (user?.location?.districtId || user?.scopeId) : null);
+      const matchesDistrict = !activeDistrictId || Number(item.district_id) === Number(activeDistrictId);
+      return isStaffRole && matchesDistrict;
+    }
     const sameDistrict = !isDistrictAdmin || Number(item.district_id) === Number(user?.location?.districtId || user?.scopeId);
     return DISTRICT_USER_ROLES.has(role) && sameDistrict;
   });
+
+  const eligibleSubAdmins = formatSubAdminList(filteredSubAdmins);
+
+  const selectedSubAdminUser = eligibleSubAdmins.find(sa => Number(sa.id) === Number(selectedSubAdminId));
 
   useEffect(() => {
     if (user?.role === 'ob_staff') {
@@ -126,10 +234,16 @@ export default function PoliceOfficersPage() {
     if (isTransferModalOpen) {
        if (canViewLocations) {
          api.get('/state-administrations').then(res => setStates(res.data.data)).catch(console.error);
+         api.get('/districts').then(res => setAllDistricts(res.data.data || [])).catch(console.error);
+       }
+       if (user?.role === 'state_admin' && (user?.location?.stateId || user?.scopeId)) {
+         const stateId = user?.location?.stateId || user?.scopeId;
+         transferForm.setFieldsValue({ state_id: stateId });
+         api.get(`/regions?state_administration_id=${stateId}`).then(res => setRegions(res.data.data)).catch(console.error);
        }
        fetchSubAdmins();
     }
-  }, [isTransferModalOpen, canViewLocations, fetchSubAdmins]);
+  }, [isTransferModalOpen, canViewLocations, fetchSubAdmins, user, transferForm]);
 
   useEffect(() => {
     if (canViewLocations && selectedState) {
@@ -166,7 +280,6 @@ export default function PoliceOfficersPage() {
   useEffect(() => {
     fetchData();
   }, []);
-
   const handleOpenModal = (record = null) => {
     setEditingRecord(record);
     if (record) {
@@ -233,7 +346,7 @@ export default function PoliceOfficersPage() {
       setIsModalOpen(false);
       fetchData();
     } catch (err) {
-      if (err.errorFields) return; // Validation error
+      if (err.errorFields) return;
       message.error(err.response?.data?.message || "Save failed.");
     }
   };
@@ -243,12 +356,11 @@ export default function PoliceOfficersPage() {
        const values = await transferForm.validateFields();
        
        let targetId = null;
-       if (values.to_assignment_type === 'State Administration') targetId = values.state_id;
-       if (values.to_assignment_type === 'Sub-Admin') targetId = values.sub_admin_id;
-       if (values.to_assignment_type === 'Region') targetId = values.region_id;
-       if (values.to_assignment_type === 'City') targetId = values.city_id;
+       if (values.to_assignment_type === 'State Administration' || values.to_assignment_type === 'State Unit') targetId = values.state_id;
+       if (values.to_assignment_type === 'Sub-Admin' || values.to_assignment_type === 'District User Link') targetId = values.sub_admin_id;
+       if (values.to_assignment_type === 'District Station') targetId = isDistrictAdmin ? (user?.location?.districtId || user?.scopeId) : values.district_id;
+       if (values.to_assignment_type === 'Region' || values.to_assignment_type === 'Region Unit') targetId = values.region_id;
        if (values.to_assignment_type === 'District') targetId = values.district_id;
-       if (values.to_assignment_type === 'District Station') targetId = values.district_id;
 
        if (!targetId) {
          return message.error("Please complete the unit selection dropdowns.");
@@ -258,13 +370,14 @@ export default function PoliceOfficersPage() {
          officer_id: transferRecord.id,
          to_assignment_type: values.to_assignment_type,
          to_assignment_id: targetId,
-         transfer_reason: values.transfer_reason
+         transfer_reason: values.transfer_reason,
+         remarks: values.remarks,
        });
        message.success("Officer transferred successfully.");
        setIsTransferModalOpen(false);
        fetchData();
      } catch (err) {
-       if (err.errorFields) return; // Validation error
+       if (err.errorFields) return;
        message.error(err.response?.data?.message || "Transfer failed.");
      }
   };
@@ -342,14 +455,28 @@ export default function PoliceOfficersPage() {
     {
       title: 'Goobta Shaqada',
       key: 'current_assignment',
-      render: (_, record) => (
-        <Space orientation="vertical" size={0}>
-          <Typography.Text strong>{record.current_assignment_name || 'Taliska Dhexe'}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {record.current_assignment_type || 'Lama qoondeyn'}
-          </Typography.Text>
-        </Space>
-      ),
+      render: (_, record) => {
+        if (!record.current_assignment_name && !record.current_assignment_type) {
+          return (
+            <Space orientation="vertical" size={0}>
+              <Typography.Text type="secondary">Lama qoondeyn</Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Unassigned</Typography.Text>
+            </Space>
+          );
+        }
+
+        const isCentralCommand = ['Sub-Admin', 'State Administration', 'Admin'].includes(record.current_assignment_type);
+        const mainLocation = record.current_assignment_name || (isCentralCommand ? 'Taliska Dhexe' : 'Goobta Shaqada');
+
+        return (
+          <Space orientation="vertical" size={0}>
+            <Typography.Text strong>{mainLocation}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {assignmentTypeLabel(record.current_assignment_type) || ''}
+            </Typography.Text>
+          </Space>
+        );
+      },
     },
     { title: 'Ansixinta', dataIndex: 'approval_status', render: s => <Tag color={s==='APPROVED'?'green':s==='PENDING'?'gold':'red'}>{s||'APPROVED'}</Tag> },
     { title: 'Xaaladda Shaqada', dataIndex: 'employment_status', key: 'employment_status', render: s => <Tag color={String(s).toLowerCase() === 'active' ? 'green' : 'red'}>{s}</Tag> },
@@ -371,6 +498,15 @@ export default function PoliceOfficersPage() {
     },
   ];
 
+  const seniorOrAdminOfficers = data.filter(isSeniorOrAdminOfficer);
+  const otherOfficers = data.filter((officer) => !isSeniorOrAdminOfficer(officer));
+  const tableProps = {
+    columns,
+    rowKey: 'id',
+    loading,
+    scroll: { x: 'max-content' },
+  };
+
   return (
     <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'state_admin', 'personnel_registry', 'region_admin', 'region_commander', 'city_admin']} requiredPermissions={['officers.view', 'officers.create', 'officers.approve']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
@@ -383,7 +519,24 @@ export default function PoliceOfficersPage() {
         </div>
 
         <Card variant="none">
-          <Table columns={columns} dataSource={data} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
+          {user?.role === 'admin' ? (
+            <Tabs
+              items={[
+                {
+                  key: 'senior-admin',
+                  label: `Saraakiisha Sare / Maamulka (${seniorOrAdminOfficers.length})`,
+                  children: <Table {...tableProps} dataSource={seniorOrAdminOfficers} />,
+                },
+                {
+                  key: 'others',
+                  label: `Saraakiisha Kale (${otherOfficers.length})`,
+                  children: <Table {...tableProps} dataSource={otherOfficers} />,
+                },
+              ]}
+            />
+          ) : (
+            <Table {...tableProps} dataSource={data} />
+          )}
         </Card>
 
         {/* Create/Edit Modal */}
@@ -459,68 +612,119 @@ export default function PoliceOfficersPage() {
 
         {/* Deployment / Transfer Modal */}
         <Modal
-          title={`Deploy ${transferRecord?.full_name}`}
+          title={`Deploy / Qoondee Sarkaalka: ${transferRecord?.full_name || ''}`}
           open={isTransferModalOpen}
           onCancel={() => setIsTransferModalOpen(false)}
           onOk={handleTransfer}
+          width={650}
         >
            <Form form={transferForm} layout="vertical">
-              <Form.Item name="to_assignment_type" label="Target Level" rules={[requiredRule('Target level')]}>
+              <Alert
+                type={transferRecord?.current_assignment_name ? "info" : "warning"}
+                showIcon
+                style={{ marginBottom: 16 }}
+                title={
+                  transferRecord?.current_assignment_name ? (
+                    <span>Hadda wuxuu ku qoondeysan yahay: <strong>{(transferRecord.current_assignment_name === 'Unknown' || !transferRecord.current_assignment_name) ? (assignmentTypeLabel(transferRecord.current_assignment_type) || 'Goobta Shaqada') : transferRecord.current_assignment_name}</strong> ({assignmentTypeLabel(transferRecord.current_assignment_type)})</span>
+                  ) : (
+                    <span>Sarkaalkan weli goob shaqo looma qoondeyn (Unassigned).</span>
+                  )
+                }
+              />
+
+              <Form.Item name="to_assignment_type" label="Target Level (Heerka Loo Qoondeynayo)" rules={[requiredRule('Target level')]}>
                  <Select
-                   placeholder="Dooro heerka"
-                   onChange={() => transferForm.setFieldsValue({ state_id: undefined, sub_admin_id: undefined, region_id: undefined, district_id: undefined })}
+                   placeholder="Dooro heerka qoondeynta"
+                   onChange={() => transferForm.setFieldsValue({ state_id: undefined, region_id: undefined, district_id: undefined, sub_admin_id: undefined })}
                    options={deploymentTargetOptions}
                  />
               </Form.Item>
-              
-              {assignmentType === 'Sub-Admin' && (
-                <Form.Item name="sub_admin_id" label="User-ka Degmada" rules={[requiredRule('User-ka Degmada')]}>
+
+              {assignmentType && user?.role !== 'state_admin' && user?.role !== 'district_admin' && (
+                <Form.Item name="state_id" label="State Administration (Maamulka Dawlad-Goboleedka)" rules={[requiredRule('State administration')]}>
                   <Select
-                    placeholder="Dooro User-ka Degmada"
+                    placeholder="Dooro State Administration"
+                    showSearch
+                    optionFilterProp="label"
+                    options={(states || []).map(s => ({ value: s.id, label: s.state_name }))}
+                    onChange={() => transferForm.setFieldsValue({ region_id: undefined, district_id: undefined, sub_admin_id: undefined })}
+                  />
+                </Form.Item>
+              )}
+
+              {assignmentType && ['Region', 'Region Unit', 'District', 'District Station', 'District User Link'].includes(assignmentType) && user?.role !== 'district_admin' && (
+                <Form.Item name="region_id" label="Region (Gobolka)" rules={['Region', 'Region Unit', 'District'].includes(assignmentType) ? [requiredRule('Region')] : []}>
+                  <Select
+                    placeholder="Dooro Gobolka"
+                    showSearch
+                    optionFilterProp="label"
+                    disabled={user?.role !== 'state_admin' && !selectedState}
+                    options={(regions || []).map(r => ({ value: r.id, label: r.region_name }))}
+                    onChange={() => transferForm.setFieldsValue({ district_id: undefined, sub_admin_id: undefined })}
+                  />
+                </Form.Item>
+              )}
+
+              {assignmentType && ['District', 'District Station', 'District User Link'].includes(assignmentType) && !isDistrictAdmin && (
+                <Form.Item name="district_id" label="District (Degmada)" rules={[requiredRule('District')]}>
+                  <Select
+                    placeholder="Dooro Degmada"
+                    showSearch
+                    optionFilterProp="label"
+                    disabled={selectedState && !selectedRegion && user?.role !== 'state_admin'}
+                    options={((selectedRegion ? districts : (allDistricts.length ? allDistricts : districts)) || []).map(d => ({
+                      value: d.id,
+                      label: d.district_name || d.name
+                    }))}
+                    onChange={() => transferForm.setFieldsValue({ sub_admin_id: undefined })}
+                  />
+                </Form.Item>
+              )}
+
+              {(assignmentType === 'Sub-Admin' || assignmentType === 'District User Link') && (
+                <Form.Item
+                  name="sub_admin_id"
+                  label={assignmentType === 'Sub-Admin' ? "Sub-Admin (Maamul Hoose)" : "Operational Account (OB / Baare / Station Jail)"}
+                  rules={[requiredRule(assignmentType === 'Sub-Admin' ? 'Sub-Admin' : 'Operational Account')]}
+                >
+                  <Select
+                    placeholder={assignmentType === 'Sub-Admin' ? "Dooro Sub-Admin" : "Dooro account-ka bannaan"}
                     showSearch
                     optionFilterProp="label"
                     options={eligibleSubAdmins.map(sa => ({
                       value: sa.id,
-                      label: `${sa.full_name || sa.username}${sa.rank ? ` (${sa.rank})` : ''} · ${sa.username} [${sa.role ? String(sa.role).toUpperCase() : 'USER'}]`
+                      label: sa.optionLabel
                     }))}
                   />
                 </Form.Item>
               )}
 
-              {assignmentType && assignmentType !== 'Sub-Admin' && (
-                <Form.Item name="state_id" label="State Administration" rules={[requiredRule('State administration')]}>
-                  <Select
-                    placeholder="Select State Administration"
-                    showSearch
-                    optionFilterProp="label"
-                    options={(states || []).map(s => ({ value: s.id, label: s.state_name }))}
-                  />
-                </Form.Item>
-              )}
+              {selectedSubAdminUser && (() => {
+                const selectedDistrictObj = (allDistricts.length ? allDistricts : districts || []).find(d => Number(d.id) === Number(selectedSubAdminUser?.district_id || selectedDistrict));
+                const districtNameDisplay = (selectedSubAdminUser?.district_name && selectedSubAdminUser.district_name !== 'Degmada')
+                  ? selectedSubAdminUser.district_name
+                  : (selectedDistrictObj?.district_name || selectedDistrictObj?.name || 'Degmada la doortay');
 
-              {assignmentType && ['Region', 'District', 'District Station'].includes(assignmentType) && (
-                <Form.Item name="region_id" label="Region" rules={[requiredRule('Region')]}>
-                  <Select
-                    placeholder="Select Region"
-                    showSearch
-                    optionFilterProp="label"
-                    disabled={!selectedState}
-                    options={(regions || []).map(r => ({ value: r.id, label: r.region_name }))}
+                return (
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    title="Xaqiijinta Xogta la Doortay (Selection Preview)"
+                    description={
+                      <span>
+                        Waxaad dooratay: <strong>{selectedSubAdminUser.full_name || selectedSubAdminUser.username}</strong>{' '}
+                        (<Tag color="blue">{selectedSubAdminUser.roleTitle || (selectedSubAdminUser.role ? String(selectedSubAdminUser.role).toUpperCase() : 'USER')}</Tag>, Degmada:{' '}
+                        <strong>{districtNameDisplay}</strong>)
+                      </span>
+                    }
                   />
-                </Form.Item>
-              )}
+                );
+              })()}
 
-              {assignmentType && ['District', 'District Station'].includes(assignmentType) && (
-                <Form.Item name="district_id" label="District Station" rules={[requiredRule('District Station')]}>
-                  <Select
-                    placeholder="Select District Station"
-                    showSearch
-                    optionFilterProp="label"
-                    disabled={!selectedRegion}
-                    options={(districts || []).map(d => ({ value: d.id, label: d.district_name }))}
-                  />
-                </Form.Item>
-              )}
+              <Form.Item name="remarks" label="Faallo / Sababta Qoondeynta (Remarks)" rules={[textLengthRule('Faallooyinka', 3, 1000)]}>
+                <Input.TextArea rows={2} placeholder="Qor sababta loo qoondeeyay ama faallo dheeraad ah" />
+              </Form.Item>
 
            </Form>
         </Modal>

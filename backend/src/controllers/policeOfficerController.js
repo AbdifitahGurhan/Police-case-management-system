@@ -19,10 +19,18 @@ exports.getAll = async (req, res, next) => {
           (
             SELECT CASE
               WHEN a.assignment_type = 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'Region Unit' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District Station' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'District User Link' THEN (
+                SELECT d.district_name
+                FROM users u
+                LEFT JOIN districts d ON d.id = u.district_id
+                WHERE u.id = a.assignment_id
+              )
               ELSE NULL
             END
             FROM officer_assignments a
@@ -86,17 +94,33 @@ exports.getById = async (req, res, next) => {
       SELECT t.*,
         CASE t.from_assignment_type
           WHEN 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id=t.from_assignment_id)
+          WHEN 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id=t.from_assignment_id)
           WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=t.from_assignment_id)
+          WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=t.from_assignment_id)
           WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=t.from_assignment_id)
           WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=t.from_assignment_id)
           WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=t.from_assignment_id)
+          WHEN 'District User Link' THEN (
+            SELECT d.district_name
+            FROM users u
+            LEFT JOIN districts d ON d.id = u.district_id
+            WHERE u.id=t.from_assignment_id
+          )
         END AS from_assignment_name,
         CASE t.to_assignment_type
           WHEN 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id=t.to_assignment_id)
+          WHEN 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id=t.to_assignment_id)
           WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=t.to_assignment_id)
+          WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=t.to_assignment_id)
           WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=t.to_assignment_id)
           WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=t.to_assignment_id)
           WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=t.to_assignment_id)
+          WHEN 'District User Link' THEN (
+            SELECT d.district_name
+            FROM users u
+            LEFT JOIN districts d ON d.id = u.district_id
+            WHERE u.id=t.to_assignment_id
+          )
         END AS to_assignment_name
       FROM officer_transfers t WHERE t.officer_id=? ORDER BY t.transferred_at DESC`, [id]);
     officer.transfers = transfers;
@@ -106,10 +130,18 @@ exports.getById = async (req, res, next) => {
       SELECT a.*, 
         CASE 
           WHEN a.assignment_type = 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id = a.assignment_id)
+          WHEN a.assignment_type = 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
+          WHEN a.assignment_type = 'Region Unit' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District Station' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
+          WHEN a.assignment_type = 'District User Link' THEN (
+            SELECT d.district_name
+            FROM users u
+            LEFT JOIN districts d ON d.id = u.district_id
+            WHERE u.id = a.assignment_id
+          )
           ELSE 'Unknown'
         END as assignment_name
       FROM officer_assignments a 

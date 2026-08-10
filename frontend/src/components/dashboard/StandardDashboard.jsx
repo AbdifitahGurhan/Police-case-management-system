@@ -33,6 +33,7 @@ export default function StandardDashboard({
   viewAllOnClick,
   viewAllLabel = 'View all records',
   pagination = false,
+  showTable = true,
 }) {
   return (
     <ProtectedRoute allowedRoles={allowedRoles}>
@@ -82,7 +83,7 @@ export default function StandardDashboard({
           ))}
         </Row>
 
-        <Row gutter={[16, 16]}>
+        {showTable && <Row gutter={[16, 16]}>
           {sidePanel && (
             <Col xs={24} lg={8}>
               <Card variant="none" className="standard-panel" title={sidePanel.title}>
@@ -133,7 +134,7 @@ export default function StandardDashboard({
               )}
             </Card>
           </Col>
-        </Row>
+        </Row>}
       </div>
     </ProtectedRoute>
   );

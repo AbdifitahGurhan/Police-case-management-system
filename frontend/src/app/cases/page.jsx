@@ -39,13 +39,10 @@ const CASE_WRITE_ROLES = [
 
 const STATUS_OPTIONS = [
   { value: 'draft', label: 'Draft' },
-  { value: 'registered', label: 'Registered' },
-  { value: 'CASE_REGISTERED', label: 'Case registered' },
-  { value: 'under_investigation', label: 'Under investigation' },
-  { value: 'referred_to_cid', label: 'Referred to CID' },
-  { value: 'ready_for_court', label: 'Ready for court' },
-  { value: 'forwarded_to_court', label: 'Forwarded to court' },
-  { value: 'court_decided', label: 'Court decided' },
+  { value: 'registered', label: 'OB created' },
+  { value: 'CASE_REGISTERED', label: 'Case opened' },
+  { value: 'under_investigation', label: 'Baaritaan' },
+  { value: 'referred_to_court', label: 'Maxkamad loo gudbiyey' },
   { value: 'closed', label: 'Closed' },
   { value: 'archived', label: 'Archived' },
 ];
@@ -246,7 +243,7 @@ export default function CaseListPage() {
             <Alert
               type="error"
               showIcon
-              message={loadError}
+              title={loadError}
               style={{ marginBottom: 16 }}
             />
           )}

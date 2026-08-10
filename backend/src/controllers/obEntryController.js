@@ -6,7 +6,6 @@ const { generateOBNumber } = require('../utils/obNumberGenerator');
 const { generateCaseNumber } = require('../utils/caseNumberGenerator');
 const { buildScopeWhere, getUserLocation, normalizeRole } = require('../utils/locationScope');
 const { validateObDates } = require('../utils/dateValidation');
-const { ensureCidCaseForPoliceCase } = require('../services/cidService');
 
 const OB_EDITABLE_STATUSES = new Set(['DRAFT', 'REGISTERED', 'OB_REGISTERED', 'PRELIMINARY_REVIEW']);
 const OB_TRANSITIONS = {
@@ -375,7 +374,6 @@ const createObEntry = async (req, res, next) => {
       userAgent: req.headers['user-agent'],
     });
 
-    try { await ensureCidCaseForPoliceCase(caseResult.insertId, req.user.username); } catch (syncError) { console.error('CID sync after automatic OB case creation failed:', syncError.message); }
     res.status(201).json({ success: true, message: 'OB-ga iyo kiiska si toos ah ayaa loo diiwaangeliyey.', obEntryId: result.insertId, obNumber, caseId:caseResult.insertId, caseNumber });
   } catch (err) { if (connection) await connection.rollback(); if (err.status) return res.status(err.status).json({success:false,message:err.message}); next(err); }
   finally { if (connection) connection.release(); }
@@ -505,22 +503,19 @@ const convertObToCase = async (req, res, next) => {
       if(person.status==='ARRESTED') await db.query('INSERT INTO arrests(case_id,suspect_id,police_station_id,arrested_by,arrest_date,arrest_location,notes) VALUES(?,?,?,?,?,?,?)',[result.insertId,criminalResult.insertId,ob.district_id,person.arresting_officer,person.arrest_date,person.arrest_location,'Arrest registered under original OB.']);
     }
 
-    // Insert automatic CID referral
+    // Keep newly opened OB cases in the investigator workflow.
     await db.query(
       `INSERT INTO referrals (case_id, referred_by, referred_to_role, reason, status)
-       VALUES (?, ?, 'cid', 'Automatic referral on OB conversion', 'accepted')`,
+       VALUES (?, ?, 'investigator', 'Case opened from OB for investigation', 'pending')`,
       [result.insertId, req.user.username]
     );
 
-    // Sync to CID cases
-    await ensureCidCaseForPoliceCase(result.insertId, req.user.username);
-
     await db.query('UPDATE ob_entries SET status = ? WHERE id = ?', ['CONVERTED_TO_CASE', ob.id]);
-    await db.query('INSERT INTO ob_status_history(ob_entry_id,previous_status,new_status,reason,performed_by) VALUES(?,?,?,?,?)',[ob.id,ob.status,'CONVERTED_TO_CASE',`Formal case ${caseNumber} opened and referred to CID.`,req.user.username]);
+    await db.query('INSERT INTO ob_status_history(ob_entry_id,previous_status,new_status,reason,performed_by) VALUES(?,?,?,?,?)',[ob.id,ob.status,'CONVERTED_TO_CASE',`Formal case ${caseNumber} opened for investigation.`,req.user.username]);
     await db.query(
       `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
        VALUES (?, ?, 'CASE_OPENED_FROM_OB', ?, ?)`,
-      [result.insertId, req.user.username, `Formal case opened from ${ob.ob_number} and automatically referred to CID.`, caseStatus]
+      [result.insertId, req.user.username, `Formal case opened from ${ob.ob_number} for investigation.`, caseStatus]
     );
 
     await writeAuditLog({

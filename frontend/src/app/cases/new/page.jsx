@@ -338,7 +338,7 @@ function NewCaseWizardContent() {
             type="info"
             showIcon
             icon={<FileSearchOutlined />}
-            message={`Xogta waxaa lagu sii pre-fill gareeyay OB Number: ${obData.ob_number}`}
+            title={`Xogta waxaa lagu sii pre-fill gareeyay OB Number: ${obData.ob_number}`}
             description="Dhammaan xogtii aad horay ugu soo qortay OB Registration waa ku sii diyaarsan tahay foomka. Waad beddeli kartaa ama meelaha bannaan ayaad ku dari kartaa xog dheeraad ah."
             style={{ borderRadius: 8 }}
           />
@@ -480,7 +480,7 @@ function NewCaseWizardContent() {
                 <Alert
                   type="warning"
                   showIcon
-                  message={`Waxaa socda beddelidda xogta eedaysanaha`}
+                  title={`Waxaa socda beddelidda xogta eedaysanaha`}
                   description="Fadlan ku sameey wax ka beddelka foomka hoose oo guji 'Cusboonaysii Eedaysanaha'."
                   action={
                     <Button size="small" danger onClick={cancelEditSuspectDraft}>

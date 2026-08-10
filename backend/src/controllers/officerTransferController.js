@@ -3,7 +3,6 @@ const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 
 const STATE_ADMIN_RANK_CODES = new Set(['AL', 'SA', 'XDH', 'LXDH', 'LA', 'SXD']);
-const DISTRICT_DEPLOY_TARGET_ROLES = new Set(['sub_admin', 'personnel_registry', 'ob_staff', 'investigator', 'station_jail']);
 
 exports.transferOfficer = async (req, res, next) => {
   const connection = await db.pool.getConnection();
@@ -41,11 +40,11 @@ exports.transferOfficer = async (req, res, next) => {
         });
       }
     }
-    if (req.user.role === 'district_admin' && to_assignment_type !== 'Sub-Admin') {
+    if (req.user.role === 'district_admin' && !['Sub-Admin', 'District Station', 'District User Link'].includes(to_assignment_type)) {
       await connection.rollback();
       return res.status(403).json({
         success: false,
-        message: 'Maamulaha Degmada wuxuu askari u deploy gareyn karaa oo keliya User Degmo degmadiisa ah.',
+        message: 'Maamulaha Degmada wuxuu askari u deploy gareyn karaa oo keliya Sub-Admin, saldhigga degmadiisa, ama operational account.',
       });
     }
 
@@ -55,23 +54,27 @@ exports.transferOfficer = async (req, res, next) => {
 
     let targetLocation = { state_administration_id: null, region_id: null, district_id: null };
     let targetUser = null;
+    let previousLinkedOfficerId = null;
     if (to_assignment_type === 'State Administration') {
       const [[sa]] = await connection.query('SELECT id FROM state_administrations WHERE id = ?', [to_assignment_id]);
       if (sa) targetLocation.state_administration_id = sa.id;
       else targetLocation = null;
-    } else if (to_assignment_type === 'Sub-Admin') {
-      const subAdminParams = [to_assignment_id, ...DISTRICT_DEPLOY_TARGET_ROLES];
+    } else if (['Sub-Admin', 'District User Link'].includes(to_assignment_type)) {
+      const allowedTargetRoles = to_assignment_type === 'Sub-Admin'
+        ? ['sub_admin']
+        : ['personnel_registry', 'ob_staff', 'investigator', 'station_jail'];
+      const subAdminParams = [to_assignment_id, ...allowedTargetRoles];
       let subAdminScopeWhere = '';
       if (req.user.role === 'district_admin') {
         subAdminScopeWhere = ' AND u.district_id = ?';
         subAdminParams.push(req.user.scopeId);
       }
       const [[saUser]] = await connection.query(
-        `SELECT u.id, u.state_administration_id, u.region_id, u.district_id
+        `SELECT u.id, u.state_administration_id, u.region_id, u.district_id, u.police_officer_id
          FROM users u
           JOIN roles r ON r.id = u.role_id
           WHERE u.id = ?
-            AND LOWER(REPLACE(r.name, '-', '_')) IN (${[...DISTRICT_DEPLOY_TARGET_ROLES].map(() => '?').join(',')})
+            AND LOWER(REPLACE(r.name, '-', '_')) IN (${allowedTargetRoles.map(() => '?').join(',')})
             AND u.is_active = 1
             AND UPPER(COALESCE(u.status, 'ACTIVE')) = 'ACTIVE'
             ${subAdminScopeWhere}`,
@@ -79,11 +82,12 @@ exports.transferOfficer = async (req, res, next) => {
       );
       if (saUser) {
         targetUser = saUser;
+        previousLinkedOfficerId = saUser.police_officer_id || null;
         targetLocation.state_administration_id = saUser.state_administration_id || null;
         targetLocation.region_id = saUser.region_id || null;
         targetLocation.district_id = saUser.district_id || null;
       } else targetLocation = null;
-    } else if (to_assignment_type === 'Region') {
+    } else if (to_assignment_type === 'Region' || to_assignment_type === 'Region Unit') {
       const [[rg]] = await connection.query('SELECT id, state_administration_id FROM regions WHERE id = ?', [to_assignment_id]);
       if (rg) {
         targetLocation.region_id = rg.id;
@@ -113,6 +117,10 @@ exports.transferOfficer = async (req, res, next) => {
         targetLocation.region_id = dt.region_id;
         targetLocation.state_administration_id = dt.state_administration_id;
       } else targetLocation = null;
+    } else if (to_assignment_type === 'State Unit') {
+      const [[sa]] = await connection.query('SELECT id FROM state_administrations WHERE id = ?', [to_assignment_id]);
+      if (sa) targetLocation.state_administration_id = sa.id;
+      else targetLocation = null;
     }
 
     if (!to_assignment_id || !targetLocation) {
@@ -120,25 +128,50 @@ exports.transferOfficer = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Dooro goobta la wareejinayo oo dhameystiran.' });
     }
 
-    // 2. Deactivate ALL previous active assignments for this officer to ensure single active location
-    await connection.query('UPDATE officer_assignments SET is_current = 0 WHERE officer_id = ?', [officer_id]);
+    if (req.user.role === 'district_admin' && targetLocation.district_id && Number(targetLocation.district_id) !== Number(req.user.scopeId)) {
+      await connection.rollback();
+      return res.status(403).json({ success: false, message: 'Maamulaha Degmada wuxuu qoondeyn karaa oo keliya gudaha degmadiisa.' });
+    }
 
-    // 3. Clear this officer from being commander of any other station/unit across all tiers
-    await connection.query('UPDATE state_administrations SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
-    await connection.query('UPDATE regions SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
-    await connection.query('UPDATE cities SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
-    await connection.query('UPDATE districts SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
+    const { validateAssignment } = require('../services/officerAssignmentService');
 
-    // 4. Create new single active assignment
+    // Validate assignment against business rules (Rules 1-6)
+    let assignmentCategory;
+    try {
+      assignmentCategory = await validateAssignment(connection, officer_id, to_assignment_type, to_assignment_id, null, req.user);
+    } catch (valErr) {
+      await connection.rollback();
+      return res.status(valErr.statusCode || 400).json({ success: false, message: valErr.message });
+    }
+
+    // 2. Move the officer from the old current assignment in this category to the new one.
     await connection.query(
-      `INSERT INTO officer_assignments (officer_id, assignment_type, assignment_id, is_current, assigned_by, remarks)
-       VALUES (?, ?, ?, 1, ?, ?)`,
-      [officer_id, to_assignment_type, to_assignment_id || null, req.user.username, remarks]
+      'UPDATE officer_assignments SET is_current = 0 WHERE officer_id = ? AND assignment_category = ?',
+      [officer_id, assignmentCategory]
     );
+
+    // 3. Clear this officer from being commander of any other center if assigning a new commander role
+    if (to_assignment_type === 'District' && assignmentCategory === 'ADMIN') {
+      await connection.query('UPDATE districts SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
+    } else if (to_assignment_type === 'Region' && assignmentCategory === 'ADMIN') {
+      await connection.query('UPDATE regions SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
+    } else if (to_assignment_type === 'State Administration' && assignmentCategory === 'ADMIN') {
+      await connection.query('UPDATE state_administrations SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
+    }
+
+    // 4. Insert new assignment with category
+    await connection.query(
+      `INSERT INTO officer_assignments (officer_id, assignment_type, assignment_id, assignment_category, is_current, assigned_by, remarks)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`,
+      [officer_id, to_assignment_type, to_assignment_id || null, assignmentCategory, req.user.username, remarks]
+    );
+
     await connection.query(
       `UPDATE police_officers
-       SET state_administration_id=?,region_id=?,district_id=?
-       WHERE id=?`,
+       SET state_administration_id = COALESCE(?, state_administration_id),
+           region_id = COALESCE(?, region_id),
+           district_id = COALESCE(?, district_id)
+       WHERE id = ?`,
       [targetLocation.state_administration_id, targetLocation.region_id, targetLocation.district_id, officer_id]
     );
 
@@ -151,6 +184,17 @@ exports.transferOfficer = async (req, res, next) => {
         [officer_id]
       );
       if (deployedOfficer) {
+        if (previousLinkedOfficerId && Number(previousLinkedOfficerId) !== Number(officer_id)) {
+          await connection.query(
+            `UPDATE officer_assignments
+             SET is_current = 0
+             WHERE officer_id = ?
+               AND assignment_type = 'District User Link'
+               AND assignment_id = ?
+               AND is_current = 1`,
+            [previousLinkedOfficerId, targetUser.id]
+          );
+        }
         await connection.query('UPDATE users SET police_officer_id = NULL WHERE police_officer_id = ? AND id <> ?', [officer_id, targetUser.id]);
         await connection.query(
           `UPDATE users
@@ -186,16 +230,15 @@ exports.transferOfficer = async (req, res, next) => {
       ]
     );
 
-    // 6. Assign commander on the target center profile if applicable
+    // 6. Assign commander on target center if ADMIN category commander type
     const tableMap = {
       'State Administration': 'state_administrations',
       'Region': 'regions',
       'City': 'cities',
-      'District': 'districts',
-      'District Station': 'districts'
+      'District': 'districts'
     };
 
-    if (to_assignment_id && tableMap[to_assignment_type]) {
+    if (to_assignment_id && tableMap[to_assignment_type] && assignmentCategory === 'ADMIN') {
       const table = tableMap[to_assignment_type];
       await connection.query(`UPDATE ${table} SET commander_officer_id = ? WHERE id = ?`, [officer_id, to_assignment_id]);
     }
@@ -224,5 +267,14 @@ exports.getTransferHistory = async (req, res, next) => {
     const { officer_id } = req.params;
     const [rows] = await db.query('SELECT * FROM officer_transfers WHERE officer_id = ? ORDER BY transferred_at DESC', [officer_id]);
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
+exports.getOfficerAssignments = async (req, res, next) => {
+  try {
+    const { officer_id } = req.params;
+    const { getOfficerAssignmentsGrouped } = require('../services/officerAssignmentService');
+    const result = await getOfficerAssignmentsGrouped(officer_id);
+    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 };

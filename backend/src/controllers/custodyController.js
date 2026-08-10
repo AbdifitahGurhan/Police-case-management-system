@@ -142,6 +142,155 @@ const addTransfer = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const getTransferDocument = async (req, res, next) => {
+  try {
+    const [[transfer]] = await db.query(
+      `SELECT pt.*, s.full_name, s.gender, s.phone, a.case_id, a.sentence_status,
+              a.sentence_period_value, a.sentence_period_unit, a.sentence_start_date, a.expected_release_date,
+              c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS case_title,
+              d.district_name
+         FROM prison_transfers pt
+         JOIN criminals s ON s.id = pt.suspect_id
+         LEFT JOIN arrests a ON a.id = pt.arrest_id
+         LEFT JOIN cases c ON c.id = a.case_id
+         LEFT JOIN districts d ON d.id = c.district_id
+        WHERE pt.id = ?`,
+      [req.params.id]
+    );
+    if (!transfer) return res.status(404).json({ success: false, message: 'Transfer document not found.' });
+    res.json({ success: true, data: transfer });
+  } catch (err) { next(err); }
+};
+
+const getCentralTransfers = async (_req, res, next) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT pt.*, s.full_name, s.gender, s.phone, a.case_id, a.sentence_status,
+              a.sentence_period_value, a.sentence_period_unit, a.sentence_start_date, a.expected_release_date,
+              c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS case_title,
+              d.district_name,
+              pa.id AS admission_id, pa.prison_number, pa.facility AS current_facility
+         FROM prison_transfers pt
+         JOIN criminals s ON s.id = pt.suspect_id
+         LEFT JOIN arrests a ON a.id = pt.arrest_id
+         LEFT JOIN cases c ON c.id = a.case_id
+         LEFT JOIN districts d ON d.id = c.district_id
+         LEFT JOIN prison_admissions pa ON pa.arrest_id = pt.arrest_id AND pa.status = 'admitted'
+        WHERE pt.status = 'pending'
+        ORDER BY pt.transfer_date DESC, pt.created_at DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
+const getCentralAdmissions = async (_req, res, next) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT pa.*, s.full_name, a.case_id, a.sentence_status,
+              a.sentence_period_value, a.sentence_period_unit, a.expected_release_date,
+              c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS case_title,
+              pt.id AS transfer_id, pt.to_facility, pt.transfer_date, pt.status AS transfer_status,
+              pca.block_name, pca.cell_number,
+              pc.capacity AS cell_capacity,
+              (SELECT COUNT(*) FROM prison_cell_assignments x
+                WHERE x.facility = pca.facility AND x.block_name = pca.block_name
+                  AND x.cell_number = pca.cell_number AND x.released_at IS NULL) AS cell_occupancy
+         FROM prison_transfers pt
+         JOIN prison_admissions pa ON pa.arrest_id = pt.arrest_id AND pa.suspect_id = pt.suspect_id
+         JOIN criminals s ON s.id = pa.suspect_id
+         LEFT JOIN arrests a ON a.id = pa.arrest_id
+         LEFT JOIN cases c ON c.id = a.case_id
+         LEFT JOIN prison_cell_assignments pca ON pca.admission_id = pa.id AND pca.released_at IS NULL
+         LEFT JOIN prison_cells pc ON pc.facility = pca.facility AND pc.block_name = pca.block_name AND pc.cell_number = pca.cell_number
+        WHERE pt.status = 'completed'
+          AND pa.status = 'admitted'
+          AND pt.id = (SELECT latest.id FROM prison_transfers latest WHERE latest.arrest_id = pt.arrest_id ORDER BY latest.created_at DESC LIMIT 1)
+        ORDER BY pt.transfer_date DESC, pt.created_at DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
+const receiveCentralTransfer = async (req, res, next) => {
+  let connection;
+  try {
+    const { facility, block_name, cell_number, notes } = req.body;
+    if (!facility) return res.status(400).json({ success: false, message: 'facility is required.' });
+    connection = await db.pool.getConnection();
+    await connection.beginTransaction();
+
+    const [[transfer]] = await connection.query(
+      `SELECT pt.*, a.id AS linked_arrest_id
+         FROM prison_transfers pt
+         LEFT JOIN arrests a ON a.id = pt.arrest_id
+        WHERE pt.id = ? FOR UPDATE`,
+      [req.params.id]
+    );
+    if (!transfer) throw Object.assign(new Error('Transfer document not found.'), { status: 404 });
+    if (transfer.status !== 'pending') throw Object.assign(new Error(`Transfer is not pending. Current status: ${transfer.status}.`), { status: 409 });
+    if (!transfer.arrest_id) throw Object.assign(new Error('Transfer document is missing arrest_id.'), { status: 400 });
+
+    await connection.query(
+      `UPDATE prison_transfers
+          SET status = 'completed', transfer_date = COALESCE(transfer_date, NOW()), notes = COALESCE(?, notes)
+        WHERE id = ?`,
+      [normalizeOptional(notes), req.params.id]
+    );
+    await connection.query(
+      `UPDATE prison_admissions
+          SET facility = ?, status = 'admitted'
+        WHERE arrest_id = ? AND suspect_id = ?`,
+      [facility, transfer.arrest_id, transfer.suspect_id]
+    );
+    const [[admission]] = await connection.query(
+      `SELECT id FROM prison_admissions
+        WHERE arrest_id = ? AND suspect_id = ?
+        LIMIT 1`,
+      [transfer.arrest_id, transfer.suspect_id]
+    );
+    if (!admission) throw Object.assign(new Error('Active prison admission was not found for this transfer.'), { status: 404 });
+
+    await connection.query(
+      `UPDATE prison_cell_assignments
+          SET released_at = NOW()
+        WHERE admission_id = ? AND released_at IS NULL`,
+      [admission.id]
+    );
+    if (block_name && cell_number) {
+      const [[cell]] = await connection.query(
+        `SELECT pc.capacity, COUNT(pca.id) occupied
+           FROM prison_cells pc
+           LEFT JOIN prison_cell_assignments pca
+             ON pca.facility = pc.facility
+            AND pca.block_name = pc.block_name
+            AND pca.cell_number = pc.cell_number
+            AND pca.released_at IS NULL
+          WHERE pc.facility = ? AND pc.block_name = ? AND pc.cell_number = ?
+          GROUP BY pc.id`,
+        [facility, block_name, cell_number]
+      );
+      if (!cell || Number(cell.occupied) >= Number(cell.capacity)) {
+        throw Object.assign(new Error('Qolka la doortay ma bannaana.'), { status: 409 });
+      }
+      await connection.query(
+        `INSERT INTO prison_cell_assignments(admission_id, facility, block_name, cell_number, assigned_by, notes)
+         VALUES(?, ?, ?, ?, ?, ?)`,
+        [admission.id, facility, block_name, cell_number, actor(req), 'Central jail received transfer and assigned cell.']
+      );
+    }
+
+    await connection.commit();
+    await writeAuditLog({ userId: actor(req), userEmail: req.user.email || req.user.username, action: 'RECEIVE_CENTRAL_JAIL_TRANSFER', entityType: 'prison_transfers', entityId: Number(req.params.id), newData: { facility, block_name, cell_number, notes } });
+    res.json({ success: true, message: 'Transfer received by central jail.', admission_id: admission.id });
+  } catch (err) {
+    if (connection) await connection.rollback();
+    if (err.status) return res.status(err.status).json({ success: false, message: err.message });
+    next(err);
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
 const addMedicalRecord = async (req, res, next) => {
   try {
     const suspectId = req.params.id;
@@ -391,6 +540,9 @@ const getPrisonAdmissions = async (req, res, next) => {
              (SELECT COUNT(*) FROM prison_cell_assignments x
                WHERE x.facility=pca.facility AND x.block_name=pca.block_name
                  AND x.cell_number=pca.cell_number AND x.released_at IS NULL) AS cell_occupancy,
+             (SELECT pt.id FROM prison_transfers pt WHERE pt.arrest_id=a.id ORDER BY pt.created_at DESC LIMIT 1) AS latest_transfer_id,
+             (SELECT pt.status FROM prison_transfers pt WHERE pt.arrest_id=a.id ORDER BY pt.created_at DESC LIMIT 1) AS latest_transfer_status,
+             (SELECT pt.to_facility FROM prison_transfers pt WHERE pt.arrest_id=a.id ORDER BY pt.created_at DESC LIMIT 1) AS latest_transfer_to_facility,
              (SELECT status FROM release_approvals ra WHERE ra.arrest_id=a.id ORDER BY ra.requested_at DESC LIMIT 1) AS release_approval_status,
              (SELECT status FROM prison_roll_calls pr WHERE pr.admission_id=pa.id ORDER BY pr.roll_date DESC,pr.recorded_at DESC LIMIT 1) AS last_roll_status
         FROM prison_admissions pa
@@ -426,11 +578,11 @@ const admitPrisoner = async (req,res,next) => {
     try{inventory=property_inventory?JSON.parse(property_inventory):[]}catch{return res.status(400).json({success:false,message:'Liiska hantida maxbuuska qaab sax ah uma qorna.'})}
     if(!Array.isArray(inventory))return res.status(400).json({success:false,message:'Hantida maxbuusku waa inay noqotaa liis.'});
     const districtId=req.user?.scopeType==='district'?Number(req.user.scopeId):null;
-    const [[arrest]]=await db.query(`SELECT a.id,a.suspect_id,c.district_id FROM arrests a JOIN cases c ON c.id=a.case_id WHERE a.id=?`,[arrest_id]);
+    const [[arrest]]=await db.query(`SELECT a.id,a.suspect_id,c.district_id,COALESCE(s.face_capture_image,s.offender_photo,s.photo_url) AS suspect_photo_url FROM arrests a JOIN cases c ON c.id=a.case_id JOIN criminals s ON s.id=a.suspect_id WHERE a.id=?`,[arrest_id]);
     if(!arrest|| (districtId&&Number(arrest.district_id)!==districtId))return res.status(404).json({success:false,message:'Eedaysanahan lagama helin kiisaska degmadaada.'});
     const prisonNumber=`PR-${new Date().getFullYear()}-${String(Date.now()).slice(-7)}`;
     connection=await db.pool.getConnection(); await connection.beginTransaction();
-    const [result]=await connection.query(`INSERT INTO prison_admissions(arrest_id,suspect_id,prison_number,facility,admission_date,admitted_by,notes,photo_url,commitment_warrant_url,property_inventory,confirmed_at) VALUES(?,?,?,?,COALESCE(?,NOW()),?,?,?,?,?,NOW())`,[arrest_id,arrest.suspect_id,prisonNumber,facility,admission_date||null,req.user.username,notes||null,req.files?.photo?.[0]?`/uploads/prisoner-documents/${req.files.photo[0].filename}`:null,req.files?.commitment_warrant?.[0]?`/uploads/prisoner-documents/${req.files.commitment_warrant[0].filename}`:null,JSON.stringify(inventory)]);
+    const [result]=await connection.query(`INSERT INTO prison_admissions(arrest_id,suspect_id,prison_number,facility,admission_date,admitted_by,notes,photo_url,commitment_warrant_url,property_inventory,confirmed_at) VALUES(?,?,?,?,COALESCE(?,NOW()),?,?,?,?,?,NOW())`,[arrest_id,arrest.suspect_id,prisonNumber,facility,admission_date||null,req.user.username,notes||null,arrest.suspect_photo_url||null,req.files?.commitment_warrant?.[0]?`/uploads/prisoner-documents/${req.files.commitment_warrant[0].filename}`:null,JSON.stringify(inventory)]);
     if(block_name&&cell_number){
       const [[cell]]=await connection.query(`SELECT pc.capacity,COUNT(pca.id) occupied FROM prison_cells pc LEFT JOIN prison_cell_assignments pca ON pca.facility=pc.facility AND pca.block_name=pc.block_name AND pca.cell_number=pc.cell_number AND pca.released_at IS NULL WHERE pc.facility=? AND pc.block_name=? AND pc.cell_number=? GROUP BY pc.id`,[facility,block_name,cell_number]);
       if(!cell||Number(cell.occupied)>=Number(cell.capacity))throw Object.assign(new Error('Qolka la doortay ma bannaana.'),{status:409});
@@ -441,16 +593,27 @@ const admitPrisoner = async (req,res,next) => {
     res.status(201).json({success:true,message:'Eedaysanaha xabsiga waa lagu qaabilay.',id:result.insertId,prison_number:prisonNumber});
   }catch(err){if(connection)await connection.rollback();if(err.status)return res.status(err.status).json({success:false,message:err.message});next(err)}finally{if(connection)connection.release()}
 };
-const getPrisonCells=async(_req,res,next)=>{try{const [rows]=await db.query(`SELECT pc.*,COUNT(pca.id) occupancy,pc.capacity-COUNT(pca.id) available FROM prison_cells pc LEFT JOIN prison_cell_assignments pca ON pca.facility=pc.facility AND pca.block_name=pc.block_name AND pca.cell_number=pc.cell_number AND pca.released_at IS NULL GROUP BY pc.id ORDER BY pc.facility,pc.block_name,pc.cell_number`);res.json({success:true,data:rows})}catch(err){next(err)}};
+const getPrisonCells=async(req,res,next)=>{try{
+  const scope=String(req.query.scope||'').toLowerCase();
+  let scopeSql='';
+  if(scope==='station')scopeSql="WHERE LOWER(pc.facility) NOT LIKE '%central%'";
+  if(scope==='central')scopeSql="WHERE LOWER(pc.facility) LIKE '%central%'";
+  const [rows]=await db.query(`SELECT pc.*,COUNT(pca.id) occupancy,pc.capacity-COUNT(pca.id) available FROM prison_cells pc LEFT JOIN prison_cell_assignments pca ON pca.facility=pc.facility AND pca.block_name=pc.block_name AND pca.cell_number=pc.cell_number AND pca.released_at IS NULL ${scopeSql} GROUP BY pc.id ORDER BY pc.facility,pc.block_name,pc.cell_number`);
+  res.json({success:true,data:rows})
+}catch(err){next(err)}};
 const savePrisonCell=async(req,res,next)=>{try{const {facility,block_name,cell_number,capacity}=req.body;if(!facility||!block_name||!cell_number||Number(capacity)<1)return res.status(400).json({success:false,message:'facility, block_name, cell_number, and capacity are required.'});await db.query(`INSERT INTO prison_cells(facility,block_name,cell_number,capacity) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE capacity=VALUES(capacity),is_active=1`,[facility,block_name,cell_number,capacity]);res.json({success:true,message:'Prison cell saved.'})}catch(err){next(err)}};
 const assignPrisonCell=async(req,res,next)=>{try{const {facility,block_name,cell_number,notes}=req.body;const [[cell]]=await db.query(`SELECT pc.*,COUNT(pca.id) occupied FROM prison_cells pc LEFT JOIN prison_cell_assignments pca ON pca.facility=pc.facility AND pca.block_name=pc.block_name AND pca.cell_number=pc.cell_number AND pca.released_at IS NULL WHERE pc.facility=? AND pc.block_name=? AND pc.cell_number=? GROUP BY pc.id`,[facility,block_name,cell_number]);if(!cell)return res.status(404).json({success:false,message:'Cell not found.'});if(Number(cell.occupied)>=Number(cell.capacity))return res.status(409).json({success:false,message:'Cell is full.'});await db.query('UPDATE prison_cell_assignments SET released_at=NOW() WHERE admission_id=? AND released_at IS NULL',[req.params.id]);await db.query(`INSERT INTO prison_cell_assignments(admission_id,facility,block_name,cell_number,assigned_by,notes) VALUES(?,?,?,?,?,?)`,[req.params.id,facility,block_name,cell_number,req.user.username,notes||null]);res.json({success:true,message:'Cell assigned.'})}catch(err){next(err)}};
 const recordRollCall=async(req,res,next)=>{try{const {roll_date,shift,status,notes}=req.body;if(!roll_date||!shift||!status)return res.status(400).json({success:false,message:'roll_date, shift, and status are required.'});await db.query(`INSERT INTO prison_roll_calls(admission_id,roll_date,shift,status,notes,recorded_by) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status),notes=VALUES(notes),recorded_by=VALUES(recorded_by)`,[req.params.id,roll_date,shift,status,notes||null,req.user.username]);res.json({success:true,message:'Roll call recorded.'})}catch(err){next(err)}};
-const bulkRollCall=async(req,res,next)=>{try{const {roll_date,shift,entries}=req.body;if(!roll_date||!shift||!Array.isArray(entries)||!entries.length)return res.status(400).json({success:false,message:'roll_date, shift, and entries are required.'});for(const entry of entries)await db.query(`INSERT INTO prison_roll_calls(admission_id,roll_date,shift,status,notes,recorded_by) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status),notes=VALUES(notes),recorded_by=VALUES(recorded_by)`,[entry.admission_id,roll_date,shift,entry.status||'present',entry.notes||null,req.user.username]);res.json({success:true,message:`Roll call saved for ${entries.length} prisoners.`})}catch(err){next(err)}};
+const bulkRollCall=async(req,res,next)=>{try{const {roll_date,shift,entries}=req.body;if(!roll_date||!shift||!Array.isArray(entries)||!entries.length)return res.status(400).json({success:false,message:'roll_date, shift, and entries are required.'});const ids=entries.map(entry=>Number(entry.admission_id)).filter(Boolean);if(!ids.length)return res.status(400).json({success:false,message:'Valid admission entries are required.'});const [blocked]=await db.query(`SELECT pa.id FROM prison_admissions pa JOIN prison_transfers pt ON pt.arrest_id=pa.arrest_id AND pt.suspect_id=pa.suspect_id WHERE pa.id IN (${ids.map(()=>'?').join(',')}) AND pt.status='completed'`,ids);if(blocked.length)return res.status(409).json({success:false,message:'Central Jail loo wareejiyay tiro-koob Station Jail laguma dari karo.'});for(const entry of entries)await db.query(`INSERT INTO prison_roll_calls(admission_id,roll_date,shift,status,notes,recorded_by) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status),notes=VALUES(notes),recorded_by=VALUES(recorded_by)`,[entry.admission_id,roll_date,shift,entry.status||'present',entry.notes||null,req.user.username]);res.json({success:true,message:`Roll call saved for ${entries.length} prisoners.`})}catch(err){next(err)}};
 module.exports = {
   getCustodyProfile,
   addBiometric,
   addDocument,
   addTransfer,
+  getTransferDocument,
+  getCentralTransfers,
+  getCentralAdmissions,
+  receiveCentralTransfer,
   addMedicalRecord,
   addVisitorLog,
   requestReleaseApproval,

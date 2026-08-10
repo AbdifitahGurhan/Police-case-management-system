@@ -5,14 +5,10 @@ import React, { useMemo } from 'react';
 // ─── Flow Definitions ───────────────────────────────────────────────────────
 
 export const POLICE_CASE_FLOW = [
-  { key: 'draft',              title: 'Qoraal (Draft)' },
-  { key: 'registered',         title: 'Diiwaan (OB)' },
-  { key: 'referred_to_cid',   title: 'CID Baaritaan' },
-  { key: 'under_investigation', title: 'Baaritaan' },
-  { key: 'ready_for_court',   title: 'Maxkamad' },
-  { key: 'forwarded_to_court', title: 'U Dirtay' },
-  { key: 'court_decided',     title: 'Go\'aan' },
-  { key: 'closed',            title: 'La Xiray' },
+  { key: 'ob_created',          title: '1. OB la abuuray' },
+  { key: 'case_opened',         title: '2. Case la furay' },
+  { key: 'under_investigation', title: '3. Baaritaan' },
+  { key: 'referred_to_court',   title: '4. Maxkamad' },
 ];
 
 export const CID_INVESTIGATION_FLOW = [
@@ -28,13 +24,16 @@ export const CID_INVESTIGATION_FLOW = [
 ];
 
 export const COURT_CASE_FLOW = [
-  { key: 'registered',       title: 'Diiwaangelin' },
-  { key: 'awaiting_hearing', title: 'Sugaya Dheg.' },
-  { key: 'hearing_scheduled', title: 'Jadwalsan' },
-  { key: 'in_trial',         title: 'Dhageysi' },
-  { key: 'judgment_issued',  title: 'Xukunsan' },
-  { key: 'sentenced',        title: 'Ciqaabsan' },
-  { key: 'closed',           title: 'La Xiray' },
+  { key: 'court_received', title: '1. Maxkamad' },
+  { key: 'arraignment', title: '2. Horgeyn' },
+  { key: 'remand_investigation', title: '3. Muddo Baaris' },
+  { key: 'assigned_legal_team', title: '4. Xilsaarid' },
+  { key: 'case_scheduled', title: '5. Mudeyn' },
+  { key: 'trial_hearing', title: '6. Dhageysi' },
+  { key: 'evidence_defense', title: '7. Caddeymo' },
+  { key: 'judgment', title: '8. Xukun' },
+  { key: 'sentenced', title: '9. Ciqaab' },
+  { key: 'closed', title: '10. Xirid' },
 ];
 
 export const FULL_CASE_LIFECYCLE_FLOW = [
@@ -59,15 +58,15 @@ export const FULL_CASE_LIFECYCLE_FLOW = [
 // ─── Status → Index Maps ─────────────────────────────────────────────────────
 
 const POLICE_STATUS_INDEX = {
-  draft: 0,
+  draft: 0, OB_REGISTERED: 0, REGISTERED: 0,
   registered: 1, CASE_REGISTERED: 1, pending_commander_review: 1,
   confirmed_by_ward_commander: 1, confirmed_by_commander: 1, CONFIRMED_BY_COMMANDER: 1,
   referred_to_cid: 2, referred_cid: 2,
-  under_investigation: 3,
-  ready_for_court: 4, approved_for_court: 4,
-  forwarded_to_court: 5, referred_to_court: 5,
-  court_decided: 6, court_convicted: 6, court_acquitted: 6, court_dismissed: 6, court_adjourned: 6,
-  closed: 7, archived: 7,
+  under_investigation: 2,
+  ready_for_court: 3, approved_for_court: 3,
+  forwarded_to_court: 3, referred_to_court: 3,
+  court_decided: 3, court_convicted: 3, court_acquitted: 3, court_dismissed: 3, court_adjourned: 3,
+  closed: 3, archived: 3,
 };
 
 const CID_STATUS_INDEX = {
@@ -78,9 +77,25 @@ const CID_STATUS_INDEX = {
 };
 
 const COURT_STATUS_INDEX = {
-  registered: 0, awaiting_hearing: 1, hearing_scheduled: 2,
-  in_trial: 3, judgment_issued: 4, sentenced: 5, appealed: 5,
-  closed: 6, archived: 6,
+  registered: 0,
+  awaiting_hearing: 3,
+  hearing_scheduled: 4,
+  in_trial: 5,
+  judgment_issued: 7,
+  court_received: 0,
+  arraignment: 1,
+  remand_investigation: 2,
+  remanded_to_investigator: 2,
+  returned_from_remand: 2,
+  assigned_legal_team: 3,
+  case_scheduled: 4,
+  trial_hearing: 5,
+  evidence_defense: 6,
+  judgment: 7,
+  sentenced: 8,
+  appealed: 8,
+  closed: 9,
+  archived: 9,
 };
 
 const FULL_STATUS_INDEX = {

@@ -4,7 +4,6 @@
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
-const { ensureCidCaseForPoliceCase } = require('../services/cidService');
 const {
   withTransaction,
   lockAndAssertReferralAllowed,
@@ -46,15 +45,15 @@ const getReferrals = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-/** POST /api/referrals - Refer a case to CID or record court referral */
+/** POST /api/referrals - Refer a case to court */
 const createReferral = async (req, res, next) => {
   try {
     const { case_id, referred_to_role, referred_to_user, reason, notes } = req.body;
     if (!case_id || !referred_to_role) {
       return res.status(400).json({ success: false, message: 'case_id and referred_to_role are required.' });
     }
-    if (!['cid', 'court'].includes(referred_to_role)) {
-      return res.status(400).json({ success: false, message: 'referred_to_role must be "cid" or "court".' });
+    if (referred_to_role !== 'court') {
+      return res.status(400).json({ success: false, message: 'Baaraha workflow wuxuu oggol yahay in case-ka loo gudbiyo Court oo keliya.' });
     }
 
     const transactionResult = await withTransaction(async (connection) => {
@@ -65,23 +64,17 @@ const createReferral = async (req, res, next) => {
         [case_id, actor(req), referred_to_role, referred_to_user || null, reason || null, notes || null]
       );
 
-      const newStatus = referred_to_role === 'court' ? 'approved_for_court' : 'referred_to_cid';
+      const newStatus = 'referred_to_court';
       await connection.query('UPDATE cases SET status = ? WHERE id = ?', [newStatus, case_id]);
-      if (referred_to_role === 'court') {
-        await ensureCourtCaseForPoliceCase(case_id, actor(req), connection);
-      } else {
-        await ensureCidCaseForPoliceCase(case_id, actor(req), connection);
-      }
+      await ensureCourtCaseForPoliceCase(case_id, actor(req), connection);
       await connection.query(
         `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           case_id,
           actor(req),
-          referred_to_role === 'court' ? 'CASE_REFERRED_TO_COURT' : 'CASE_REFERRED',
-          referred_to_role === 'court'
-            ? 'Police investigation completed and case forwarded to court.'
-            : `Case referred to ${referred_to_role.toUpperCase()}`,
+          'CASE_REFERRED_TO_COURT',
+          'Police investigation completed and case forwarded to court.',
           caseRow.status,
           newStatus,
         ]
@@ -92,7 +85,7 @@ const createReferral = async (req, res, next) => {
     await writeAuditLog({
       userId: actor(req),
       userEmail: req.user.email || req.user.username,
-      action: referred_to_role === 'court' ? 'COURT_REFERRAL' : 'CREATE_REFERRAL',
+      action: 'COURT_REFERRAL',
       entityType: 'referrals',
       entityId: transactionResult.referralId,
       newData: { case_id, referred_to_role, reason: reason || null, notes: notes || null, status: transactionResult.newStatus },
@@ -100,9 +93,7 @@ const createReferral = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: referred_to_role === 'court'
-        ? 'Case referred to court. Police station workflow ends at this stage.'
-        : `Case referred to ${referred_to_role}.`,
+      message: 'Case referred to court. Police station workflow ends at this stage.',
       referralId: transactionResult.referralId,
       status: transactionResult.newStatus,
     });

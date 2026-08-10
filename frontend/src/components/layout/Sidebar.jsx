@@ -37,7 +37,7 @@ const Sidebar = ({ collapsed }) => {
     admin: '/dashboard/admin',
     sub_admin: '/police-officers',
     personnel_registry: '/police-officers',
-    investigator: '/dashboard/cid',
+    investigator: '/dashboard/investigator',
     station_jail: '/dashboard/jail',
     officer: '/dashboard/officer',
     cid: '/dashboard/cid',
@@ -60,7 +60,7 @@ const Sidebar = ({ collapsed }) => {
     prosecutor: '/dashboard/court',
     prosecutor_liaison: '/dashboard/cid',
     court_clerk: '/dashboard/court',
-    jail: '/dashboard/jail',
+    jail: '/dashboard/central-jail',
   };
   const dashboardPath = dashboardPathMap[role] || '/cases';
 
@@ -81,7 +81,7 @@ const Sidebar = ({ collapsed }) => {
     prosecutor: 'Xeer-ilaaliye',
     prosecutor_liaison: 'Liaison-ka Xeer-ilaalinta',
     court_clerk: 'Kalaarkha Maxkamadda',
-    jail: 'Maamulka Xabsiga Saldhigga',
+    jail: 'Maamulka Xabsiga Dhexe',
     state_admin: 'Maamulaha Dawlad Goboleedka',
     region_admin: 'Maamulaha Gobolka',
     city_admin: 'Maamulaha Magaalada',
@@ -106,7 +106,7 @@ const Sidebar = ({ collapsed }) => {
     const cidRoles = ['cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const isCourtRole = courtRoles.includes(role);
     // Role visibility aligned to Part 5 permission matrix
-    const canViewOffenders = hasPermission('suspects.manage');
+    const canViewOffenders = hasPermission('suspects.view') || hasPermission('suspects.manage');
     const canViewReports = hasPermission('reports.view') || hasPermission('reports.export');
 
     const caseReadRoles = [
@@ -117,20 +117,21 @@ const Sidebar = ({ collapsed }) => {
     ];
     const canViewCases = hasPermission('cases.view') || hasPermission('cases.investigate');
     const canViewOb = hasPermission('ob.view') || hasPermission('ob.create') || hasPermission('ob.update') || hasPermission('ob.print');
-    const canViewJail = hasPermission('station_jail.view') || hasPermission('station_jail.intake') || hasPermission('station_jail.assign_cell');
+    const canViewStationJail = hasPermission('station_jail.view') || hasPermission('station_jail.intake') || hasPermission('station_jail.assign_cell');
+    const canViewCentralJail = hasPermission('jail.view') || role === 'jail';
 
     const primaryItems = [
       ...(role !== 'personnel_registry' && role !== 'sub_admin' && dashboardPath !== '/cases' ? [{
         key: dashboardPath,
         icon: dashboardPath === '/ob-register' ? <DatabaseOutlined /> : <DashboardOutlined />,
-        label: isCourtRole ? 'Dashboard-ka Maxkamadda' : (dashboardPath === '/ob-register' ? 'Diiwaanka OB-da' : 'Dashboard-ka Guud'),
+        label: role === 'investigator' ? 'Hawlaha Baaraha' : (isCourtRole ? 'Dashboard-ka Maxkamadda' : (dashboardPath === '/ob-register' ? 'Diiwaanka OB-da' : 'Dashboard-ka Guud')),
       }] : []),
       ...(['district_admin', 'district_commander', 'police_station_commander'].includes(role) && hasPermission('cases.view') ? [{
         key: '/district-operations',
         icon: <ApartmentOutlined />,
         label: 'Hawlaha Degmada',
       }] : []),
-      ...(['investigator', 'district_admin'].includes(role) && hasPermission('cases.view') ? [{
+      ...(role === 'district_admin' && hasPermission('cases.view') && dashboardPath !== '/dashboard/cid' ? [{
         key: '/dashboard/cid',
         icon: <FileSearchOutlined />,
         label: 'Hawlaha Baaritaanka',
@@ -140,15 +141,24 @@ const Sidebar = ({ collapsed }) => {
         icon: <BankOutlined />,
         label: 'Kiisaska Maxkamadda',
       }] : []),
-      ...(canViewJail ? [{
-        key: 'jail_operations',
+      ...(canViewStationJail ? [{
+        key: 'station_jail_operations',
         icon: <BankOutlined />,
-        label: 'Hawlgallada Xabsiga',
+        label: 'Xabsiga Saldhigga',
         children: [
+          { key: '/dashboard/jail/admissions', label: 'Maxaabiista Hadda Ku Jira' },
           ...(hasPermission('station_jail.intake') ? [{ key: '/dashboard/jail?action=admit', label: 'Qaabilaadda Xabsiga' }] : []),
           ...(hasPermission('station_jail.assign_cell') ? [{ key: '/dashboard/jail?action=capacity', label: 'Awoodda Seliyaasha' }] : []),
           ...(hasPermission('station_jail.intake') ? [{ key: '/dashboard/jail?action=bulk_roll', label: 'Tirada Maafada Maalinlaha' }] : []),
-          { key: '/dashboard/jail?action=alerts', label: 'Sii-deynta & Baaqyada' },
+        ],
+      }] : []),
+      ...(canViewCentralJail ? [{
+        key: 'central_jail_operations',
+        icon: <SafetyCertificateOutlined />,
+        label: 'Xabsiga Dhexe',
+        children: [
+          { key: '/dashboard/central-jail', label: 'Incoming Transfers' },
+          { key: '/offenders', label: 'Custody Records' },
         ],
       }] : []),
       ...(canViewCases ? [{

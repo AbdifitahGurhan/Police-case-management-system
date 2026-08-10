@@ -415,7 +415,7 @@ const updateSuspect = async (req, res, next) => {
 
     const {
       full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number,
-      phone, address, description, is_arrested, face_capture_image, face_capture_notes, profile_notes, arrest_status,
+      phone, address, description, face_capture_image, face_capture_notes, profile_notes,
       case_id, role_in_case
     } = req.body;
     const photoUrl = buildPhotoUrl(req.file);
@@ -425,12 +425,8 @@ const updateSuspect = async (req, res, next) => {
     const updates = [
       'full_name=?', 'mother_name=?', 'alias=?', 'gender=?', 'date_of_birth=?', 'age=?', 'nationality=?',
       'id_type=?', 'id_number=?', 'phone=?', 'address=?', 'description=?',
-      'is_arrested=?', 'face_capture_notes=?', 'profile_notes=?', 'arrest_status=?'
+      'face_capture_notes=?', 'profile_notes=?'
     ];
-    
-    const isArrestedValue = (is_arrested !== undefined)
-      ? (is_arrested === true || is_arrested === 'true' || is_arrested === '1' ? 1 : 0)
-      : (['arrested', 'wanted'].includes(arrest_status) ? 1 : 0);
 
     const params = [
       full_name.trim(),
@@ -445,10 +441,8 @@ const updateSuspect = async (req, res, next) => {
       normalizeOptional(phone),
       normalizeOptional(address),
       normalizeOptional(description) || normalizeOptional(profile_notes),
-      isArrestedValue,
       normalizeOptional(face_capture_notes),
       normalizeOptional(profile_notes),
-      normalizeOptional(arrest_status) || 'not_arrested',
     ];
 
     if (photoUrl) {
@@ -472,20 +466,6 @@ const updateSuspect = async (req, res, next) => {
 
     params.push(req.params.id);
     await db.query(`UPDATE criminals SET ${updates.join(', ')} WHERE id=?`, params);
-
-    const normStatus = String(arrest_status || '').toLowerCase();
-    if (isArrestedValue === 0 || ['released', 'not_arrested', 'released_by_police', 'completed', 'acquitted', 'dismissed'].includes(normStatus)) {
-      await db.query(
-        `UPDATE arrests
-         SET sentence_status = 'released',
-             actual_release_date = COALESCE(actual_release_date, CURDATE()),
-             final_status = COALESCE(final_status, 'Released via profile edit')
-         WHERE suspect_id = ?
-           AND sentence_status IN ('awaiting_trial', 'sentenced', 'serving', 'release_review')`,
-        [req.params.id]
-      );
-      await syncCriminalCustodyStatus(db, req.params.id);
-    }
     
     if (case_id && role_in_case) {
       await db.query(

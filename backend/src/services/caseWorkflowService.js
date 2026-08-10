@@ -4,6 +4,45 @@ const db = require('../config/database');
 
 const TERMINAL_POLICE_STATUSES = new Set(['court_decided', 'closed', 'archived']);
 const TERMINAL_COURT_STATUSES = new Set(['closed', 'archived']);
+const COURT_STATUSES = {
+  COURT_RECEIVED: 'court_received',
+  ARRAIGNMENT: 'arraignment',
+  REMAND_INVESTIGATION: 'remand_investigation',
+  REMANDED_TO_INVESTIGATOR: 'remanded_to_investigator',
+  RETURNED_FROM_REMAND: 'returned_from_remand',
+  ASSIGNED_LEGAL_TEAM: 'assigned_legal_team',
+  CASE_SCHEDULED: 'case_scheduled',
+  TRIAL_HEARING: 'trial_hearing',
+  EVIDENCE_DEFENSE: 'evidence_defense',
+  JUDGMENT: 'judgment',
+  SENTENCED: 'sentenced',
+  APPEALED: 'appealed',
+  CLOSED: 'closed',
+  ARCHIVED: 'archived',
+};
+const COURT_TRANSITIONS = {
+  court_received: ['arraignment'],
+  arraignment: ['remand_investigation', 'assigned_legal_team'],
+  remand_investigation: ['remanded_to_investigator'],
+  remanded_to_investigator: ['returned_from_remand'],
+  returned_from_remand: ['assigned_legal_team', 'remand_investigation'],
+  assigned_legal_team: ['case_scheduled'],
+  case_scheduled: ['trial_hearing'],
+  trial_hearing: ['evidence_defense'],
+  evidence_defense: ['judgment'],
+  judgment: ['sentenced', 'closed', 'appealed', 'archived'],
+  sentenced: ['closed', 'appealed', 'archived'],
+  appealed: ['closed', 'archived'],
+  closed: ['archived'],
+  archived: [],
+};
+const COURT_STATUS_ALIASES = {
+  registered: 'court_received',
+  awaiting_hearing: 'assigned_legal_team',
+  hearing_scheduled: 'case_scheduled',
+  in_trial: 'trial_hearing',
+  judgment_issued: 'judgment',
+};
 const CID_WORKFLOW = [
   'open',
   'under_investigation',
@@ -26,15 +65,19 @@ class WorkflowError extends Error {
 }
 
 const POLICE_TRANSITIONS = {
-  draft: ['registered'],
-  registered: ['referred_to_cid', 'under_investigation'],
-  CASE_REGISTERED: ['referred_to_cid', 'under_investigation'],
-  pending_commander_review: ['registered'],
-  referred_to_cid: ['under_investigation'],
-  under_investigation: ['referred_to_cid', 'ready_for_court', 'approved_for_court'],
-  ready_for_court: ['approved_for_court'],
-  forwarded_to_court: ['approved_for_court', 'court_decided'],
-  approved_for_court: ['court_decided'],
+  draft: ['under_investigation'],
+  registered: ['under_investigation'],
+  CASE_REGISTERED: ['under_investigation'],
+  pending_commander_review: ['under_investigation'],
+  confirmed_by_ward_commander: ['under_investigation'],
+  confirmed_by_commander: ['under_investigation'],
+  CONFIRMED_BY_COMMANDER: ['under_investigation'],
+  referred_to_cid: ['under_investigation', 'referred_to_court'],
+  under_investigation: ['referred_to_court'],
+  ready_for_court: ['referred_to_court'],
+  forwarded_to_court: ['referred_to_court'],
+  approved_for_court: ['referred_to_court'],
+  referred_to_court: [],
   court_decided: ['closed'],
   closed: ['archived'],
   archived: [],
@@ -46,7 +89,9 @@ const POLICE_STATUS_ALIASES = {
   confirmed_by_commander: 'registered',
   referred_cid: 'referred_to_cid',
   assigned_to_cid: 'referred_to_cid',
-  referred_to_court: 'approved_for_court',
+  ready_for_court: 'referred_to_court',
+  forwarded_to_court: 'referred_to_court',
+  approved_for_court: 'referred_to_court',
 };
 
 const normalizePoliceStatus = (status) => {
@@ -59,9 +104,24 @@ const assertPoliceTransition = (from, to, { authorizedReopen = false } = {}) => 
   const normTo = normalizePoliceStatus(to);
   if (!normTo || normFrom === normTo) return true;
   if (TERMINAL_POLICE_STATUSES.has(normFrom) && authorizedReopen &&
-      ['referred_to_cid', 'under_investigation', 'approved_for_court'].includes(normTo)) return true;
+      ['under_investigation', 'referred_to_court'].includes(normTo)) return true;
   if (!(POLICE_TRANSITIONS[normFrom] || []).includes(normTo)) {
     throw new WorkflowError(`Invalid police case status transition from ${from} to ${to}.`);
+  }
+  return true;
+};
+
+const normalizeCourtStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  return COURT_STATUS_ALIASES[normalized] || normalized;
+};
+
+const assertCourtTransition = (from, to) => {
+  const normFrom = normalizeCourtStatus(from);
+  const normTo = normalizeCourtStatus(to);
+  if (!normTo || normFrom === normTo) return true;
+  if (!(COURT_TRANSITIONS[normFrom] || []).includes(normTo)) {
+    throw new WorkflowError(`Invalid court case status transition from ${from} to ${to}.`);
   }
   return true;
 };
@@ -247,6 +307,7 @@ const closeCourtWorkflow = async (connection, {
 
   const outcome = finalOutcome || judgment.decision_type || courtCase.final_outcome;
   if (!outcome) throw new WorkflowError('A final court outcome is required.', 400, 'OUTCOME_REQUIRED');
+  assertCourtTransition(courtCase.status, archive ? 'archived' : 'closed');
   const closureDate = new Date().toISOString().slice(0, 10);
   if (String(judgment.decision_date).slice(0, 10) > closureDate) {
     throw new WorkflowError('Judgment decision date cannot be after the closure date.', 409, 'INVALID_COURT_DATE');
@@ -306,7 +367,10 @@ module.exports = {
   TERMINAL_POLICE_STATUSES,
   TERMINAL_COURT_STATUSES,
   assertPoliceTransition,
+  assertCourtTransition,
   assertCidTransition,
+  COURT_STATUSES,
+  COURT_TRANSITIONS,
   CID_WORKFLOW,
   validateSentence,
   validateJudgmentSentenceConsistency,

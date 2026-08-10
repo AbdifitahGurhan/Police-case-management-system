@@ -20,9 +20,9 @@ const {
 const { COMMANDER_ROLES } = require('../utils/roleGroups');
 const { requirePermission } = require('../middleware/permissionMiddleware');
 
-const CID_READ_ROLES = ['admin', 'district_admin', 'investigator', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
+const CID_READ_ROLES = ['admin', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
 const CID_SUPERVISOR_ROLES = ['admin', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison', ...COMMANDER_ROLES];
-const CID_WRITE_ROLES = ['admin', 'investigator', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
+const CID_WRITE_ROLES = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
 
 router.use(authMiddleware);
 

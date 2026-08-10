@@ -55,9 +55,9 @@ const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system', executor =
   const courtCaseNumber = await generateCourtCaseNumber(executor);
   const [result] = await executor.query(
     `INSERT INTO court_cases (
-       court_case_number, police_case_id, police_case_number, ob_number, case_title,
+     court_case_number, police_case_id, police_case_number, ob_number, case_title,
        crime_category, case_description, source_status, status, created_by
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registered', ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'court_received', ?)`,
     [
       courtCaseNumber,
       policeCase.id,

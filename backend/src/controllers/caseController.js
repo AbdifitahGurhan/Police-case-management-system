@@ -6,35 +6,27 @@ const { writeAuditLog } = require('../utils/auditLogger');
 const { generateOBNumber } = require('../utils/obNumberGenerator');
 const { generateCaseNumber } = require('../utils/caseNumberGenerator');
 const { buildScopeWhere, getUserLocation } = require('../utils/locationScope');
-const { ensureCidCaseForPoliceCase } = require('../services/cidService');
 const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
-const { assertPoliceTransition } = require('../services/caseWorkflowService');
+const { assertCourtTransition, assertPoliceTransition, withTransaction, WorkflowError } = require('../services/caseWorkflowService');
 
 const CASE_STATUS_FLOW = {
-  draft: ['registered'],
-  registered: ['referred_to_cid', 'under_investigation'],
-  CASE_REGISTERED: ['referred_to_cid', 'under_investigation'],
-  pending_commander_review: ['registered'],
+  draft: ['under_investigation'],
+  registered: ['under_investigation'],
+  CASE_REGISTERED: ['under_investigation'],
+  pending_commander_review: ['under_investigation'],
   confirmed_by_ward_commander: ['under_investigation'],
   confirmed_by_commander: ['under_investigation'],
   CONFIRMED_BY_COMMANDER: ['under_investigation'],
-  referred_to_cid: ['under_investigation', 'ready_for_court', 'forwarded_to_court', 'approved_for_court'],
-  referred_cid: ['under_investigation', 'ready_for_court', 'forwarded_to_court', 'approved_for_court'],
-  under_investigation: ['referred_to_cid', 'ready_for_court', 'forwarded_to_court'],
-  ready_for_court: ['forwarded_to_court', 'approved_for_court'],
-  forwarded_to_court: ['approved_for_court', 'court_decided'],
-  approved_for_court: ['court_decided'],
-  referred_to_court: ['court_decided'],
+  referred_to_cid: ['under_investigation', 'referred_to_court'],
+  referred_cid: ['under_investigation', 'referred_to_court'],
+  under_investigation: ['referred_to_court'],
+  ready_for_court: ['referred_to_court'],
+  forwarded_to_court: ['referred_to_court'],
+  approved_for_court: ['referred_to_court'],
+  referred_to_court: [],
   court_decided: ['closed'],
   closed: ['archived'],
   archived: [],
-};
-
-const getAllowedNextStatuses = (status) => CASE_STATUS_FLOW[status || 'draft'] || CASE_STATUS_FLOW.draft;
-
-const canTransitionStatus = (fromStatus, toStatus) => {
-  if (!toStatus || fromStatus === toStatus) return true;
-  return getAllowedNextStatuses(fromStatus).includes(toStatus);
 };
 
 const mapLegacyStatus = (status) => {
@@ -47,13 +39,21 @@ const mapLegacyStatus = (status) => {
     assigned_to_cid: 'referred_to_cid',
     Assigned_To_CID: 'referred_to_cid',
     ASSIGNED_TO_CID: 'referred_to_cid',
-    Ready_For_Court: 'ready_for_court',
-    READY_FOR_COURT: 'ready_for_court',
-    Forwarded_To_Court: 'forwarded_to_court',
-    FORWARDED_TO_COURT: 'forwarded_to_court',
-    referred_to_court: 'approved_for_court',
+    Ready_For_Court: 'referred_to_court',
+    READY_FOR_COURT: 'referred_to_court',
+    Forwarded_To_Court: 'referred_to_court',
+    FORWARDED_TO_COURT: 'referred_to_court',
+    approved_for_court: 'referred_to_court',
   };
   return legacy[status] || status;
+};
+
+const getAllowedNextStatuses = (status) => CASE_STATUS_FLOW[mapLegacyStatus(status || 'draft')] || CASE_STATUS_FLOW.draft;
+
+const canTransitionStatus = (fromStatus, toStatus) => {
+  const nextStatus = mapLegacyStatus(toStatus);
+  if (!nextStatus || mapLegacyStatus(fromStatus) === nextStatus) return true;
+  return getAllowedNextStatuses(fromStatus).includes(nextStatus);
 };
 
 const validateIncidentDate = (incidentDate) => {
@@ -235,7 +235,32 @@ const getCaseById = async (req, res, next) => {
               ci.city_name,
               d.district_name,
               d.district_name AS station_name,
-              dc.full_name AS station_commander_name
+              COALESCE(
+                dc.full_name,
+                (
+                  SELECT po.full_name
+                  FROM officer_assignments oa
+                  JOIN police_officers po ON po.id = oa.officer_id
+                  WHERE oa.assignment_type = 'District Station'
+                    AND oa.assignment_id = c.district_id
+                    AND oa.is_current = 1
+                    AND po.approval_status = 'APPROVED'
+                    AND LOWER(COALESCE(po.employment_status, 'active')) = 'active'
+                  ORDER BY oa.assigned_at ASC, po.id ASC
+                  LIMIT 1
+                ),
+                (
+                  SELECT COALESCE(NULLIF(u.full_name, ''), u.username)
+                  FROM users u
+                  JOIN roles ur ON ur.id = u.role_id
+                  WHERE u.district_id = c.district_id
+                    AND u.is_active = 1
+                    AND UPPER(COALESCE(u.status, 'ACTIVE')) = 'ACTIVE'
+                    AND LOWER(REPLACE(ur.name, '-', '_')) IN ('district_admin', 'district_commander', 'police_station_commander')
+                  ORDER BY FIELD(LOWER(REPLACE(ur.name, '-', '_')), 'police_station_commander', 'district_commander', 'district_admin'), u.created_at DESC
+                  LIMIT 1
+                )
+              ) AS station_commander_name
        FROM cases c
        LEFT JOIN police_officers o ON c.assigned_officer_id = o.id
        LEFT JOIN ob_entries ob ON c.ob_entry_id = ob.id
@@ -294,6 +319,15 @@ const getCaseById = async (req, res, next) => {
       [caseId]
     );
     const [investigations] = await db.query('SELECT * FROM case_investigations WHERE case_id = ? ORDER BY created_at DESC', [caseId]);
+    const [courtRemands] = await db.query(
+      `SELECT cr.*, cc.court_case_number, cc.status AS court_status
+         FROM court_remands cr
+         JOIN court_cases cc ON cc.id = cr.court_case_id
+        WHERE cr.police_case_id = ?
+        ORDER BY cr.sent_at DESC, cr.id DESC`,
+      [caseId]
+    );
+    const pendingCourtRemand = courtRemands.find((remand) => remand.status === 'pending') || null;
 
     res.json({
       success: true,
@@ -307,6 +341,8 @@ const getCaseById = async (req, res, next) => {
         referrals,
         witnesses,
         investigations,
+        courtRemands,
+        pendingCourtRemand,
         allowed_next_statuses: getAllowedNextStatuses(caseRow.status),
       },
     });
@@ -550,8 +586,9 @@ const updateCase = async (req, res, next) => {
     if (nextStatus && nextStatus !== existing.status) {
       await db.query(`INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after) VALUES (?, ?, ?, ?, ?, ?)`,
         [caseId, req.user.username, 'STATUS_UPDATED', `Status changed from ${existing.status} to ${nextStatus}`, existing.status, nextStatus]);
-      await ensureCidCaseForPoliceCase(caseId, req.user.username);
-      await ensureCourtCaseForPoliceCase(caseId, req.user.username);
+      if (nextStatus === 'referred_to_court') {
+        await ensureCourtCaseForPoliceCase(caseId, req.user.username);
+      }
     }
 
     await writeAuditLog({ userId: req.user.username, userEmail: req.user.email, action: 'UPDATE_CASE', entityType: 'cases', entityId: parseInt(caseId), newData: req.body });
@@ -586,8 +623,6 @@ const assignCaseOfficer = async (req, res, next) => {
       'registered',
       caseId,
     ]);
-    await db.query(`UPDATE cid_cases SET assigned_officer=?, assignment_status='assigned', updated_at=NOW()
-      WHERE police_case_id=? AND investigation_status NOT IN ('sent_to_prosecutor','sent_to_court','approved')`, [officer.full_name, caseId]);
     await db.query(
       `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)
        VALUES (?, ?, 'CASE_ASSIGNED', ?, ?, ?)`,
@@ -750,9 +785,8 @@ const getCaseStats = async (req, res, next) => {
               SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) AS \`draft\`,
               SUM(CASE WHEN status='pending_commander_review' THEN 1 ELSE 0 END) AS \`pending_review\`,
               SUM(CASE WHEN status IN ('confirmed_by_ward_commander', 'confirmed_by_commander', 'CONFIRMED_BY_COMMANDER') THEN 1 ELSE 0 END) AS \`confirmed\`,
-              SUM(CASE WHEN status IN ('confirmed_by_ward_commander', 'confirmed_by_commander', 'CONFIRMED_BY_COMMANDER', 'under_investigation', 'referred_cid', 'transferred', 'reassigned') THEN 1 ELSE 0 END) AS \`active\`,
-              SUM(CASE WHEN status='under_investigation' THEN 1 ELSE 0 END) AS \`under_investigation\`,
-              SUM(CASE WHEN status='referred_cid' THEN 1 ELSE 0 END) AS \`referred_cid\`,
+              SUM(CASE WHEN status IN ('confirmed_by_ward_commander', 'confirmed_by_commander', 'CONFIRMED_BY_COMMANDER', 'under_investigation', 'referred_cid', 'referred_to_cid', 'transferred', 'reassigned') THEN 1 ELSE 0 END) AS \`active\`,
+              SUM(CASE WHEN status IN ('under_investigation', 'referred_cid', 'referred_to_cid') THEN 1 ELSE 0 END) AS \`under_investigation\`,
               SUM(CASE WHEN status='referred_to_court' THEN 1 ELSE 0 END) AS \`referred_to_court\`,
               SUM(CASE WHEN status='closed' THEN 1 ELSE 0 END) AS \`closed\`,
               SUM(CASE WHEN status='closed' THEN 1 ELSE 0 END) AS \`closed_cases\`
@@ -782,12 +816,26 @@ const getCaseInvestigations = async (req, res, next) => {
 const createCaseInvestigation = async (req, res, next) => {
   try {
     const caseId = req.params.id;
+    const body = req.body.payload ? JSON.parse(req.body.payload) : req.body;
+    const uploadedFiles = req.files || [];
+    const fileUrlByField = uploadedFiles.reduce((acc, file) => {
+      acc[file.fieldname] = `/uploads/investigations/${file.filename}`;
+      return acc;
+    }, {});
     const {
       investigation_number, ob_number, investigator_name, investigation_date,
       evidence_data, witnesses_data, steps_data, summary, outcome, recommendation, status
-    } = req.body;
+    } = body;
 
     const invNo = investigation_number || `INV-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+    const normalizedEvidence = (evidence_data || []).map((item, index) => ({
+      ...item,
+      file_url: fileUrlByField[`evidence_file_${index}`] || item.file_url || null,
+    }));
+    const normalizedSteps = (steps_data || []).map((item, index) => ({
+      ...item,
+      step_file: fileUrlByField[`step_file_${index}`] || item.step_file || null,
+    }));
 
     const [result] = await db.query(
       `INSERT INTO case_investigations
@@ -800,9 +848,9 @@ const createCaseInvestigation = async (req, res, next) => {
         ob_number || null,
         investigator_name || req.user.fullName || req.user.username,
         investigation_date || new Date().toISOString().slice(0, 10),
-        JSON.stringify(evidence_data || []),
+        JSON.stringify(normalizedEvidence),
         JSON.stringify(witnesses_data || []),
-        JSON.stringify(steps_data || []),
+        JSON.stringify(normalizedSteps),
         summary || null,
         outcome || null,
         recommendation || null,
@@ -823,9 +871,143 @@ const createCaseInvestigation = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const updateCaseInvestigation = async (req, res, next) => {
+  try {
+    const caseId = req.params.id;
+    const investigationId = req.params.investigationId;
+    const body = req.body.payload ? JSON.parse(req.body.payload) : req.body;
+    const uploadedFiles = req.files || [];
+    const fileUrlByField = uploadedFiles.reduce((acc, file) => {
+      acc[file.fieldname] = `/uploads/investigations/${file.filename}`;
+      return acc;
+    }, {});
+    const {
+      investigation_number, ob_number, investigator_name, investigation_date,
+      evidence_data, witnesses_data, steps_data, summary, outcome, recommendation, status
+    } = body;
+
+    const [[existing]] = await db.query(
+      'SELECT * FROM case_investigations WHERE id = ? AND case_id = ?',
+      [investigationId, caseId]
+    );
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Warbixinta baaritaanka lama helin.' });
+    }
+
+    const normalizedEvidence = (evidence_data || []).map((item, index) => ({
+      ...item,
+      file_url: fileUrlByField[`evidence_file_${index}`] || item.file_url || null,
+    }));
+    const normalizedSteps = (steps_data || []).map((item, index) => ({
+      ...item,
+      step_file: fileUrlByField[`step_file_${index}`] || item.step_file || null,
+    }));
+
+    await db.query(
+      `UPDATE case_investigations
+          SET investigation_number = ?, ob_number = ?, investigator_name = ?, investigation_date = ?,
+              evidence_data = ?, witnesses_data = ?, steps_data = ?,
+              summary = ?, outcome = ?, recommendation = ?, status = ?
+        WHERE id = ? AND case_id = ?`,
+      [
+        investigation_number || existing.investigation_number,
+        ob_number || existing.ob_number,
+        investigator_name || req.user.fullName || req.user.username,
+        investigation_date || existing.investigation_date,
+        JSON.stringify(normalizedEvidence),
+        JSON.stringify(witnesses_data || []),
+        JSON.stringify(normalizedSteps),
+        summary || null,
+        outcome || null,
+        recommendation || null,
+        status || 'Socota',
+        investigationId,
+        caseId
+      ]
+    );
+
+    await db.query(
+      `INSERT INTO case_actions (case_id, action_type, description, performed_by)
+       VALUES (?, 'INVESTIGATION_UPDATED', ?, ?)`,
+      [caseId, `Warbixinta baaritaanka #${investigation_number || existing.investigation_number} ayaa la cusboonaysiiyay.`, req.user.username]
+    );
+
+    const [[updatedRecord]] = await db.query('SELECT * FROM case_investigations WHERE id = ?', [investigationId]);
+    res.json({ success: true, message: 'Warbixinta baaritaanka waa la cusboonaysiiyay.', data: updatedRecord });
+  } catch (err) { next(err); }
+};
+
+const returnCourtRemand = async (req, res, next) => {
+  try {
+    const caseId = req.params.id;
+    const remandId = req.params.remandId;
+    const { return_notes, investigation_id } = req.body;
+
+    const scopedCase = await getScopedCaseById(req.user, caseId, 'c.id, c.status');
+    if (!scopedCase) return res.status(404).json({ success: false, message: 'Case not found.' });
+
+    const result = await withTransaction(async (connection) => {
+      const [[remand]] = await connection.query(
+        `SELECT cr.*, cc.status AS court_status
+           FROM court_remands cr
+           JOIN court_cases cc ON cc.id = cr.court_case_id
+          WHERE cr.id = ? AND cr.police_case_id = ?
+          FOR UPDATE`,
+        [remandId, caseId]
+      );
+      if (!remand) throw new WorkflowError('Court remand not found for this case.', 404, 'REMAND_NOT_FOUND');
+      if (remand.status !== 'pending') throw new WorkflowError('Only a pending remand can be returned.', 409, 'REMAND_NOT_PENDING');
+
+      if (investigation_id) {
+        const [[investigation]] = await connection.query(
+          'SELECT id FROM case_investigations WHERE id = ? AND case_id = ?',
+          [investigation_id, caseId]
+        );
+        if (!investigation) throw new WorkflowError('Investigation record not found for this case.', 404, 'INVESTIGATION_NOT_FOUND');
+      }
+
+      assertCourtTransition(remand.court_status, 'returned_from_remand');
+
+      await connection.query(
+        `UPDATE court_remands
+            SET status = 'returned',
+                returned_by = ?,
+                returned_at = NOW(),
+                return_notes = ?
+          WHERE id = ?`,
+        [req.user.username || req.user.email || req.user.id, return_notes || null, remandId]
+      );
+      await connection.query("UPDATE court_cases SET status = 'returned_from_remand' WHERE id = ?", [remand.court_case_id]);
+      await connection.query("UPDATE cases SET status = 'referred_to_court' WHERE id = ?", [caseId]);
+      await connection.query(
+        `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_before, status_after)
+         VALUES (?, ?, 'COURT_REMAND_RETURNED', ?, ?, 'referred_to_court')`,
+        [
+          caseId,
+          req.user.username || req.user.email || req.user.id,
+          return_notes || 'Additional investigation returned to court.',
+          scopedCase.status,
+        ]
+      );
+      return remand;
+    });
+
+    await writeAuditLog({
+      userId: req.user.username || req.user.id,
+      userEmail: req.user.email,
+      action: 'COURT_REMAND_RETURNED',
+      entityType: 'court_remands',
+      entityId: Number(remandId),
+      newData: { case_id: Number(caseId), investigation_id: investigation_id || null, return_notes: return_notes || null },
+    });
+
+    res.json({ success: true, message: 'Remand investigation returned to court.', courtCaseId: result.court_case_id });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   getCases, getMyAssignedCases, getAssignableOfficers, getCaseById, createCase,
   updateCase, assignCaseOfficer, exportCasePackage, recordCourtDecision, getCaseStats,
-  getCaseInvestigations, createCaseInvestigation
+  getCaseInvestigations, createCaseInvestigation, updateCaseInvestigation, returnCourtRemand
 };
 

@@ -47,11 +47,16 @@ const courtRoles = ['court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_l
 const judgeFormRoles = ['judge', 'admin', 'court', 'court_admin'];
 
 const statusMeta = {
-  registered: { label: 'Registered', tone: 'open' },
-  awaiting_hearing: { label: 'Awaiting hearing', tone: 'pending' },
-  hearing_scheduled: { label: 'Hearing scheduled', tone: 'open' },
-  in_trial: { label: 'In trial', tone: 'pending' },
-  judgment_issued: { label: 'Judgment issued', tone: 'open' },
+  court_received: { label: 'Maxkamaddu heshay', tone: 'open' },
+  arraignment: { label: 'Horgeyn + Qirasho', tone: 'pending' },
+  remand_investigation: { label: 'Muddo Baaris', tone: 'pending' },
+  remanded_to_investigator: { label: 'Dib loogu celiyay Baaraha', tone: 'warning' },
+  returned_from_remand: { label: 'Baaris soo noqotay', tone: 'open' },
+  assigned_legal_team: { label: 'Xilsaarid', tone: 'open' },
+  case_scheduled: { label: 'Mudeyn', tone: 'open' },
+  trial_hearing: { label: 'Dhageysi', tone: 'pending' },
+  evidence_defense: { label: 'Caddeymo & Difaac', tone: 'pending' },
+  judgment: { label: 'Xukun', tone: 'open' },
   sentenced: { label: 'Sentenced', tone: 'warning' },
   appealed: { label: 'Appealed', tone: 'critical' },
   closed: { label: 'Closed', tone: 'closed' },
@@ -186,8 +191,8 @@ export default function CourtDashboard() {
 
   const stats = dashboard?.stats || {};
   const courtCase = selected?.courtCase;
-  const canIssueJudgment = canJudgeForms && ['in_trial', 'hearing_scheduled', 'awaiting_hearing'].includes(courtCase?.status);
-  const canIssueSentence = canJudgeForms && courtCase?.status === 'judgment_issued';
+  const canIssueJudgment = canJudgeForms && courtCase?.status === 'evidence_defense';
+  const canIssueSentence = canJudgeForms && courtCase?.status === 'judgment';
 
   const metrics = [
     { title: 'Total court cases', value: stats.total_court_cases || 0, icon: <BankOutlined /> },
@@ -374,7 +379,7 @@ export default function CourtDashboard() {
             <Space wrap>
               <Button
                 type="primary"
-                disabled={!canIssueJudgment && courtCase.status !== 'in_trial'}
+                disabled={!canIssueJudgment}
                 onClick={() => openModal('judgment', {
                   decision_date: dayjs(),
                   decision_type: 'convicted',
@@ -438,11 +443,11 @@ export default function CourtDashboard() {
                     Judgment and sentence forms are available to judges (and court admins).
                   </Text>
                   <Space wrap>
-                    <Button type="primary" onClick={() => openModal('judgment', { decision_date: dayjs(), decision_type: 'convicted' })}>
+                    <Button type="primary" disabled={!canIssueJudgment} onClick={() => openModal('judgment', { decision_date: dayjs(), decision_type: 'convicted' })}>
                       Record judgment
                     </Button>
                     <Button
-                      disabled={courtCase.status !== 'judgment_issued'}
+                      disabled={courtCase.status !== 'judgment'}
                       onClick={() => openModal('sentence', { sentence_date: dayjs(), sentence_type: 'imprisonment' })}
                     >
                       Issue sentence

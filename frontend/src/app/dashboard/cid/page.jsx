@@ -56,7 +56,7 @@ const getDismissedAlertIds = () => {
   }
 };
 
-const cidRoles = ['admin', 'district_admin', 'investigator', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
+const cidRoles = ['admin', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
 const supervisorRoles = ['admin', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison'];
 
 const statusMeta = {
@@ -144,7 +144,7 @@ export default function CIDDashboard() {
         api.get('/cid/dashboard'),
         api.get('/cid/cases', { params: { limit: 50, ...nextFilters } }),
       ]);
-      const notificationsRes = await api.get('/notifications', { params: { limit: 8 } });
+      const notificationsRes = await api.get('/notifications', { params: { limit: 8, scope: 'cid' } });
       const dismissedAlertIds = getDismissedAlertIds();
       setDashboard(dashboardRes.data.data);
       setCases(casesRes.data.data || []);

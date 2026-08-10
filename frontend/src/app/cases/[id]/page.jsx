@@ -41,10 +41,72 @@ const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 
+const investigationFileConfigs = {
+  image: getEvidenceUploadConfig('photo'),
+  video: getEvidenceUploadConfig('video'),
+  document: getEvidenceUploadConfig('document'),
+};
+
+const getInvestigationUploadConfig = (type) => investigationFileConfigs[type] || investigationFileConfigs.document;
+
+const getUploadFile = (value) => {
+  if (!Array.isArray(value) || !value.length) return null;
+  return value[0]?.originFileObj || null;
+};
+
+const parseInvestigationList = (value) => {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value || '[]');
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(value) ? value : [];
+};
+
+const existingUploadList = (url, name = 'Fayl hore') => (
+  url ? [{ uid: url, name, status: 'done', url }] : []
+);
+
+const normalizeInterviewPeopleForForm = (step) => {
+  if (Array.isArray(step.interview_people_list) && step.interview_people_list.length) {
+    return step.interview_people_list;
+  }
+  if (step.interview_people || step.step_text) {
+    return [{
+      name: step.interview_people || '',
+      statement: step.step_text || '',
+    }];
+  }
+  return [{}];
+};
+
+const normalizeInterviewPeopleForPayload = (people = []) => (
+  people
+    .map((person) => ({
+      name: String(person?.name || '').trim(),
+      statement: String(person?.statement || '').trim(),
+    }))
+    .filter((person) => person.name || person.statement)
+);
+
+const renderInterviewPeople = (step) => {
+  const people = normalizeInterviewPeopleForPayload(step.interview_people_list);
+  if (people.length) {
+    const peopleHtml = people.map((person, index) => (
+      `${index + 1}. <b>${person.name || '—'}</b>${person.statement ? `<br/>Warbixinta: ${person.statement}` : ''}`
+    )).join('<br/><br/>');
+    return `${peopleHtml}${step.step_text ? `<br/><br/><b>Gunaanadka wareysiga:</b> ${step.step_text}` : ''}`;
+  }
+  return `<b>Dadka la wareystay:</b> ${step.interview_people || '—'}<br/><b>Warbixinta wareysiga:</b> ${step.step_text || '—'}`;
+};
 export default function CaseDetailsPage() {
   const { id } = useParams();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const userPermissions = user?.permissions || [];
+  const hasPermission = (key) => user?.role === 'admin' || userPermissions.includes('*') || userPermissions.includes(key);
   const { message, modal } = App.useApp();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +122,8 @@ export default function CaseDetailsPage() {
   const [isReleaseModalOpen, setIsReleaseModalOpen] = useState(false);
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [isInvestigationModalOpen, setIsInvestigationModalOpen] = useState(false);
+  const [isReturnRemandModalOpen, setIsReturnRemandModalOpen] = useState(false);
+  const [editingInvestigation, setEditingInvestigation] = useState(null);
   const [previewInvestigation, setPreviewInvestigation] = useState(null);
   const [selectedSuspect, setSelectedSuspect] = useState(null);
   const [suspectFaceImage, setSuspectFaceImage] = useState('');
@@ -77,6 +141,7 @@ export default function CaseDetailsPage() {
   const [releaseSuspectForm] = Form.useForm();
   const [assignmentForm] = Form.useForm();
   const [investigationForm] = Form.useForm();
+  const [returnRemandForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -148,12 +213,40 @@ export default function CaseDetailsPage() {
   const handleReferral = async (values) => {
     setSubmitting(true);
     try {
-      await api.post('/referrals', { ...values, case_id: id });
-      message.success(`Case referred to ${values.referred_to_role.toUpperCase()} successfully.`);
+      await api.post('/referrals', {
+        ...values,
+        case_id: id,
+        reason: values.reason || 'Case forwarded to court.',
+      });
+      message.success('Case referred to court successfully.');
       setIsReferralModalOpen(false);
       fetchCaseDetails();
     } catch (err) {
-      message.error("Referral failed.");
+      message.error(err.response?.data?.message || "Referral failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReturnCourtRemand = async (values) => {
+    const remandId = data?.pendingCourtRemand?.id;
+    if (!remandId) {
+      message.error('Ma jiro remand maxkamadeed oo sugaya soo celin.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.post(`/cases/${id}/remands/${remandId}/return`, {
+        investigation_id: values.investigation_id || null,
+        return_notes: values.return_notes,
+      });
+      message.success('Baarista dheeraadka ah waxaa lagu celiyay maxkamadda.');
+      setIsReturnRemandModalOpen(false);
+      returnRemandForm.resetFields();
+      fetchCaseDetails();
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Soo celinta maxkamadda way fashilantay.');
     } finally {
       setSubmitting(false);
     }
@@ -494,6 +587,7 @@ export default function CaseDetailsPage() {
   };
 
   const handleOpenInvestigationModal = async () => {
+    setEditingInvestigation(null);
     investigationForm.resetFields();
     const defaultInvestigatorName = data.officer_name || user?.fullName || user?.username || '';
     investigationForm.setFieldsValue({
@@ -520,17 +614,80 @@ export default function CaseDetailsPage() {
     }
   };
 
+  const handleOpenEditInvestigationModal = (inv) => {
+    const evidenceData = parseInvestigationList(inv.evidence_data).map((item, index) => ({
+      ...item,
+      file: existingUploadList(item.file_url, `Caddeyn ${index + 1}`),
+    }));
+    const stepsData = parseInvestigationList(inv.steps_data).map((item, index) => ({
+      ...item,
+      interview_people_list: normalizeInterviewPeopleForForm(item),
+      step_file_url: item.step_file,
+      step_file: existingUploadList(item.step_file, `Tallaabo ${index + 1}`),
+    }));
+
+    setEditingInvestigation(inv);
+    investigationForm.resetFields();
+    investigationForm.setFieldsValue({
+      investigation_number: inv.investigation_number,
+      ob_number: inv.ob_number || data.ob_number || '',
+      investigator_name: inv.investigator_name || data.officer_name || user?.fullName || user?.username || '',
+      investigation_date: inv.investigation_date ? dayjs(inv.investigation_date) : dayjs(),
+      status: inv.status || 'Socota',
+      evidence_data: evidenceData,
+      witnesses_data: parseInvestigationList(inv.witnesses_data),
+      steps_data: stepsData,
+      summary: inv.summary || '',
+      outcome: inv.outcome || '',
+      recommendation: inv.recommendation || '',
+    });
+    setIsInvestigationModalOpen(true);
+  };
+
   const handleCreateInvestigation = async (values) => {
     setSubmitting(true);
     try {
+      const evidenceItems = (values.evidence_data || []).map((item) => ({
+        evidence_type: item.evidence_type || 'document',
+        description: item.description || '',
+        file_url: item.file_url || '',
+      }));
+      const stepItems = (values.steps_data || []).map((item) => ({
+        ...item,
+        step_label: item.step_label || '',
+        type: item.type || 'interview',
+        interview_people_list: normalizeInterviewPeopleForPayload(item.interview_people_list),
+        interview_people: normalizeInterviewPeopleForPayload(item.interview_people_list).map((person) => person.name).join(', '),
+        step_text: item.step_text || normalizeInterviewPeopleForPayload(item.interview_people_list).map((person) => person.statement).filter(Boolean).join('\n'),
+        description: item.description || '',
+        step_file: item.step_file_url || item.step_file || '',
+      }));
       const payload = {
         ...values,
         ob_number: data.ob_number || '',
         investigation_date: values.investigation_date ? values.investigation_date.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+        evidence_data: evidenceItems,
+        steps_data: stepItems,
       };
-      await api.post(`/cases/${id}/investigations`, payload);
-      message.success("Warbixinta baaritaanka si guul leh ayaa loo diiwaangeliyey.");
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(payload));
+      (values.evidence_data || []).forEach((item, index) => {
+        const file = getUploadFile(item.file);
+        if (file) formData.append(`evidence_file_${index}`, file);
+      });
+      (values.steps_data || []).forEach((item, index) => {
+        const file = getUploadFile(item.step_file);
+        if (file) formData.append(`step_file_${index}`, file);
+      });
+      if (editingInvestigation?.id) {
+        await api.put(`/cases/${id}/investigations/${editingInvestigation.id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        message.success("Warbixinta baaritaanka si guul leh ayaa loo cusboonaysiiyay.");
+      } else {
+        await api.post(`/cases/${id}/investigations`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        message.success("Warbixinta baaritaanka si guul leh ayaa loo diiwaangeliyey.");
+      }
       setIsInvestigationModalOpen(false);
+      setEditingInvestigation(null);
       investigationForm.resetFields();
       fetchCaseDetails();
     } catch (err) {
@@ -548,9 +705,52 @@ export default function CaseDetailsPage() {
       return;
     }
 
-    const evList = typeof inv.evidence_data === 'string' ? JSON.parse(inv.evidence_data || '[]') : (inv.evidence_data || inv.evList || []);
+    const rawEvList = typeof inv.evidence_data === 'string' ? JSON.parse(inv.evidence_data || '[]') : (inv.evidence_data || inv.evList || []);
     const witList = typeof inv.witnesses_data === 'string' ? JSON.parse(inv.witnesses_data || '[]') : (inv.witnesses_data || inv.witList || []);
-    const stepList = typeof inv.steps_data === 'string' ? JSON.parse(inv.steps_data || '[]') : (inv.steps_data || inv.stepList || []);
+    const rawStepList = typeof inv.steps_data === 'string' ? JSON.parse(inv.steps_data || '[]') : (inv.steps_data || inv.stepList || []);
+    const fileTypeLabel = (type) => ({
+      image: 'Sawir',
+      video: 'CCTV / Video',
+      document: 'Fayl',
+      interview: 'Wareysi',
+      text: 'Qoraal',
+      file: 'Sawir/Fayl',
+    }[type] || type || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â');
+    const stepDetails = (step) => {
+      if (step.type === 'interview') {
+        return renderInterviewPeople(step);
+      }
+      return `${step.description || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}${step.step_file ? `<br/><a href="${step.step_file}" target="_blank">Eeg Attachment</a>` : ''}`;
+    };
+
+    const evList = rawEvList.map((item) => ({
+      ...item,
+      description: item.evidence_type
+        ? `${fileTypeLabel(item.evidence_type)} - ${item.description || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}`
+        : item.description,
+    }));
+    const stepList = rawStepList.map((item) => {
+      if (['image', 'video', 'document'].includes(item.type)) {
+        return {
+          ...item,
+          type: 'file',
+          step_text: item.description || item.step_text,
+        };
+      }
+      if (item.type === 'interview') {
+        return {
+          ...item,
+          type: 'text',
+          step_text: stepDetails(item),
+        };
+      }
+      return item;
+    });
+    const printEvList = rawEvList.map((item) => ({
+      ...item,
+      type_label: fileTypeLabel(item.evidence_type),
+      description: item.description || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â',
+    }));
 
     const html = `
       <!DOCTYPE html>
@@ -581,23 +781,23 @@ export default function CaseDetailsPage() {
           <div class="section-title">1. XOGTA OTOMAATIG AH EE OB-GA IYO BAARITAANKA</div>
           <table>
             <tr><th>Lambarka Baaritaanka (Investigation No.)</th><td><b>${inv.investigation_number}</b></td></tr>
-            <tr><th>Lambarka OB</th><td>${inv.ob_number || data.ob_number || '—'}</td></tr>
-            <tr><th>Cinwaanka Dacwadda</th><td>${data.title || '—'}</td></tr>
-            <tr><th>Nooca Dacwadda</th><td>${data.case_type || '—'}</td></tr>
-            <tr><th>Goobta Dhacdada</th><td>${data.incident_location || '—'}</td></tr>
-            <tr><th>Taariikhda & Waqtiga Dhacdada</th><td>${data.incident_date ? dayjs(data.incident_date).format('DD/MM/YYYY HH:mm') : '—'}</td></tr>
-            <tr><th>Soo Dacwoodaha (Complainant)</th><td>${data.complainant_name ? `${data.complainant_name} (${data.complainant_phone || ''})` : '—'}</td></tr>
-            <tr><th>Laga Dacwooday (Accused)</th><td>${(data.suspects || []).map(s => s.full_name).join(', ') || '—'}</td></tr>
-            <tr><th>Dhibbanaha/Dhibbanayaasha</th><td>${(data.victims || []).map(v => v.full_name).join(', ') || '—'}</td></tr>
-            <tr><th>Faahfaahinta Dacwadda (OB Summary)</th><td>${data.description || '—'}</td></tr>
+            <tr><th>Lambarka OB</th><td>${inv.ob_number || data.ob_number || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
+            <tr><th>Cinwaanka Dacwadda</th><td>${data.title || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
+            <tr><th>Nooca Dacwadda</th><td>${data.case_type || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
+            <tr><th>Goobta Dhacdada</th><td>${data.incident_location || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
+            <tr><th>Taariikhda & Waqtiga Dhacdada</th><td>${data.incident_date ? dayjs(data.incident_date).format('DD/MM/YYYY HH:mm') : 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
+            <tr><th>Soo Dacwoodaha (Complainant)</th><td>${data.complainant_name ? `${data.complainant_name} (${data.complainant_phone || ''})` : 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
+            <tr><th>Laga Dacwooday (Accused)</th><td>${(data.suspects || []).map(s => s.full_name).join(', ') || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
+            <tr><th>Dhibbanaha/Dhibbanayaasha</th><td>${(data.victims || []).map(v => v.full_name).join(', ') || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
+            <tr><th>Faahfaahinta Dacwadda (OB Summary)</th><td>${data.description || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
           </table>
 
           <div class="section-title">2. CADDEYMAHA LA HELAY (EVIDENCE COLLECTED)</div>
-          ${evList.length === 0 ? '<p style="font-size:13px; color:#666;">Wax caddeymo ah oo la qaray ma jiraan.</p>' : `
+          ${printEvList.length === 0 ? '<p style="font-size:13px; color:#666;">Wax caddeymo ah oo la qaray ma jiraan.</p>' : `
             <table>
-              <thead><tr><th style="width:10%">#</th><th style="width:50%">Faahfaahinta Caddaynta</th><th style="width:40%">Faylka / Sawirka Attached</th></tr></thead>
+              <thead><tr><th style="width:10%">#</th><th style="width:20%">Nooca</th><th style="width:40%">Faahfaahinta Caddaynta</th><th style="width:30%">Faylka / Sawirka Attached</th></tr></thead>
               <tbody>
-                ${evList.map((e, idx) => `<tr><td>${idx + 1}</td><td>${e.description || '—'}</td><td>${e.file_url ? `<a href="${e.file_url}" target="_blank">Eeg Faylka</a>` : 'File ma leh'}</td></tr>`).join('')}
+                ${printEvList.map((e, idx) => `<tr><td>${idx + 1}</td><td>${e.type_label || 'Ã¢â‚¬â€'}</td><td>${e.description || 'Ã¢â‚¬â€'}</td><td>${e.file_url ? `<a href="${e.file_url}" target="_blank">Eeg Faylka</a>` : 'File ma leh'}</td></tr>`).join('')}
               </tbody>
             </table>
           `}
@@ -607,7 +807,7 @@ export default function CaseDetailsPage() {
             <table>
               <thead><tr><th style="width:30%">Magaca Markhaatiga</th><th style="width:25%">Telefoonka</th><th style="width:45%">Hadalka / Warbixinta Markhaatiga</th></tr></thead>
               <tbody>
-                ${witList.map(w => `<tr><td><b>${w.full_name || '—'}</b></td><td>${w.phone || '—'}</td><td>${w.statement || '—'}</td></tr>`).join('')}
+                ${witList.map(w => `<tr><td><b>${w.full_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</b></td><td>${w.phone || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td><td>${w.statement || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>`).join('')}
               </tbody>
             </table>
           `}
@@ -617,24 +817,24 @@ export default function CaseDetailsPage() {
             <table>
               <thead><tr><th style="width:30%">Magaca Tallaabada</th><th style="width:20%">Nooca</th><th style="width:50%">Faahfaahinta / Attachments</th></tr></thead>
               <tbody>
-                ${stepList.map(s => `<tr><td><b>${s.step_label || '—'}</b></td><td>${s.type === 'file' ? 'Sawir/Fayl' : 'Qoraal'}</td><td>${s.type === 'file' ? (s.step_file ? `<a href="${s.step_file}" target="_blank">Eeg Attachment</a>` : 'Fayl ma leh') : (s.step_text || '—')}</td></tr>`).join('')}
+                ${stepList.map(s => `<tr><td><b>${s.step_label || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</b></td><td>${s.type === 'file' ? 'Sawir/Fayl' : 'Qoraal'}</td><td>${s.type === 'file' ? (s.step_file ? `<a href="${s.step_file}" target="_blank">Eeg Attachment</a>` : 'Fayl ma leh') : (s.step_text || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â')}</td></tr>`).join('')}
               </tbody>
             </table>
           `}
 
           <div class="section-title">5. GUNGAARKA BAARITAANKA (INVESTIGATION SUMMARY)</div>
-          <div class="box">${inv.summary || '—'}</div>
+          <div class="box">${inv.summary || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</div>
 
           <div class="section-title">6. NATIIJADA BAARITAANKA (INVESTIGATION OUTCOME)</div>
-          <div class="box">${inv.outcome || '—'}</div>
+          <div class="box">${inv.outcome || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</div>
 
           <div class="section-title">7. GO'AANKA BAARAHA (INVESTIGATOR RECOMMENDATION)</div>
-          <div class="box">${inv.recommendation || '—'}</div>
+          <div class="box">${inv.recommendation || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</div>
 
           <table>
             <tr><th>Xaaladda Baaritaanka</th><td><b>${inv.status || 'Socota'}</b></td></tr>
-            <tr><th>Magaca Baaraha</th><td><b>${inv.investigator_name || '—'}</b></td></tr>
-            <tr><th>Taariikhda Baaritaanka la Furay</th><td>${inv.investigation_date ? dayjs(inv.investigation_date).format('DD/MM/YYYY') : '—'}</td></tr>
+            <tr><th>Magaca Baaraha</th><td><b>${inv.investigator_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</b></td></tr>
+            <tr><th>Taariikhda Baaritaanka la Furay</th><td>${inv.investigation_date ? dayjs(inv.investigation_date).format('DD/MM/YYYY') : 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</td></tr>
           </table>
 
           <div class="footer">
@@ -644,7 +844,7 @@ export default function CaseDetailsPage() {
             </div>
             <div class="signature-block">
               Xaqiijinta & Shaambadda Saldhigga<br />
-              <b>Taliyaha Saldhigga / CID</b>
+              <b>Taliyaha Saldhigga / Xafiiska Baarista</b>
             </div>
           </div>
         </body>
@@ -742,10 +942,18 @@ export default function CaseDetailsPage() {
   const canReviewCase = ['admin', ...commanderRoles].includes(role);
   const canAssignCase = ['admin', 'district_admin', 'district_commander', 'police_station_commander'].includes(role);
   const canUpdateStatus = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
-  const canReferCase = ['admin', 'officer', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
+  const canReferCase = ['admin', 'officer', 'investigator', 'cid', ...stationOperationRoles, ...commanderRoles].includes(role);
   const canManageInvestigation = ['admin', 'sub_admin', 'officer', 'investigator', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...stationOperationRoles, ...commanderRoles].includes(role) || user?.permissions?.includes('*') || user?.permissions?.includes('cases.investigate');
   const canAddWitness = ['admin', 'officer', 'cid', ...stationOperationRoles].includes(role);
+  const canCreateSuspects = hasPermission('suspects.create') || hasPermission('suspects.manage');
+  const canUpdateSuspects = hasPermission('suspects.update') || hasPermission('suspects.manage');
   const caseEndedAtCourtReferral = data.status === 'referred_to_court';
+  const pendingCourtRemand = data.pendingCourtRemand || null;
+  const hasPendingCourtRemand = Boolean(pendingCourtRemand);
+  const canWorkOnInvestigation = canManageInvestigation && (!caseEndedAtCourtReferral || hasPendingCourtRemand);
+  const latestInvestigation = (data.investigations || [])[0] || {};
+  const assignedOfficerName = data.officer_name || latestInvestigation.investigator_name || null;
+  const stationCommanderName = data.station_commander_name || null;
 
   const courtStatusTab = (
     <Space orientation="vertical" style={{ width: '100%' }} size="large">
@@ -800,7 +1008,7 @@ export default function CaseDetailsPage() {
     <Space orientation="vertical" style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4}>Physical & Digital Evidence</Title>
-        {canManageInvestigation && !caseEndedAtCourtReferral && (
+        {canManageInvestigation && canCreateSuspects && !caseEndedAtCourtReferral && (
           <Button
             type="primary"
             icon={<FileAddOutlined />}
@@ -905,7 +1113,7 @@ export default function CaseDetailsPage() {
                     Release Suspect
                   </Button>
                 )}
-                {canManageInvestigation && !caseEndedAtCourtReferral && (
+                {canManageInvestigation && canUpdateSuspects && !caseEndedAtCourtReferral && (
                   <Button size="small" icon={<EditOutlined />} onClick={() => handleOpenEditSuspect(record)}>
                     Edit
                   </Button>
@@ -925,7 +1133,7 @@ export default function CaseDetailsPage() {
           <Title level={4} style={{ margin: 0 }}>Diiwaanka Baaritaanka Kiiska</Title>
           <Text type="secondary">Maamul oo diiwaangeli warbixinta baaritaanka nidaamka</Text>
         </div>
-        {canManageInvestigation && !caseEndedAtCourtReferral && (
+        {canWorkOnInvestigation && (
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -936,11 +1144,52 @@ export default function CaseDetailsPage() {
         )}
       </div>
 
+      {hasPendingCourtRemand && (
+        <Alert
+          type="warning"
+          showIcon
+          title="Maxkamaddu waxay dalbatay Baaris Dheeraad ah"
+          description={
+            <Space orientation="vertical" style={{ width: '100%' }} size="small">
+              <Text>{pendingCourtRemand.instructions}</Text>
+              <Space wrap>
+                {pendingCourtRemand.court_case_number && <Tag color="gold">{pendingCourtRemand.court_case_number}</Tag>}
+                {pendingCourtRemand.deadline_date && <Tag color="orange">Deadline: {dayjs(pendingCourtRemand.deadline_date).format('DD MMM YYYY')}</Tag>}
+                {pendingCourtRemand.reason && <Tag>{pendingCourtRemand.reason}</Tag>}
+              </Space>
+              <Space wrap>
+                {canWorkOnInvestigation && (
+                  <Button icon={<PlusOutlined />} onClick={handleOpenInvestigationModal}>
+                    Ku dar Warbixin Baaritaan
+                  </Button>
+                )}
+                {canWorkOnInvestigation && (
+                  <Button
+                    type="primary"
+                    icon={<ShareAltOutlined />}
+                    onClick={() => {
+                      returnRemandForm.setFieldsValue({
+                        investigation_id: latestInvestigation?.id,
+                        return_notes: '',
+                      });
+                      setIsReturnRemandModalOpen(true);
+                    }}
+                  >
+                    Soo Celi Maxkamadda
+                  </Button>
+                )}
+              </Space>
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       {(data.investigations || []).length === 0 ? (
         <Card size="small" style={{ textAlign: 'center', padding: 32 }}>
           <Space orientation="vertical" size="middle">
             <Text type="secondary">Wali ma jiro baaritaan la diiwaangeliyey kiiskan. Taabo batoonka hoose si aad u furto foomka baaritaanka cusub.</Text>
-            {canManageInvestigation && !caseEndedAtCourtReferral && (
+            {canWorkOnInvestigation && (
               <Button type="primary" size="large" icon={<PlusOutlined />} onClick={handleOpenInvestigationModal}>
                 Ku dar baaris
               </Button>
@@ -956,6 +1205,11 @@ export default function CaseDetailsPage() {
               <Card key={`inv-${inv.id || idx}`} size="small" title={`Warbixinta Baaritaanka #${inv.investigation_number}`} extra={
                 <Space>
                   <Tag color={statusColor}>{inv.status}</Tag>
+                  {canWorkOnInvestigation && (
+                    <Button size="small" icon={<EditOutlined />} onClick={() => handleOpenEditInvestigationModal(inv)}>
+                      Wax ka beddel
+                    </Button>
+                  )}
                   <Button size="small" icon={<PrinterOutlined />} onClick={() => handlePrintInvestigationReport(inv)}>
                     Preview / Daabac Dukumentiga
                   </Button>
@@ -963,9 +1217,9 @@ export default function CaseDetailsPage() {
               }>
                 <Descriptions column={2} size="small" bordered style={{ marginBottom: 12 }}>
                   <Descriptions.Item label="Lambarka Baaritaanka"><b>{inv.investigation_number}</b></Descriptions.Item>
-                  <Descriptions.Item label="Lambarka OB">{inv.ob_number || data.ob_number || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Magaca Baaraha">{inv.investigator_name || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Taariikhda la Furay">{inv.investigation_date ? dayjs(inv.investigation_date).format('DD MMM YYYY') : '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Lambarka OB">{inv.ob_number || data.ob_number || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+                  <Descriptions.Item label="Magaca Baaraha">{inv.investigator_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+                  <Descriptions.Item label="Taariikhda la Furay">{inv.investigation_date ? dayjs(inv.investigation_date).format('DD MMM YYYY') : 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                 </Descriptions>
                 
                 {inv.summary && (
@@ -982,7 +1236,7 @@ export default function CaseDetailsPage() {
                 )}
                 {inv.recommendation && (
                   <div style={{ marginTop: 8 }}>
-                    <Text strong style={{ fontSize: 13 }}>Go'aanka Baaraha:</Text>
+                    <Text strong style={{ fontSize: 13 }}>Go&apos;aanka Baaraha:</Text>
                     <Paragraph style={{ background: '#1c1c1c', padding: 8, borderRadius: 6, marginTop: 4, marginBottom: 8, fontSize: 13 }}>{inv.recommendation}</Paragraph>
                   </div>
                 )}
@@ -1016,7 +1270,7 @@ export default function CaseDetailsPage() {
             <Text type="secondary" style={{ fontSize: 13 }}>
               {data.title || 'Untitled case'}
               {data.station_name ? ` · ${data.station_name}` : ''}
-              {data.officer_name ? ` · ${data.officer_name}` : ''}
+              {assignedOfficerName ? ` · ${assignedOfficerName}` : ''}
             </Text>
           </Space>
 
@@ -1056,7 +1310,18 @@ export default function CaseDetailsPage() {
               </Button>
             )}
             <Button icon={<DownloadOutlined />} onClick={() => exportCasePackage('case-package')}>Export package</Button>
-            {canReferCase && !caseEndedAtCourtReferral && <Button type="primary" icon={<ShareAltOutlined />} onClick={() => setIsReferralModalOpen(true)}>Refer case</Button>}
+            {canReferCase && !caseEndedAtCourtReferral && (
+              <Button
+                type="primary"
+                icon={<ShareAltOutlined />}
+                onClick={() => {
+                  referralForm.setFieldsValue({ referred_to_role: 'court' });
+                  setIsReferralModalOpen(true);
+                }}
+              >
+                U Gudbi Maxkamad
+              </Button>
+            )}
           </Space>
         </div>
 
@@ -1078,36 +1343,36 @@ export default function CaseDetailsPage() {
                         <Descriptions title="Incident particulars" bordered column={1} size="small">
                           <Descriptions.Item label="Case number">{data.case_number || data.id}</Descriptions.Item>
                           <Descriptions.Item label="Subject">{data.title}</Descriptions.Item>
-                          <Descriptions.Item label="Category">{data.case_type || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Category">{data.case_type || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                           <Descriptions.Item label="Incident type">{data.incident_type || data.title}</Descriptions.Item>
                           <Descriptions.Item label="Priority">
                             <Tag className={`status-tag status-tag--${data.priority === 'critical' ? 'critical' : data.priority === 'high' ? 'warning' : 'neutral'}`}>
-                              {data.priority || '—'}
+                              {data.priority || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}
                             </Tag>
                           </Descriptions.Item>
                           <Descriptions.Item label="Incident date">
-                            {data.incident_date ? dayjs(data.incident_date).format('DD MMM YYYY HH:mm') : '—'}
+                            {data.incident_date ? dayjs(data.incident_date).format('DD MMM YYYY HH:mm') : 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}
                           </Descriptions.Item>
-                          <Descriptions.Item label="Location">{data.incident_location || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Location">{data.incident_location || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                           <Descriptions.Item label="Occurrence details">
-                            <Paragraph style={{ marginBottom: 0 }}>{data.description || '—'}</Paragraph>
+                            <Paragraph style={{ marginBottom: 0 }}>{data.description || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Paragraph>
                           </Descriptions.Item>
                         </Descriptions>
 
                         <Descriptions title="Linked OB" bordered column={1} size="small">
-                          <Descriptions.Item label="OB number">{data.ob_number || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="Original OB staff">{data.ob_registered_by_name || data.original_ob_staff_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="OB number">{data.ob_number || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+                          <Descriptions.Item label="Original OB staff">{data.ob_registered_by_name || data.original_ob_staff_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                           <Descriptions.Item label="OB registration date">
-                            {data.ob_registration_date ? `${dayjs(data.ob_registration_date).format('DD MMM YYYY')} ${data.ob_registration_time || ''}` : '—'}
+                            {data.ob_registration_date ? `${dayjs(data.ob_registration_date).format('DD MMM YYYY')} ${data.ob_registration_time || ''}` : 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}
                           </Descriptions.Item>
-                          <Descriptions.Item label="State">{data.state_name || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="Region">{data.region_name || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="District station">{data.district_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="State">{data.state_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+                          <Descriptions.Item label="Region">{data.region_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+                          <Descriptions.Item label="District station">{data.district_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                         </Descriptions>
 
                         <Descriptions title="Complainant" bordered column={2} size="small">
-                          <Descriptions.Item label="Full name">{data.complainant_name || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="Phone">{data.complainant_phone || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Full name">{data.complainant_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+                          <Descriptions.Item label="Phone">{data.complainant_phone || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                         </Descriptions>
 
                         <div style={{ padding: 16, border: '0.5px solid #2B2B2B', borderRadius: 12, background: '#171717' }}>
@@ -1126,7 +1391,7 @@ export default function CaseDetailsPage() {
                                   <Text type="secondary" style={{ fontSize: 12 }}>{action.description}</Text>
                                   <Text type="secondary" style={{ fontSize: 11 }}>
                                     {dayjs(action.created_at).format('DD MMM YYYY HH:mm')}
-                                    {action.performed_by ? ` · ${action.performed_by}` : ''}
+                                    {action.performed_by ? ` Ãƒâ€šÃ‚Â· ${action.performed_by}` : ''}
                                   </Text>
                                 </Space>
                               ),
@@ -1150,8 +1415,8 @@ export default function CaseDetailsPage() {
                 <Descriptions.Item label="Region">{data.region_name || '—'}</Descriptions.Item>
                 <Descriptions.Item label="District">{data.district_name || '—'}</Descriptions.Item>
                 <Descriptions.Item label="Station">{data.station_name || '—'}</Descriptions.Item>
-                <Descriptions.Item label="Assigned officer">{data.officer_name || '—'}</Descriptions.Item>
-                <Descriptions.Item label="Station commander">{data.station_commander_name || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Assigned officer">{assignedOfficerName || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Station commander">{stationCommanderName || '—'}</Descriptions.Item>
               </Descriptions>
               {canAssignCase && !caseEndedAtCourtReferral && (
                 <Button
@@ -1251,15 +1516,46 @@ export default function CaseDetailsPage() {
         </Form>
       </Modal>
 
-      <Modal title="Refer Case" open={isReferralModalOpen} onCancel={() => setIsReferralModalOpen(false)} onOk={() => referralForm.submit()}>
+      <Modal title="Refer Case to Court" open={isReferralModalOpen} onCancel={() => setIsReferralModalOpen(false)} onOk={() => referralForm.submit()}>
         <Form form={referralForm} onFinish={handleReferral} layout="vertical">
           <Form.Item name="referred_to_role" label="Refer To" rules={[requiredRule('Referral destination')]}>
             <Select>
-              <Option value="cid">CID</Option>
               <Option value="court">Court Referral</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="reason" label="Reason" rules={[requiredRule('Reason'), textLengthRule('Reason', 5, 1000)]}><TextArea rows={4} /></Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Soo Celi Maxkamadda"
+        open={isReturnRemandModalOpen}
+        onCancel={() => {
+          setIsReturnRemandModalOpen(false);
+          returnRemandForm.resetFields();
+        }}
+        onOk={() => returnRemandForm.submit()}
+        confirmLoading={submitting}
+        okText="Soo Celi"
+        cancelText="Jooji"
+      >
+        <Form form={returnRemandForm} onFinish={handleReturnCourtRemand} layout="vertical">
+          <Form.Item name="investigation_id" label="Warbixinta Baaritaanka">
+            <Select
+              allowClear
+              placeholder="Dooro warbixinta baaritaanka"
+              options={(data.investigations || []).map((inv) => ({
+                value: inv.id,
+                label: `${inv.investigation_number || `INV-${inv.id}`} - ${inv.status || 'Socota'}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="return_notes"
+            label="Faahfaahinta Soo Celinta"
+            rules={[requiredRule('Faahfaahinta soo celinta'), textLengthRule('Faahfaahinta soo celinta', 5, 2000)]}
+          >
+            <TextArea rows={4} placeholder="Qor waxa baaris dheeraad ah laga qabtay iyo waxa maxkamadda loo celinayo..." />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -1628,31 +1924,35 @@ export default function CaseDetailsPage() {
 
       {/* Ku Dar Baaris Modal */}
       <Modal
-        title="Ku Dar Warbixinta Baaritaanka (Add Investigation Record)"
+        title={editingInvestigation ? "Wax ka beddel Warbixinta Baaritaanka" : "Ku Dar Warbixinta Baaritaanka (Add Investigation Record)"}
         open={isInvestigationModalOpen}
-        onCancel={() => setIsInvestigationModalOpen(false)}
+        onCancel={() => {
+          setIsInvestigationModalOpen(false);
+          setEditingInvestigation(null);
+          investigationForm.resetFields();
+        }}
         onOk={() => investigationForm.submit()}
         confirmLoading={submitting}
         width={950}
-        okText="Kaydi Baaritaanka"
+        okText={editingInvestigation ? "Cusboonaysii Baaritaanka" : "Kaydi Baaritaanka"}
         cancelText="Jooji"
       >
         <Alert
-          message="Xogta si Otomaatig ah looga soo qaaday OB-ga (Read-Only for Verification)"
+          title="Xogta si Otomaatig ah looga soo qaaday OB-ga (Read-Only for Verification)"
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
           description={
             <Descriptions column={2} size="small" style={{ marginTop: 8 }}>
-              <Descriptions.Item label="Lambarka OB"><b>{data.ob_number || '—'}</b></Descriptions.Item>
-              <Descriptions.Item label="Cinwaanka Dacwadda">{data.title || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Nooca Dacwadda">{data.case_type || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Goobta Dhacdada">{data.incident_location || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Taariikhda & Waqtiga Dhacdada">{data.incident_date ? dayjs(data.incident_date).format('YYYY-MM-DD HH:mm') : '—'}</Descriptions.Item>
-              <Descriptions.Item label="Soo Dacwoodaha">{data.complainant_name ? `${data.complainant_name} (${data.complainant_phone || ''})` : '—'}</Descriptions.Item>
-              <Descriptions.Item label="Laga Dacwooday (Accused)">{(data.suspects || []).map(s => s.full_name).join(', ') || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Dhibbanayaasha">{(data.victims || []).map(v => v.full_name).join(', ') || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Faahfaahinta OB" span={2}>{data.description || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Lambarka OB"><b>{data.ob_number || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</b></Descriptions.Item>
+              <Descriptions.Item label="Cinwaanka Dacwadda">{data.title || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+              <Descriptions.Item label="Nooca Dacwadda">{data.case_type || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+              <Descriptions.Item label="Goobta Dhacdada">{data.incident_location || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+              <Descriptions.Item label="Taariikhda & Waqtiga Dhacdada">{data.incident_date ? dayjs(data.incident_date).format('YYYY-MM-DD HH:mm') : 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+              <Descriptions.Item label="Soo Dacwoodaha">{data.complainant_name ? `${data.complainant_name} (${data.complainant_phone || ''})` : 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+              <Descriptions.Item label="Laga Dacwooday (Accused)">{(data.suspects || []).map(s => s.full_name).join(', ') || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+              <Descriptions.Item label="Dhibbanayaasha">{(data.victims || []).map(v => v.full_name).join(', ') || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
+              <Descriptions.Item label="Faahfaahinta OB" span={2}>{data.description || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
             </Descriptions>
           }
         />
@@ -1691,14 +1991,52 @@ export default function CaseDetailsPage() {
                 <>
                   {fields.map(({ key, name, ...rest }) => (
                     <Row gutter={8} key={key} style={{ marginBottom: 8 }} align="middle">
-                      <Col span={14}>
-                        <Form.Item {...rest} name={[name, 'description']} label="Faahfaahinta Caddaynta (Sawir/CCTV/Fayl)" style={{ marginBottom: 0 }}>
-                          <Input placeholder="Qor faahfaahinta caddaynta..." />
+                      <Col span={5}>
+                        <Form.Item {...rest} name={[name, 'evidence_type']} label="Nooca Caddaynta" rules={[requiredRule('Nooca caddaynta')]} style={{ marginBottom: 0 }}>
+                          <Select options={[
+                            { value: 'image', label: 'Sawir' },
+                            { value: 'video', label: 'CCTV / Video' },
+                            { value: 'document', label: 'Fayl' },
+                          ]} />
                         </Form.Item>
                       </Col>
-                      <Col span={9}>
-                        <Form.Item {...rest} name={[name, 'file_url']} label="URL/Path-ka Faylka ama Sawirka" style={{ marginBottom: 0 }}>
-                          <Input placeholder="URL ama Path-ka faylka..." />
+                      <Col span={7}>
+                        <Form.Item noStyle shouldUpdate>
+                          {() => {
+                            const evidenceType = investigationForm.getFieldValue(['evidence_data', name, 'evidence_type']) || 'document';
+                            const uploadConfig = getInvestigationUploadConfig(evidenceType);
+                            return (
+                              <Form.Item
+                                {...rest}
+                                name={[name, 'file']}
+                                label={uploadConfig.label}
+                                valuePropName="fileList"
+                                getValueFromEvent={(event) => event?.fileList || []}
+                                rules={[requiredRule('Faylka caddaynta')]}
+                                style={{ marginBottom: 0 }}
+                              >
+                                <Upload
+                                  maxCount={1}
+                                  accept={uploadConfig.accept}
+                                  beforeUpload={(file) => {
+                                    const errorMsg = uploadConfig.validate(file);
+                                    if (errorMsg) {
+                                      message.error(errorMsg);
+                                      return Upload.LIST_IGNORE;
+                                    }
+                                    return false;
+                                  }}
+                                >
+                                  <Button icon={<FileAddOutlined />}>{uploadConfig.buttonText}</Button>
+                                </Upload>
+                              </Form.Item>
+                            );
+                          }}
+                        </Form.Item>
+                      </Col>
+                      <Col span={11}>
+                        <Form.Item {...rest} name={[name, 'description']} label="Faahfaahinta Caddaynta" rules={[requiredRule('Faahfaahinta caddaynta')]} style={{ marginBottom: 0 }}>
+                          <Input placeholder="Qor faahfaahinta caddaynta..." />
                         </Form.Item>
                       </Col>
                       <Col span={1} style={{ textAlign: 'center', marginTop: 22 }}>
@@ -1706,7 +2044,7 @@ export default function CaseDetailsPage() {
                       </Col>
                     </Row>
                   ))}
-                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({})}>
+                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ evidence_type: 'document' })}>
                     Ku Dar Caddayn Kale
                   </Button>
                 </>
@@ -1753,7 +2091,6 @@ export default function CaseDetailsPage() {
               {(fields, { add, remove }) => (
                 <>
                   {fields.map(({ key, name, ...rest }) => {
-                    const stepType = investigationForm.getFieldValue(['steps_data', name, 'type']);
                     return (
                       <Row gutter={8} key={key} style={{ marginBottom: 8 }} align="middle">
                         <Col span={7}>
@@ -1764,14 +2101,89 @@ export default function CaseDetailsPage() {
                         <Col span={5}>
                           <Form.Item {...rest} name={[name, 'type']} label="Ikhtiyaarka" style={{ marginBottom: 0 }}>
                             <Select options={[
-                              { value: 'text', label: '1. Qoraal (Text)' },
-                              { value: 'file', label: '2. Sawir/Fayl (File)' }
+                              { value: 'interview', label: 'Wareysi' },
+                              { value: 'image', label: 'Sawir' },
+                              { value: 'video', label: 'CCTV / Video' },
+                              { value: 'document', label: 'Fayl' },
                             ]} />
                           </Form.Item>
                         </Col>
                         <Col span={11}>
-                          <Form.Item {...rest} name={[name, stepType === 'file' ? 'step_file' : 'step_text']} label="Faahfaahinta Tallaabada / Faylka" style={{ marginBottom: 0 }}>
-                            <Input placeholder={stepType === 'file' ? 'URL/Path-ka sawirka ama faylka...' : 'Qor faahfaahinta tallaabada...'} />
+                          <Form.Item noStyle shouldUpdate>
+                            {() => {
+                              const activeStepType = investigationForm.getFieldValue(['steps_data', name, 'type']) || 'interview';
+                              if (activeStepType === 'interview') {
+                                return (
+                                  <Space orientation="vertical" style={{ width: '100%' }} size={8}>
+                                    <Form.List name={[name, 'interview_people_list']}>
+                                      {(personFields, { add: addPerson, remove: removePerson }) => (
+                                        <>
+                                          {personFields.map(({ key: personKey, name: personName, ...personRest }) => (
+                                            <Row gutter={8} key={personKey} align="middle">
+                                              <Col span={8}>
+                                                <Form.Item {...personRest} name={[personName, 'name']} label="Magaca qofka" rules={[requiredRule('Magaca qofka')]} style={{ marginBottom: 0 }}>
+                                                  <Input placeholder="Magaca qofka..." />
+                                                </Form.Item>
+                                              </Col>
+                                              <Col span={15}>
+                                                <Form.Item {...personRest} name={[personName, 'statement']} label="Hadalka qofka" rules={[requiredRule('Hadalka qofka')]} style={{ marginBottom: 0 }}>
+                                                  <Input placeholder="Qor hadalka qofkan..." />
+                                                </Form.Item>
+                                              </Col>
+                                              <Col span={1} style={{ textAlign: 'center', marginTop: 22 }}>
+                                                <Button danger type="text" icon={<MinusCircleOutlined />} onClick={() => removePerson(personName)} />
+                                              </Col>
+                                            </Row>
+                                          ))}
+                                          <Button type="dashed" block icon={<PlusOutlined />} onClick={() => addPerson({})}>
+                                            Ku Dar Qof Kale oo la Wareystay
+                                          </Button>
+                                        </>
+                                      )}
+                                    </Form.List>
+                                    <Form.Item {...rest} name={[name, 'step_text']} label="Gunaanadka Wareysiga" style={{ marginBottom: 0 }}>
+                                      <Input placeholder="Qor gunaanad guud haddii loo baahdo..." />
+                                    </Form.Item>
+                                  </Space>
+                                );
+                              }
+                              const uploadConfig = getInvestigationUploadConfig(activeStepType);
+                              return (
+                                <Row gutter={8}>
+                                  <Col span={10}>
+                                    <Form.Item
+                                      {...rest}
+                                      name={[name, 'step_file']}
+                                      label={uploadConfig.label}
+                                      valuePropName="fileList"
+                                      getValueFromEvent={(event) => event?.fileList || []}
+                                      rules={[requiredRule('Faylka tallaabada')]}
+                                      style={{ marginBottom: 0 }}
+                                    >
+                                      <Upload
+                                        maxCount={1}
+                                        accept={uploadConfig.accept}
+                                        beforeUpload={(file) => {
+                                          const errorMsg = uploadConfig.validate(file);
+                                          if (errorMsg) {
+                                            message.error(errorMsg);
+                                            return Upload.LIST_IGNORE;
+                                          }
+                                          return false;
+                                        }}
+                                      >
+                                        <Button icon={<FileAddOutlined />}>{uploadConfig.buttonText}</Button>
+                                      </Upload>
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={14}>
+                                    <Form.Item {...rest} name={[name, 'description']} label="Faahfaahinta Tallaabada" rules={[requiredRule('Faahfaahinta tallaabada')]} style={{ marginBottom: 0 }}>
+                                      <Input placeholder="Qor faahfaahinta faylka/sawirka/video-ga..." />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+                              );
+                            }}
                           </Form.Item>
                         </Col>
                         <Col span={1} style={{ textAlign: 'center', marginTop: 22 }}>
@@ -1780,7 +2192,7 @@ export default function CaseDetailsPage() {
                       </Row>
                     );
                   })}
-                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ type: 'text' })}>
+                  <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ type: 'interview', interview_people_list: [{}] })}>
                     Ku Dar Tallaabo Kale (Add More)
                   </Button>
                 </>
@@ -1788,15 +2200,15 @@ export default function CaseDetailsPage() {
             </Form.List>
           </Card>
 
-          <Form.Item name="summary" label="Gungaarka Baaritaanka (Investigation Summary / Conclusion)" rules={[requiredRule('Gungaarka baaritaanka')]}>
+          <Form.Item name="summary" label="Gungaarka Baaritaanka (Investigation Summary / Conclusion)">
             <TextArea rows={3} placeholder="Warbixin kooban oo Baaraha qoro oo sheegaysa gunaanadka guud ee baaritaanka..." />
           </Form.Item>
 
-          <Form.Item name="outcome" label="Natiijada Baaritaanka (Investigation Outcome)" rules={[requiredRule('Natiijada baaritaanka')]}>
+          <Form.Item name="outcome" label="Natiijada Baaritaanka (Investigation Outcome)">
             <TextArea rows={3} placeholder="Warbixinta guud ee natiijada baaritaanku keenay..." />
           </Form.Item>
 
-          <Form.Item name="recommendation" label="Go'aanka Baaraha (Investigator Recommendation)" rules={[requiredRule('Go\'aanka baaraha')]}>
+          <Form.Item name="recommendation" label="Go'aanka Baaraha (Investigator Recommendation)">
             <TextArea rows={3} placeholder="Go'aanka ama talada uu Baaraha soo bandhigayo..." />
           </Form.Item>
         </Form>
@@ -1805,4 +2217,3 @@ export default function CaseDetailsPage() {
     </ProtectedRoute>
   );
 }
-

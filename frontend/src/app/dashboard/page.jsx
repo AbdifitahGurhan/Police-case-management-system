@@ -27,6 +27,7 @@ export default function DashboardIndexPage() {
       city_admin: '/dashboard/unit',
       district_admin: '/dashboard/unit',
       personnel_registry: '/police-officers',
+      investigator: '/dashboard/investigator',
       cid: '/dashboard/cid',
       cid_director: '/dashboard/cid',
       cid_supervisor: '/dashboard/cid',
@@ -34,7 +35,7 @@ export default function DashboardIndexPage() {
       court: '/dashboard/court',
       prosecutor: '/dashboard/court',
       prosecutor_liaison: '/dashboard/cid',
-      jail: '/dashboard/jail',
+      jail: '/dashboard/central-jail',
     };
 
     router.replace(roleRedirects[user.role] || '/police-officers');

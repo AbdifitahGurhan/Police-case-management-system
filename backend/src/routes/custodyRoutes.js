@@ -8,12 +8,16 @@ const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware');
 const { REPORT_ROLES } = require('../utils/roleGroups');
-const { requirePermission } = require('../middleware/permissionMiddleware');
+const { loadPermissions, requirePermission } = require('../middleware/permissionMiddleware');
 const {
   getCustodyProfile,
   addBiometric,
   addDocument,
   addTransfer,
+  getTransferDocument,
+  getCentralTransfers,
+  getCentralAdmissions,
+  receiveCentralTransfer,
   addMedicalRecord,
   addVisitorLog,
   requestReleaseApproval,
@@ -45,10 +49,21 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 const CUSTODY_WRITE_ROLES = ['admin', 'jail', 'court', 'cid'];
+const requireAnyPermission = (...permissionKeys) => async (req, res, next) => {
+  const permissions = req.user?.permissions || await loadPermissions(req.user);
+  req.user.permissions = permissions;
+  if (permissions.includes('*') || permissionKeys.some((key) => permissions.includes(key))) return next();
+  if (req.user?.role === 'jail' && permissionKeys.includes('jail.view')) return next();
+  return res.status(403).json({ success: false, message: `Awoodda loo baahan yahay: ${permissionKeys.join(' ama ')}` });
+};
 
 router.use(authMiddleware);
 
 router.get('/wanted-escaped', allowRoles(...REPORT_ROLES), getWantedEscaped);
+router.get('/central/transfers', requirePermission('jail.view'), getCentralTransfers);
+router.get('/central/admissions', requirePermission('jail.view'), getCentralAdmissions);
+router.patch('/central/transfers/:id/receive', requirePermission('jail.receive_transfer'), receiveCentralTransfer);
+router.get('/transfers/:id/document', requirePermission('station_jail.view'), getTransferDocument);
 router.get('/admissions', requirePermission('station_jail.view'), getPrisonAdmissions);
 router.post('/admissions', requirePermission('station_jail.intake'), upload.fields([
   { name: 'photo', maxCount: 1 },
@@ -57,17 +72,17 @@ router.post('/admissions', requirePermission('station_jail.intake'), upload.fiel
 router.post('/admissions/:id/cell-assignments', requirePermission('station_jail.assign_cell'), assignPrisonCell);
 router.post('/admissions/:id/roll-calls', requirePermission('station_jail.intake'), recordRollCall);
 router.post('/roll-calls/bulk', requirePermission('station_jail.intake'), bulkRollCall);
-router.get('/cells', requirePermission('station_jail.view'), getPrisonCells);
+router.get('/cells', requireAnyPermission('station_jail.view', 'jail.view'), getPrisonCells);
 router.post('/cells', requirePermission('station_jail.assign_cell'), savePrisonCell);
 router.get('/criminals/:id', allowRoles(...REPORT_ROLES), getCustodyProfile);
 router.post('/criminals/:id/biometrics', allowRoles(...CUSTODY_WRITE_ROLES), addBiometric);
 router.post('/criminals/:id/documents', allowRoles(...CUSTODY_WRITE_ROLES), upload.single('document'), addDocument);
 router.post('/criminals/:id/transfers', requirePermission('station_jail.intake'), addTransfer);
-router.post('/criminals/:id/medical-records', allowRoles('admin', 'jail'), addMedicalRecord);
-router.post('/criminals/:id/visitor-logs', allowRoles('admin', 'jail'), addVisitorLog);
+router.post('/criminals/:id/medical-records', requirePermission('jail.medical'), addMedicalRecord);
+router.post('/criminals/:id/visitor-logs', requirePermission('jail.visitors'), addVisitorLog);
 router.post('/criminals/:id/release-approvals', requirePermission('station_jail.intake'), requestReleaseApproval);
 router.patch('/release-approvals/:id/admin-review', allowRoles('admin'), adminReviewReleaseApproval);
-router.patch('/release-approvals/:id/prison-confirmation', requirePermission('station_jail.intake'), prisonConfirmReleaseApproval);
+router.patch('/release-approvals/:id/prison-confirmation', requirePermission('jail.release_confirm'), prisonConfirmReleaseApproval);
 router.patch('/release-approvals/:id/court-approval', allowRoles('court', 'admin'), courtApproveReleaseApproval);
 router.post('/release-approvals/:id/certificate', allowRoles('admin', 'court', 'jail'), generateReleaseCertificate);
 router.patch('/release-approvals/:id', allowRoles('admin', 'court'), reviewReleaseApproval);

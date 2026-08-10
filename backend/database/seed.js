@@ -1242,11 +1242,20 @@ async function seed() {
     console.log('  City admin:   mogadishu_city        / Unit@123');
     console.log('  District:     hodan_district        / Unit@123');
     console.log('  Station:      bakaro_station        / Unit@123');
-    process.exit(0);
+    if (require.main === module) {
+      process.exit(0);
+    }
   } catch (err) {
     console.error('Seed error:', err);
-    process.exit(1);
+    if (require.main === module) {
+      process.exit(1);
+    }
+    throw err;
   }
 }
 
-seed();
+module.exports = seed;
+
+if (require.main === module) {
+  seed();
+}

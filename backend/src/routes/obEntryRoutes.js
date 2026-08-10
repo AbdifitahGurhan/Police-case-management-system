@@ -33,13 +33,13 @@ const handleUpload = (req, res, next) => {
 };
 
 router.get('/', requirePermission('ob.view'), getObEntries);
-router.get('/wanted/search', requirePermission('suspects.manage'), searchWantedAccused);
+router.get('/wanted/search', requirePermission('suspects.view'), searchWantedAccused);
 router.get('/deployed-officers', requirePermission('ob.view'), getDeployedOfficersForLocation);
 router.get('/:id', requirePermission('ob.view'), getObEntryById);
 router.post('/', requirePermission('ob.create'), handleUpload, createObEntry);
 router.patch('/:id', requirePermission('ob.update'), updateObEntry);
 router.post('/:id/status', requirePermission('cases.investigate'), changeObStatus);
-router.post('/:id/accused/:accusedId/arrest', requirePermission('suspects.manage'), registerAccusedArrest);
+router.post('/:id/accused/:accusedId/arrest', requirePermission('suspects.update'), registerAccusedArrest);
 router.post('/:id/convert-to-case', allowRoles(...OB_CONVERT_ROLES), convertObToCase);
 router.post('/:id/resolve', allowRoles(...OB_WRITE_ROLES), resolveObEntry);
 router.post('/:id/reopen', allowRoles(...OB_WRITE_ROLES), reopenObEntry);

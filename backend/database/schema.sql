@@ -796,7 +796,7 @@ CREATE TABLE IF NOT EXISTS court_cases (
   crime_category VARCHAR(100),
   case_description TEXT,
   source_status VARCHAR(50),
-  status ENUM('registered', 'awaiting_hearing', 'hearing_scheduled', 'in_trial', 'judgment_issued', 'sentenced', 'appealed', 'closed', 'archived') DEFAULT 'registered',
+  status ENUM('court_received', 'arraignment', 'remand_investigation', 'remanded_to_investigator', 'returned_from_remand', 'assigned_legal_team', 'case_scheduled', 'trial_hearing', 'evidence_defense', 'judgment', 'sentenced', 'appealed', 'closed', 'archived') DEFAULT 'court_received',
   created_by VARCHAR(100),
   registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   assigned_judge VARCHAR(150),
@@ -808,6 +808,23 @@ CREATE TABLE IF NOT EXISTS court_cases (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_court_cases_police FOREIGN KEY (police_case_id) REFERENCES cases(id) ON DELETE CASCADE,
   UNIQUE KEY uq_court_case_police_case (police_case_id)
+);
+
+CREATE TABLE IF NOT EXISTS court_arraignments (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_id INT NOT NULL,
+  arraignment_date DATE NOT NULL,
+  judge_name VARCHAR(150),
+  clerk_name VARCHAR(150),
+  defendant_present TINYINT(1) DEFAULT 1,
+  plea ENUM('guilty','not_guilty','no_plea') NOT NULL DEFAULT 'no_plea',
+  notes TEXT,
+  created_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_arraignment_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE,
+  INDEX idx_court_arraignments_case (court_case_id),
+  INDEX idx_court_arraignments_date (arraignment_date)
 );
 
 CREATE TABLE IF NOT EXISTS officer_attendance (
@@ -963,6 +980,35 @@ CREATE TABLE IF NOT EXISTS court_witnesses (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_court_witness_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE,
   CONSTRAINT fk_court_witness_witness FOREIGN KEY (witness_id) REFERENCES witnesses(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS court_remands (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  court_case_id INT NOT NULL,
+  police_case_id INT NOT NULL,
+  sent_to_user_id INT NULL,
+  sent_to_role VARCHAR(50) NULL,
+  sent_to_station_id INT NULL,
+  reason VARCHAR(255) NULL,
+  instructions TEXT NOT NULL,
+  deadline_date DATE NULL,
+  status ENUM('pending','returned','completed','cancelled') DEFAULT 'pending',
+  sent_by VARCHAR(100),
+  sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  returned_by VARCHAR(100) NULL,
+  returned_at TIMESTAMP NULL,
+  return_notes TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_remand_court_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_remand_police_case FOREIGN KEY (police_case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_remand_user FOREIGN KEY (sent_to_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_remand_station FOREIGN KEY (sent_to_station_id) REFERENCES districts(id) ON DELETE SET NULL,
+  INDEX idx_court_remands_court_case (court_case_id),
+  INDEX idx_court_remands_police_case (police_case_id),
+  INDEX idx_court_remands_status (status),
+  INDEX idx_court_remands_sent_to_user (sent_to_user_id),
+  INDEX idx_court_remands_station (sent_to_station_id)
 );
 
 CREATE TABLE IF NOT EXISTS court_evidence_notes (

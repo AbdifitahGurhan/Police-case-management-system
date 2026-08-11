@@ -259,20 +259,22 @@ const getRegionDashboardStats = async (req, res, next) => {
     const [stationPerformance] = await db.query(
       `SELECT d.id, d.district_name AS station_name, d.district_code AS station_code,
               COUNT(DISTINCT c.id) AS cases_count,
-              SUM(CASE WHEN c.status IN ('closed','CLOSED') THEN 1 ELSE 0 END) AS closed_cases,
+              COUNT(DISTINCT CASE WHEN c.status NOT IN ('closed','CLOSED','dismissed','rejected','archived') THEN c.id END) AS open_cases,
+              COUNT(DISTINCT CASE WHEN c.status IN ('pending_commander_review','pending','CASE_REGISTERED') THEN c.id END) AS pending_cases,
+              COUNT(DISTINCT CASE WHEN c.status IN ('closed','CLOSED') THEN c.id END) AS closed_cases,
+              COUNT(DISTINCT a.id) AS arrests_count,
               COUNT(DISTINCT oa.officer_id) AS officers_count,
               MAX(c.created_at) AS last_activity
        FROM districts d
        JOIN cities ci ON d.city_id = ci.id
        LEFT JOIN cases c ON c.district_id = d.id
+       LEFT JOIN arrests a ON a.case_id = c.id
        LEFT JOIN officer_assignments oa ON oa.assignment_type IN ('District', 'District Station') AND oa.assignment_id = d.id AND oa.is_current = 1
        WHERE ci.region_id = ?
        GROUP BY d.id
        ORDER BY cases_count DESC, d.district_name ASC`,
       params
     );
-
-    const [waaxPerformance] = [[]]; // Removed - waax tier no longer exists
 
     const [crimeCategories] = await db.query(
       `SELECT COALESCE(case_type, incident_type, 'Unknown') AS category, COUNT(*) AS total
@@ -317,12 +319,17 @@ const getRegionDashboardStats = async (req, res, next) => {
     );
 
     const [userActivity] = await db.query(
-      `SELECT u.id, u.full_name, u.username, u.user_type, r.name AS role, u.last_login, u.status
+      `SELECT u.id, u.full_name, u.username, u.user_type, r.name AS role, u.last_login, u.status,
+              u.is_active, u.email, d.district_name, ci.city_name, rg.region_name, sa.state_name
        FROM users u
        LEFT JOIN roles r ON u.role_id = r.id
-       WHERE u.region_id = ?
+       LEFT JOIN districts d ON d.id = u.district_id
+       LEFT JOIN cities ci ON ci.id = COALESCE(u.city_id, d.city_id)
+       LEFT JOIN regions rg ON rg.id = COALESCE(u.region_id, ci.region_id)
+       LEFT JOIN state_administrations sa ON sa.id = COALESCE(u.state_administration_id, rg.state_administration_id)
+       WHERE COALESCE(u.region_id, ci.region_id) = ?
        ORDER BY COALESCE(u.last_login, u.created_at) DESC
-       LIMIT 10`,
+       LIMIT 25`,
       params
     );
 
@@ -334,7 +341,6 @@ const getRegionDashboardStats = async (req, res, next) => {
         caseStatus,
         monthlyTrends,
         stationPerformance,
-        waaxPerformance,
         crimeCategories,
         arrestReleaseStats,
         recentCases,

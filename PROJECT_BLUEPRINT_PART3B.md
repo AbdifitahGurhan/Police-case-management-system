@@ -386,3 +386,30 @@ Based on direct inspection of the codebase:
    * **No DB Operations**: Codebase searches confirm `mongoose` is never imported, and MongoDB collections or schemas are never defined outside the config file. All state actions (including audit logs and session logs) write directly to the MySQL database.
    * **Functional Requirement**: MongoDB is completely **optional** and **unused** in the current system implementation. All core operations continue to function relying solely on MySQL.
 
+---
+
+### 6. Live Delta Since Original Verification
+
+The schema verification in this document predates several live migrations. The current live schema must also include:
+
+* `case_investigations`
+* `court_arraignments`
+* `court_remands`
+* `case_workflow_authorizations`
+* `officer_attendance`
+* `district_complaints`
+* `prison_cells`
+* `prison_admissions`
+* `prison_cell_assignments`
+* `prison_roll_calls`
+* `permissions`
+* `role_permissions`
+* `user_permissions`
+* `permission_change_history`
+
+Important corrections:
+
+* Court statuses are now based on the staged court workflow (`court_received`, `arraignment`, `remand_investigation`, `assigned_legal_team`, `case_scheduled`, `trial_hearing`, `evidence_defense`, `judgment`, `sentenced`, `appealed`, `closed`).
+* Station jail and central jail share some physical custody tables but are separated by permissions and workflow.
+* `schema.sql` currently contains repeated prison table blocks; future schema cleanup should consolidate those definitions while preserving existing table names and relationships.
+* `suspects.manage` is no longer the only suspect/offender permission; live permissions split read/create/update/manage.

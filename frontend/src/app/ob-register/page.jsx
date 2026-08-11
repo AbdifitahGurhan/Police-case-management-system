@@ -14,7 +14,6 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
 const allowedRoles = ['admin', 'ob_staff', 'staff', 'officer', 'investigator', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles];
-const courts = ['Maxkamadda Degmada', 'Maxkamadda Gobolka', 'Maxkamadda Ciidamada Qalabka Sida', 'Maxkamadda Sare'];
 const idTypes = ['Aqoonsiga Qaranka', 'Baasaboor', 'Laysanka Darawalnimada', 'Aqoonsiga Booliska/Milatariga', 'Kale'];
 const complaintTypes = ['Dambi', 'Madani', 'Qoys', 'Ganacsi', 'Maamul', 'Kale'];
 const statusLabels = {
@@ -57,7 +56,7 @@ function AccusedFields({ field, remove, form }) {
 
 function ConfirmationSummary({ values }) {
   return <Space orientation="vertical" style={{ width: '100%' }}>
-    <Card size="small" title="Xogta Dacwadda"><b>{values.case_title}</b><br />{values.case_type} · {values.court_level}<br />{values.incident_location} · {values.incident_datetime?.format('YYYY-MM-DD HH:mm')}<br />{values.description}</Card>
+    <Card size="small" title="Xogta Dacwadda"><b>{values.case_title}</b><br />{values.case_type}<br />{values.incident_location} · {values.incident_datetime?.format('YYYY-MM-DD HH:mm')}<br />{values.description}</Card>
     <Card size="small" title="Dacwoodaha">{values.reported_by} {values.reporter_gender ? `(${values.reporter_gender})` : ''} · {values.reporter_phone}<br />{values.reporter_id_type} {values.reporter_id_number || ''}<br />{values.reporter_address || ''}</Card>
     <Card size="small" title={`Dhibbanayaasha (${values.victims?.length || 0})`}>{values.victims?.map((v, i) => <div key={i}>{i + 1}. {v.full_name} · {v.phone || 'Telefoon ma leh'} · {v.details}</div>)}</Card>
     <Card size="small" title={`Eedaysanayaasha (${values.accused?.length || 0})`}>{values.accused?.map((a, i) => <div key={i}>{i + 1}. {a.full_name} · <Tag color={a.custody_state === 'IN_CUSTODY' ? 'red' : 'orange'}>{a.custody_state === 'IN_CUSTODY' ? 'Xabsi Ku Jira' : 'La Raadinayo'}</Tag></div>)}</Card>
@@ -87,7 +86,7 @@ export default function ObRegisterPage() {
 
   const openNew = () => {
     form.resetFields();
-    form.setFieldsValue({ court_level: courts[0], reporter_id_type: idTypes[0], incident_datetime: dayjs().subtract(1, 'minute'), victims: [], accused: [] });
+    form.setFieldsValue({ reporter_id_type: idTypes[0], incident_datetime: dayjs().subtract(1, 'minute'), victims: [], accused: [] });
     setOpen(true);
   };
 
@@ -116,7 +115,7 @@ export default function ObRegisterPage() {
   const columns = [
     { title: 'Lambarka OB', dataIndex: 'ob_number', render: value => <Text strong>{value}</Text> },
     { title: 'Cinwaanka Dacwadda', dataIndex: 'case_title' }, { title: 'Nooca', dataIndex: 'case_type' },
-    { title: 'Heerka Maxkamadda', dataIndex: 'court_level' }, { title: 'Dacwoodaha', dataIndex: 'reported_by' },
+    { title: 'Dacwoodaha', dataIndex: 'reported_by' },
     { title: 'Saldhigga', dataIndex: 'district_police_station_name' },
     { title: 'Xaaladda', dataIndex: 'status', render: value => <Tag color={statusColors[value] || 'blue'}>{statusLabels[value] || value}</Tag> },
     { title: 'Ficil', render: (_, record) => <Link href={`/ob-register/${record.id}`}><Button size="small" type="primary">Fur Faahfaahinta</Button></Link> },
@@ -131,7 +130,6 @@ export default function ObRegisterPage() {
       <Col xs={24} md={6}><Form.Item name="search" label="OB / Cinwaan / Dacwoode"><Input allowClear /></Form.Item></Col>
       <Col xs={12} md={4}><Form.Item name="complaint_type" label="Nooca Dacwadda"><Input allowClear placeholder="Qor nooca" /></Form.Item></Col>
       <Col xs={12} md={4}><Form.Item name="status" label="Xaaladda"><Select allowClear options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} /></Form.Item></Col>
-      <Col xs={12} md={4}><Form.Item name="court_level" label="Heerka Maxkamadda"><Select allowClear options={courts.map(value => ({ value, label: value }))} /></Form.Item></Col>
       <Col xs={12} md={4}><Form.Item name="arrest_status" label="Xaaladda Eedaysanaha"><Select allowClear options={[{value:'WANTED',label:'La Raadinayo'},{value:'UNDER_TRACING',label:'Baadi-goob Ku Jira'},{value:'ARRESTED',label:'La Qabtay'}]} /></Form.Item></Col>
       <Col xs={12} md={4}><Form.Item name="incident_date" label="Taariikhda Dhacdada"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
       <Col><Button htmlType="submit" type="primary">Raadi / Kala Saar</Button></Col>
@@ -143,7 +141,6 @@ export default function ObRegisterPage() {
         <Section title="1. Xogta Dacwadda">
           <Col xs={24} md={12}><Form.Item name="case_title" label="Cinwaanka Dacwadda" rules={[requiredRule('Cinwaanka dacwadda'), textLengthRule('Cinwaanka', 3, 255)]}><Input /></Form.Item></Col>
           <Col xs={12} md={6}><Form.Item name="case_type" label="Nooca Dacwadda" rules={[requiredRule('Nooca dacwadda'), textLengthRule('Nooca dacwadda', 2, 100)]}><Input placeholder="Qor nooca dacwadda" /></Form.Item></Col>
-          <Col xs={12} md={6}><Form.Item name="court_level" label="Heerka Maxkamadda" rules={[requiredRule('Heerka maxkamadda')]}><Select options={courts.map(value => ({ value, label: value }))} /></Form.Item></Col>
           <Col xs={24} md={8}><Form.Item name="incident_type" label="Nooca Dhacdada" rules={[requiredRule('Nooca dhacdada')]}><Input /></Form.Item></Col>
           <Col xs={24} md={8}><Form.Item name="incident_location" label="Goobta Dhacdada" rules={[requiredRule('Goobta dhacdada')]}><Input /></Form.Item></Col>
           <Col xs={24} md={8}><Form.Item name="incident_datetime" label="Taariikhda iyo Waqtiga Dhacdada" rules={[requiredRule('Taariikhda dhacdada'), noFutureDateTimeRule('Taariikhda dhacdada')]}><DatePicker showTime disabledDate={disabledFutureDate} style={{ width: '100%' }} /></Form.Item></Col>

@@ -49,6 +49,7 @@ const ProtectedRoute = ({ children, allowedRoles = [], requiredPermissions = [] 
       prosecutor_liaison: '/dashboard/cid',
       court_clerk: '/dashboard/court',
       jail: '/dashboard/central-jail',
+      station_jail: '/dashboard/jail',
       state_commander: '/dashboard/unit',
       region_commander: '/dashboard/unit',
       district_commander: '/dashboard/unit',

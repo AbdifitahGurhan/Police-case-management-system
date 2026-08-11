@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { App, Button, Card, Checkbox, Col, Form, Input, Modal, Row, Space, Table, Tag, Typography } from 'antd';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, App, Button, Card, Checkbox, Col, Form, Input, Modal, Row, Space, Table, Tag, Typography } from 'antd';
 import { PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
@@ -10,9 +10,36 @@ const { Title, Text } = Typography;
 const ROLE_LABELS = {
   admin: 'Admin', sub_admin: 'Sub Admin', state_admin: 'State Administration',
   region_admin: 'Region Administration', district_admin: 'District Administration',
-  personnel_registry: 'Diiwaanka Ciidanka', investigator: 'Baare', station_jail: 'Station Jail',
+  personnel_registry: 'Diiwaanka Ciidanka', ob_staff: 'Diiwaangeliyaha OB-da',
+  investigator: 'Baare', station_jail: 'Xabsiga Saldhigga', jail: 'Xabsiga Dhexe',
+  court: 'Maxkamad', court_admin: 'Maamulka Maxkamadda', judge: 'Garsoore',
+  prosecutor: 'Xeer-ilaaliye', prosecutor_liaison: 'Xiriiriyaha Xeer-ilaalinta',
+  court_clerk: 'Kaaliyaha Maxkamadda', state_commander: 'Taliyaha Maamul-Goboleedka',
+  region_commander: 'Taliyaha Gobolka', district_commander: 'Taliyaha Degmada',
+  police_station_commander: 'Taliyaha Saldhigga',
 };
 const HIERARCHY_ROLES = ['admin', 'sub_admin', 'state_admin', 'region_admin', 'district_admin'];
+const PERMISSION_GROUPS = [
+  { key: 'system', title: 'Nidaamka & Maamulka', prefixes: ['permissions.', 'roles.', 'users.', 'audit_logs.'], danger: true },
+  { key: 'officers', title: 'Saraakiisha & Darajooyinka', prefixes: ['officers.', 'ranks.'] },
+  { key: 'ob', title: 'Diiwaanka OB', prefixes: ['ob.'] },
+  { key: 'cases', title: 'Kiisaska & Baaritaanka', prefixes: ['cases.', 'evidence.'] },
+  { key: 'suspects', title: 'Eedaysanayaasha', prefixes: ['suspects.'] },
+  { key: 'station_jail', title: 'Xabsiga Saldhigga', prefixes: ['station_jail.'] },
+  { key: 'central_jail', title: 'Xabsiga Dhexe', prefixes: ['jail.'] },
+  { key: 'locations', title: 'Goobaha & Maamulka', prefixes: ['locations.'] },
+  { key: 'reports', title: 'Warbixinada', prefixes: ['reports.'] },
+];
+const IMPLIED_PERMISSIONS = {
+  'suspects.manage': ['suspects.view', 'suspects.create', 'suspects.update'],
+};
+const HIGH_RISK_PERMISSIONS = new Set([
+  'permissions.manage',
+  'roles.manage',
+  'users.manage',
+  'officers.delete',
+  'audit_logs.view',
+]);
 
 export default function PermissionsPage() {
   const { message } = App.useApp();
@@ -43,7 +70,10 @@ export default function PermissionsPage() {
     }
   }, [message]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer = setTimeout(() => load(), 0);
+    return () => clearTimeout(timer);
+  }, [load]);
 
   const choose = target => {
     setSelected(target);
@@ -80,6 +110,32 @@ export default function PermissionsPage() {
   const selectedLabel = selected?.targetType === 'user'
     ? `${selected.full_name || selected.username} (${ROLE_LABELS[String(selected.role_name).toLowerCase()] || selected.role_name})`
     : ROLE_LABELS[String(selected?.name).toLowerCase()] || selected?.name;
+  const groupedPermissions = useMemo(() => {
+    const used = new Set();
+    const groups = PERMISSION_GROUPS.map(group => {
+      const items = permissions.filter(permission => (
+        group.prefixes.some(prefix => permission.permission_key.startsWith(prefix))
+      ));
+      items.forEach(item => used.add(item.permission_key));
+      return { ...group, items };
+    }).filter(group => group.items.length);
+    const other = permissions.filter(permission => !used.has(permission.permission_key));
+    return other.length ? [...groups, { key: 'other', title: 'Kale', prefixes: [], items: other }] : groups;
+  }, [permissions]);
+  const selectedCount = values.length;
+  const setModule = (items, checked) => {
+    const keys = items.map(item => item.permission_key);
+    setValues(current => checked
+      ? [...new Set([...current, ...keys])]
+      : current.filter(key => !keys.includes(key)));
+  };
+  const onPermissionChange = nextValues => {
+    const expanded = new Set(nextValues);
+    Object.entries(IMPLIED_PERMISSIONS).forEach(([parent, children]) => {
+      if (expanded.has(parent)) children.forEach(child => expanded.add(child));
+    });
+    setValues([...expanded]);
+  };
 
   return (
     <ProtectedRoute allowedRoles={['admin']} requiredPermissions={['permissions.manage', 'roles.manage']}>
@@ -100,10 +156,53 @@ export default function PermissionsPage() {
           <Col xs={24} md={15}>
             <Card title={selected ? `Awoodaha: ${selectedLabel}` : 'Dooro role ama user'}>
               {selected && <>
-                <Checkbox.Group style={{ width: '100%' }} value={values} onChange={setValues} disabled={locked}>
-                  <Row gutter={[12, 12]}>{permissions.map(permission => <Col xs={24} md={12} key={permission.id}><Checkbox value={permission.permission_key}><b>{permission.permission_key}</b><br /><Text type="secondary">{permission.description}</Text></Checkbox></Col>)}</Row>
+                <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+                  {locked && <Alert type="warning" showIcon message="Admin role lama dhimi karo." />}
+                  <Text type="secondary">{selectedCount} / {permissions.length} awood ayaa la doortay.</Text>
+                  <Checkbox.Group style={{ width: '100%' }} value={values} onChange={onPermissionChange} disabled={locked}>
+                    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+                      {groupedPermissions.map(group => {
+                        const groupKeys = group.items.map(item => item.permission_key);
+                        const checkedCount = groupKeys.filter(key => values.includes(key)).length;
+                        return (
+                          <Card
+                            key={group.key}
+                            size="small"
+                            title={<Space><span>{group.title}</span><Tag>{checkedCount}/{group.items.length}</Tag>{group.danger && <Tag color="red">High risk</Tag>}</Space>}
+                            extra={
+                              <Space>
+                                <Button size="small" onClick={() => setModule(group.items, true)} disabled={locked}>Dooro dhammaan</Button>
+                                <Button size="small" onClick={() => setModule(group.items, false)} disabled={locked}>Ka saar dhammaan</Button>
+                              </Space>
+                            }
+                          >
+                            <Row gutter={[12, 12]}>
+                              {group.items.map(permission => {
+                                const impliedBy = Object.entries(IMPLIED_PERMISSIONS)
+                                  .find(([parent, children]) => children.includes(permission.permission_key) && values.includes(parent))?.[0];
+                                return (
+                                  <Col xs={24} md={12} key={permission.id}>
+                                    <Checkbox value={permission.permission_key}>
+                                      <Space orientation="vertical" size={0}>
+                                        <Space wrap>
+                                          <b>{permission.permission_key}</b>
+                                          {HIGH_RISK_PERMISSIONS.has(permission.permission_key) && <Tag color="red">xasaasi</Tag>}
+                                          {impliedBy && <Tag color="blue">wuxuu ka yimaadaa {impliedBy}</Tag>}
+                                        </Space>
+                                        <Text type="secondary">{permission.description}</Text>
+                                      </Space>
+                                    </Checkbox>
+                                  </Col>
+                                );
+                              })}
+                            </Row>
+                          </Card>
+                        );
+                      })}
+                    </Space>
                 </Checkbox.Group>
-                <Button type="primary" icon={<SaveOutlined />} onClick={save} disabled={locked} style={{ marginTop: 20 }}>Kaydi Awoodaha</Button>
+                  <Button type="primary" icon={<SaveOutlined />} onClick={save} disabled={locked}>Kaydi Awoodaha</Button>
+                </Space>
               </>}
             </Card>
           </Col>

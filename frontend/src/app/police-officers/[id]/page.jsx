@@ -355,7 +355,7 @@ export default function OfficerDetailsPage({ params }) {
                   <Descriptions.Item label="Lambarka Telefoonka">{officer?.phone || 'Ma jiro'}</Descriptions.Item>
                   <Descriptions.Item label="National ID">{officer?.national_id || 'Ma jiro'}</Descriptions.Item>
                   <Descriptions.Item label="Cinwaanka Hoyga" span={2}>{officer?.address || 'Ma jiro'}</Descriptions.Item>
-                  <Descriptions.Item label="Xaaladda Shaqada">
+                  <Descriptions.Item label="Xaaladda Shaqada" span={2}>
                     <Space wrap align="center">
                       <Tag color={String(officer?.employment_status).toLowerCase() === 'active' ? 'green' : 'red'}>
                         {officer?.employment_status || 'Active'}

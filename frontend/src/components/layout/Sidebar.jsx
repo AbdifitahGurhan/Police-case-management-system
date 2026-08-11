@@ -110,7 +110,7 @@ const Sidebar = ({ collapsed }) => {
     const canViewReports = hasPermission('reports.view') || hasPermission('reports.export');
 
     const caseReadRoles = [
-      'admin', 'sub_admin', 'officer', 'staff', 'investigator', 'station_jail', 'district_admin',
+      'admin', 'sub_admin', 'officer', 'staff', 'investigator', 'station_jail', 'region_admin', 'district_admin',
       'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
       'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
       'prosecutor', 'judge', 'court_clerk', 'jail',
@@ -157,8 +157,7 @@ const Sidebar = ({ collapsed }) => {
         icon: <SafetyCertificateOutlined />,
         label: 'Xabsiga Dhexe',
         children: [
-          { key: '/dashboard/central-jail', label: 'Incoming Transfers' },
-          { key: '/offenders', label: 'Custody Records' },
+          { key: 'central_jail_incoming_transfers', path: '/dashboard/central-jail', label: 'Incoming Transfers' },
         ],
       }] : []),
       ...(canViewCases ? [{
@@ -287,7 +286,8 @@ const Sidebar = ({ collapsed }) => {
     if (key === 'logout') {
       logout();
     } else {
-      router.push(key);
+      const item = allNavigableItems.find((entry) => entry.key === key);
+      router.push(item?.path || key);
     }
   };
 

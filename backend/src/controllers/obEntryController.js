@@ -60,7 +60,7 @@ const documentHtml = (ob,type,data,user) => {
 
 const getObEntries = async (req, res, next) => {
   try {
-    const { status, registered_by_user_id, search, complaint_type, court_level, incident_date, arrest_status, district_id } = req.query;
+    const { status, registered_by_user_id, search, complaint_type, incident_date, arrest_status, district_id } = req.query;
     const scope = buildScopeWhere(req.user, 'ob');
     const params = [...scope.params];
     let whereClause = scope.clause;
@@ -75,7 +75,6 @@ const getObEntries = async (req, res, next) => {
     }
     if (search) { whereClause += ' AND (ob.ob_number LIKE ? OR ob.case_title LIKE ? OR ob.reported_by LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (complaint_type) { whereClause += ' AND ob.case_type = ?'; params.push(complaint_type); }
-    if (court_level) { whereClause += ' AND ob.court_level = ?'; params.push(court_level); }
     if (incident_date) { whereClause += ' AND DATE(ob.incident_datetime) = ?'; params.push(incident_date); }
     if (district_id) { whereClause += ' AND ob.district_id = ?'; params.push(district_id); }
     if (arrest_status) { whereClause += ' AND EXISTS (SELECT 1 FROM ob_accused oa WHERE oa.ob_entry_id=ob.id AND oa.status=?)'; params.push(arrest_status); }
@@ -252,11 +251,11 @@ const createObEntry = async (req, res, next) => {
     const { incident_type, incident_location, description, reported_by, reporter_phone, reporter_gender, case_title, case_type, case_level,
       reporter_id_type, reporter_id_number, reporter_email, reporter_address, respondent_name, respondent_id_type,
       respondent_id_number, respondent_phone, respondent_email, respondent_address, incident_datetime, claim_value,
-      registered_by_name, registered_by_rank, court_level } = req.body;
+      registered_by_name, registered_by_rank } = req.body;
     const victims = parseList(req.body.victims, 'victims').filter(v => Object.values(v || {}).some(value => value !== undefined && value !== null && String(value).trim() !== ''));
     const accused = parseList(req.body.accused, 'accused').filter(a => Object.entries(a || {}).some(([key,value]) => !['custody_state','status'].includes(key) && value !== undefined && value !== null && String(value).trim() !== ''));
-    if (!case_title || !case_type || !court_level || !incident_type || !incident_location || !incident_datetime || !description || !reported_by || !reporter_phone) {
-      return res.status(400).json({ success: false, message: 'Complaint, incident, court, description, complainant name and phone fields are required.' });
+    if (!case_title || !case_type || !incident_type || !incident_location || !incident_datetime || !description || !reported_by || !reporter_phone) {
+      return res.status(400).json({ success: false, message: 'Complaint, incident, description, complainant name and phone fields are required.' });
     }
     if (!validPhone(reporter_phone) || victims.some(v => !validPhone(v.phone)) || accused.some(a => !validPhone(a.phone))) return res.status(400).json({ success:false, message:'One or more phone numbers are invalid.' });
     if (victims.some(v => !String(v.full_name || '').trim() || !String(v.details || '').trim())) return res.status(400).json({ success:false, message:'Every victim requires a full name and details.' });
@@ -292,9 +291,9 @@ const createObEntry = async (req, res, next) => {
              registered_by_user_id, registered_by_name, registered_by_role, registered_by_rank,
              state_administration_id, region_id, district_id,
              registration_date, registration_time, status, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REGISTERED', ?)`,
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REGISTERED', ?)`,
           [
-            obNumber, case_title, case_type, court_level, case_level || 'normal', incident_type, incident_location,
+            obNumber, case_title, case_type, case_level || 'normal', incident_type, incident_location,
             formatDateForDb(incident_datetime), claim_value || null, description || null, reported_by, reporter_phone || null,
             reporter_gender || null, reporter_id_type || null, reporter_id_number || null, reporter_email || null, reporter_address || null,
             respondent_name || null, respondent_id_type || null, respondent_id_number || null, respondent_phone || null,
@@ -369,7 +368,7 @@ const createObEntry = async (req, res, next) => {
       action: 'CREATE_OB_ENTRY',
       entityType: 'ob_entries',
       entityId: result.insertId,
-      newData: { obNumber, incident_type, incident_location, court_level, victimCount:victims.length, accusedCount:accused.length, location },
+      newData: { obNumber, incident_type, incident_location, victimCount:victims.length, accusedCount:accused.length, location },
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
@@ -551,9 +550,8 @@ const updateObEntry = async (req, res, next) => {
     const [[ob]] = await db.query(`SELECT ob.* FROM ob_entries ob WHERE ob.id=? AND ${scope.clause}`, [req.params.id, ...scope.params]);
     if (!ob) return res.status(404).json({success:false,message:'OB entry not found.'});
     if (!OB_EDITABLE_STATUSES.has(ob.status)) return res.status(409).json({success:false,message:'Only registration and preliminary-stage OB records can be updated.'});
-    const allowed = ['case_title','case_type','court_level','incident_type','incident_location','incident_datetime','description','reported_by','reporter_phone','reporter_id_type','reporter_id_number','reporter_address'];
+    const allowed = ['case_title','case_type','incident_type','incident_location','incident_datetime','description','reported_by','reporter_phone','reporter_id_type','reporter_id_number','reporter_address'];
     const changes = Object.fromEntries(allowed.filter(key => req.body[key] !== undefined).map(key => [key, req.body[key]]));
-    if (changes.court_level !== undefined && !OB_SUPERVISOR_ROLES.has(normalizeRole(req.user.role))) return res.status(403).json({success:false,message:'Only an authorized supervisor can update the court level.'});
     if (changes.incident_datetime) { const dateError=validateObDates({incidentDate:changes.incident_datetime,registrationDate:ob.registration_date}); if(dateError)return res.status(400).json({success:false,message:dateError}); }
     if (changes.reporter_phone && !validPhone(changes.reporter_phone)) return res.status(400).json({success:false,message:'Phone number is invalid.'});
     const keys=Object.keys(changes); if(!keys.length)return res.status(400).json({success:false,message:'No editable fields supplied.'});

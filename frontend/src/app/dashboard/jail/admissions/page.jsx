@@ -1,31 +1,40 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
-import { App, Button, Card, Modal, Space, Table, Tag } from 'antd';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
+import { App, Button, Card, DatePicker, Form, Input, Modal, Space, Table, Tag } from 'antd';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 
 function StationJailAdmissionsContent() {
+  const { user } = useAuth();
   const { message } = App.useApp();
   const [admissions, setAdmissions] = useState([]);
   const [custodyHistory, setCustodyHistory] = useState(null);
   const [selectedAdmission, setSelectedAdmission] = useState(null);
+  const [transferTarget, setTransferTarget] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [savingTransfer, setSavingTransfer] = useState(false);
+  const [transferForm] = Form.useForm();
+  const hasPermission = key => user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes(key);
+  const canTransfer = hasPermission('station_jail.intake');
+
+  const loadAdmissions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/custody/admissions');
+      setAdmissions(response.data.data || []);
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Maxaabiista lama soo qaadi karin.');
+    } finally {
+      setLoading(false);
+    }
+  }, [message]);
 
   useEffect(() => {
-    const loadAdmissions = async () => {
-      try {
-        const response = await api.get('/custody/admissions');
-        setAdmissions(response.data.data || []);
-      } catch (error) {
-        message.error(error.response?.data?.message || 'Maxaabiista lama soo qaadi karin.');
-      } finally {
-        setLoading(false);
-      }
-    };
     loadAdmissions();
-  }, [message]);
+  }, [loadAdmissions]);
 
   const openHistory = async (admission) => {
     try {
@@ -34,6 +43,37 @@ function StationJailAdmissionsContent() {
       setCustodyHistory(response.data.data);
     } catch (error) {
       message.error(error.response?.data?.message || 'Taariikhda maxbuuska lama soo qaadi karin.');
+    }
+  };
+
+  const openTransfer = (admission) => {
+    setTransferTarget(admission);
+    transferForm.setFieldsValue({
+      from_facility: admission.facility,
+      to_facility: 'Mogadishu Central Jail',
+      transfer_reason: 'Court sentence transfer to central jail',
+      transfer_date: dayjs(),
+    });
+  };
+
+  const submitTransfer = async (values) => {
+    if (!transferTarget) return;
+    setSavingTransfer(true);
+    try {
+      await api.post(`/custody/criminals/${transferTarget.suspect_id}/transfers`, {
+        ...values,
+        arrest_id: transferTarget.arrest_id,
+        status: 'pending',
+        transfer_date: values.transfer_date?.format('YYYY-MM-DD HH:mm:ss'),
+      });
+      message.success('Transfer document waa la sameeyay.');
+      setTransferTarget(null);
+      transferForm.resetFields();
+      await loadAdmissions();
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Transfer lama sameyn karin.');
+    } finally {
+      setSavingTransfer(false);
     }
   };
 
@@ -103,6 +143,7 @@ function StationJailAdmissionsContent() {
     {
       title: 'Ficillada',
       render: (_, row) => <Space>
+        {canTransfer && row.sentence_status === 'serving' && !row.latest_transfer_status && <Button size="small" type="primary" onClick={() => openTransfer(row)}>Samee Transfer Document</Button>}
         {row.latest_transfer_id && <Button size="small" onClick={() => printTransferDocument(row.latest_transfer_id)}>Daabac Transfer</Button>}
         <Button size="small" onClick={() => openHistory(row)}>Taariikhda</Button>
       </Space>,
@@ -110,7 +151,10 @@ function StationJailAdmissionsContent() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['station_jail', 'admin']}>
+    <ProtectedRoute
+      allowedRoles={['station_jail', 'admin', 'sub_admin', 'district_admin', 'district_commander', 'police_station_commander']}
+      requiredPermissions={['station_jail.view']}
+    >
       <div className="standard-dashboard">
         <div className="standard-dashboard-hero">
           <div>
@@ -130,6 +174,31 @@ function StationJailAdmissionsContent() {
             <div><strong>Qolalka Loo Qoondeeyey</strong>{custodyHistory?.cellAssignments?.length ? custodyHistory.cellAssignments.map(item => <div key={item.id}>{dayjs(item.assigned_at).format('YYYY-MM-DD HH:mm')} - {item.facility} / {item.block_name} / {item.cell_number}{item.released_at ? ` - Laga saaray ${dayjs(item.released_at).format('YYYY-MM-DD HH:mm')}` : ' - Hadda ku jira'}</div>) : <div>Qol hore looma qoondeyn.</div>}</div>
             <div><strong>Wareejinnada</strong>{custodyHistory?.transfers?.length ? custodyHistory.transfers.map(item => <div key={item.id}>{dayjs(item.transfer_date).format('YYYY-MM-DD HH:mm')} - {item.from_facility || 'Bilow'} {'->'} {item.to_facility} - {item.transfer_reason}</div>) : <div>Wax wareejin ah ma jiro.</div>}</div>
           </Space>
+        </Modal>
+
+        <Modal
+          title={`Samee Transfer Document - ${transferTarget?.full_name || ''}`}
+          open={Boolean(transferTarget)}
+          onCancel={() => setTransferTarget(null)}
+          onOk={() => transferForm.submit()}
+          confirmLoading={savingTransfer}
+          destroyOnHidden
+          forceRender
+        >
+          <Form form={transferForm} layout="vertical" onFinish={submitTransfer}>
+            <Form.Item name="from_facility" label="Xabsiga Laga Wareejinayo">
+              <Input disabled />
+            </Form.Item>
+            <Form.Item name="to_facility" label="Xabsiga Loo Wareejinayo" rules={[{ required: true, message: 'Geli xabsiga loo wareejinayo.' }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="transfer_reason" label="Sababta Wareejinta" rules={[{ required: true, message: 'Geli sababta wareejinta.' }]}>
+              <Input.TextArea rows={3} />
+            </Form.Item>
+            <Form.Item name="transfer_date" label="Taariikhda Wareejinta" rules={[{ required: true, message: 'Dooro taariikhda wareejinta.' }]}>
+              <DatePicker showTime style={{ width: '100%' }} />
+            </Form.Item>
+          </Form>
         </Modal>
       </div>
     </ProtectedRoute>

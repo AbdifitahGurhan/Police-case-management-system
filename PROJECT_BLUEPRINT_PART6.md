@@ -129,3 +129,73 @@ Tracks court prosecutions, hearings schedules, testimonies, trial proceedings, a
 * **Outcomes Linking**:
   * Recording a `court_judgment` updates `court_cases.final_outcome` to `convicted`, `acquitted`, or `dismissed`.
   * If a suspect is convicted, the judge submits a sentence mapping duration, fines, and jail assignments, linking back to the prisoner custody booking.
+
+---
+
+### 6.5. Live Workflow Delta: Current Operational Flow
+
+The current workflow no longer depends on a mandatory CID stage for every case.
+
+#### 6.5.1. Police Case Flow
+
+1. OB is created.
+2. A police case is automatically opened from the OB.
+3. The investigator records the official investigation in `case_investigations`.
+4. The investigator forwards the case to court.
+
+CID remains available as a specialist workspace, but it is no longer the required central step in the ordinary case path.
+
+#### 6.5.2. Case Investigation Record
+
+Investigation records support:
+
+* Evidence items with file uploads.
+* Witnesses and statements.
+* Investigation steps with typed modes such as interview/text/file.
+* Investigation summary, outcome, and recommendation. These narrative fields are optional in the live form.
+* Editing existing investigation records after creation.
+
+The print document reads from the same investigation payload and must not invent records that were not entered.
+
+#### 6.5.3. Court Workflow
+
+Live court statuses are:
+
+1. `court_received`
+2. `arraignment`
+3. `remand_investigation`
+4. `returned_from_remand`
+5. `assigned_legal_team`
+6. `case_scheduled`
+7. `trial_hearing`
+8. `evidence_defense`
+9. `judgment`
+10. `sentenced`
+11. `appealed`
+12. `closed` / `archived`
+
+Court actions are staged. A later step should only become operational after the prior workflow record exists. Remand investigation sends the case back to the original station/investigator for additional investigation, then the investigator returns the remand to court.
+
+#### 6.5.4. Station Jail and Central Jail
+
+Station jail is for offenders physically held at the police station. It handles:
+
+* Admission/intake.
+* Holding confirmation.
+* Station cell assignment.
+* Daily roll call.
+* Transfer document creation after court sentence.
+
+Central jail is separate. It handles:
+
+* Incoming pending transfers from station jail.
+* Receive and assign central jail cell.
+* Central custody continuation.
+
+Transfer rule:
+
+1. Court issues an imprisonment sentence.
+2. The offender appears at station jail as `serving` and `Sugaya transfer`.
+3. Station jail creates a pending transfer document.
+4. Central jail receives the transfer and assigns a central cell.
+5. Completed transfers are excluded from station roll call.

@@ -173,7 +173,7 @@ export default function CaseDetailsPage() {
 
   useEffect(() => {
     const allowedRoles = [
-      'admin', 'staff', 'officer', 'investigator', 'station_jail', 'district_admin',
+      'admin', 'staff', 'officer', 'investigator', 'station_jail', 'region_admin', 'district_admin',
       'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
       'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
       'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',
@@ -1610,7 +1610,7 @@ export default function CaseDetailsPage() {
             <Col xs={24} md={8}><Form.Item name="date_of_birth" label="Date of Birth" rules={[minimumAge8Rule()]}><DatePicker style={{ width: '100%' }} disabledDate={disabledUnder8DobDate} /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="nationality" label="Nationality" initialValue="Somali" rules={[textLengthRule('Nationality', 2, 100)]}><Input /></Form.Item></Col>
             <Col xs={24} md={12}>
-              <Form.Item name="id_type" label="ID Type" rules={[requiredRule('ID type')]}>
+              <Form.Item name="id_type" label="ID Type">
                 <Select placeholder="Select ID type">
                   <Select.Option value="National ID">National ID</Select.Option>
                   <Select.Option value="Passport">Passport</Select.Option>
@@ -2064,7 +2064,7 @@ export default function CaseDetailsPage() {
                         </Form.Item>
                       </Col>
                       <Col span={6}>
-                        <Form.Item {...rest} name={[name, 'phone']} label="Telefoonka" style={{ marginBottom: 0 }}>
+                        <Form.Item {...rest} name={[name, 'phone']} label="Telefoonka" rules={phoneRules} style={{ marginBottom: 0 }}>
                           <Input placeholder="Lambarka telefoonka..." />
                         </Form.Item>
                       </Col>

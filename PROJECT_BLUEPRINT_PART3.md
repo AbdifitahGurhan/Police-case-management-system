@@ -115,3 +115,40 @@ Appends dark mode selectors under `[data-theme='dark']` to resolve CSS specifici
   * **Custom Side Lists**: Mapped `.standard-side-list>div` backgrounds to `#171717` and borders to `#2B2B2B`.
   * **Regular Buttons**: Overrode `.ant-btn:not(.ant-btn-primary)` with `#171717` background and `#2B2B2B` borders.
   * **Accents**: Configured `.standard-metric-green` and hover borders to `#A8FF4D` highlights.
+
+---
+
+### 4.5. Live Frontend Route Delta
+
+The current frontend includes the following role-specific route behavior:
+
+| Role | First Route |
+| :--- | :--- |
+| `investigator` | `/dashboard/investigator` |
+| `station_jail` | `/dashboard/jail` |
+| `jail` | `/dashboard/central-jail` |
+| `region_admin` | `/dashboard/unit` |
+| `district_admin` | `/dashboard/unit` |
+
+Additional live routes:
+
+| Route | Purpose |
+| :--- | :--- |
+| `/dashboard/investigator` | Baaraha dashboard for assigned investigations and return-from-remand tasks. |
+| `/dashboard/jail` | Station jail dashboard: intake modal, cell capacity, roll call, transfer document action. |
+| `/dashboard/jail/admissions` | Standalone current station prisoners page with transfer document action. |
+| `/dashboard/central-jail` | Central jail dashboard: incoming transfers, receive and assign central cell. |
+| `/dashboard/court/cases` | Court case workflow UX for staged court actions. |
+| `/permissions` | Dynamic permission and role matrix management. |
+
+Sidebar behavior:
+
+* Station jail and central jail menu groups are separate.
+* `/offenders` appears once as `Dambiilayaasha & Eedeysanayaasha`; central jail no longer duplicates it as `Custody Records`.
+* Region admin sees a supervision dashboard with district station performance and interactive user activity.
+
+Ant Design compatibility notes:
+
+* `Timeline` items must use `content`, not deprecated `children`.
+* `Space` uses `orientation`, not deprecated `direction`.
+* `Descriptions.Item span` values must match the parent `Descriptions column` layout.

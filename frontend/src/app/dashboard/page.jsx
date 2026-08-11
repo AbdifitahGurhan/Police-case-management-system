@@ -28,6 +28,7 @@ export default function DashboardIndexPage() {
       district_admin: '/dashboard/unit',
       personnel_registry: '/police-officers',
       investigator: '/dashboard/investigator',
+      station_jail: '/dashboard/jail',
       cid: '/dashboard/cid',
       cid_director: '/dashboard/cid',
       cid_supervisor: '/dashboard/cid',

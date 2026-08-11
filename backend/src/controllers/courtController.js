@@ -37,6 +37,23 @@ const auditRequestMeta = (req) => ({
   userAgent: req.get?.('user-agent') || null,
 });
 
+const normalizeSentenceUnit = (unit) => {
+  const normalized = String(unit || '').toLowerCase();
+  const unitMap = {
+    cisho: 'days',
+    day: 'days',
+    days: 'days',
+    bil: 'months',
+    bilood: 'months',
+    month: 'months',
+    months: 'months',
+    sano: 'years',
+    year: 'years',
+    years: 'years',
+  };
+  return unitMap[normalized] || 'days';
+};
+
 const friendlyStatus = {
   court_received: 'Court Received',
   arraignment: 'Arraignment',
@@ -817,7 +834,7 @@ const issueSentence = async (req, res, next) => {
       validateJudgmentSentenceConsistency(judgment.judgment_summary, { sentence_type, duration, fine_amount });
 
       const pVal = sentence_period_value ? Number(sentence_period_value) : (duration_value ? Number(duration_value) : null);
-      const pUnit = sentence_period_unit || duration_unit || 'days';
+      const pUnit = normalizeSentenceUnit(sentence_period_unit || duration_unit || 'days');
       const sDate = sentence_start_date || sentence_date || new Date().toISOString().slice(0, 10);
       let expRelease = expected_release_date || null;
 

@@ -14,6 +14,7 @@
     "migrate:ob-case-module": "node database/ob_case_module_migration.js",
     "data:reset-operational": "node database/reset_operational_data.js",
     "migrate:permissions": "node database/dynamic_permissions_migration.js",
+    "migrate:missing-permissions": "node database/missing_permissions_catalog_migration.js",
     "migrate:officer-approval": "node database/officer_approval_migration.js",
     "migrate:user-officer-link": "node database/user_officer_link_migration.js",
     "migrate:permission-audit-completion": "node database/permission_audit_completion_migration.js",

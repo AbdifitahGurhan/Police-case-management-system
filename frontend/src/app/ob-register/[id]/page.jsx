@@ -17,7 +17,6 @@ const commanderRoles = ['state_commander', 'region_commander', 'district_command
 const nextStatuses={REGISTERED:'PRELIMINARY_REVIEW',OB_REGISTERED:'PRELIMINARY_REVIEW',PRELIMINARY_REVIEW:'INVESTIGATION_TRACING',INVESTIGATION_TRACING:'SENT_TO_CID_OR_COURT',ARRESTED_IN_CUSTODY:'SENT_TO_CID_OR_COURT',SENT_TO_CID_OR_COURT:'CLOSED'};
 const statusLabels={REGISTERED:'La Diiwaangeliyey',OB_REGISTERED:'La Diiwaangeliyey',PRELIMINARY_REVIEW:'Dib-u-eegis Hordhac',INVESTIGATION_TRACING:'Baaritaan / Baadi-goob',ARRESTED_IN_CUSTODY:'La Qabtay / Xabsi Ku Jira',SENT_TO_CID_OR_COURT:'Loo Gudbiyey CID ama Maxkamad',CONVERTED_TO_CASE:'Kiis Loo Beddelay',CASE_OPENED:'Kiis La Furay',CLOSED:'La Xiray',WANTED:'La Raadinayo',UNDER_TRACING:'Baadi-goob Ku Jira',ARRESTED:'La Qabtay'};
 const editableStatuses=['DRAFT','REGISTERED','OB_REGISTERED','PRELIMINARY_REVIEW'];
-const supervisorRoles=['admin','district_admin','state_commander','region_commander','district_commander','police_station_commander'];
 const resolutionContexts = {
   mediation: 'Kadib wada-hadal, labada dhinac waxay ku heshiiyeen:\n\n1. In khilaafka lagu soo afjaro nabad.\n2. In labada dhinac ixtiraamaan xuquuqda midba midka kale.\n3. In aan dib loo soo celin muranka.',
   withdrawal: 'Kadib heshiis iyo wada-hadal, waxaan go’aansaday inaan ka noqdo cabashadii aan gudbiyay.\n\nGo’aankan waxaan ku gaaray rabitaankayga anigoon cadaadis lagu saarin.',
@@ -116,7 +115,7 @@ export default function ObDetailPage() {
 
   const openEdit = () => {
     editForm.setFieldsValue({
-      case_title:ob.case_title, case_type:ob.case_type, court_level:ob.court_level,
+      case_title:ob.case_title, case_type:ob.case_type,
       incident_type:ob.incident_type, incident_location:ob.incident_location,
       incident_datetime:ob.incident_datetime ? dayjs(ob.incident_datetime) : null,
       description:ob.description, reported_by:ob.reported_by, reporter_phone:ob.reporter_phone,
@@ -130,7 +129,6 @@ export default function ObDetailPage() {
     setActionLoading(true);
     try {
       const payload={...values,incident_datetime:values.incident_datetime?.format('YYYY-MM-DD HH:mm:ss')};
-      if(!supervisorRoles.includes(user?.role)) delete payload.court_level;
       await api.patch(`/ob-entries/${id}`,payload);
       message.success('Xogta OB-ga waa la cusboonaysiiyey.'); setEditOpen(false); await loadOb();
     } catch(error){message.error(error.response?.data?.message||'Xogta OB-ga lama cusboonaysiin karin.');}
@@ -219,11 +217,10 @@ export default function ObDetailPage() {
                 <Descriptions.Item label="Xaaladda"><Tag color={converted ? 'green' : 'blue'}>{statusLabels[ob.status] || ob.status}</Tag></Descriptions.Item>
                 <Descriptions.Item label="Cinwaanka Dacwadda">{ob.case_title || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Nooca Dacwadda">{ob.case_type || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Heerka Maxkamadda">{ob.court_level || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Heerka Muhiimada">{getLevelTag(ob.case_level)}</Descriptions.Item>
                 <Descriptions.Item label="Nooca Dhacdada"><Text strong>{ob.incident_type || 'N/A'}</Text></Descriptions.Item>
-                <Descriptions.Item label="Goobta Dhacdada">{ob.incident_location || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Taariikhda Dhacdada">{ob.incident_datetime || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Goobta Dhacdada" span={2}>{ob.incident_location || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Taariikhda Dhacdada" span={2}>{ob.incident_datetime || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Sharaxaadda Dacwadda" span={2}><Paragraph style={{whiteSpace:'pre-wrap',margin:0}}>{ob.description || 'Lama diiwaangelin sharaxaad.'}</Paragraph></Descriptions.Item>
               </Descriptions>
             </Card>
@@ -235,7 +232,7 @@ export default function ObDetailPage() {
                 <Descriptions.Item label="Telefoonka">{ob.reporter_phone || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Nooca Aqoonsiga">{ob.reporter_id_type || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Lambarka Aqoonsiga">{ob.reporter_id_number || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Cinwaanka">{ob.reporter_address || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Cinwaanka" span={2}>{ob.reporter_address || 'N/A'}</Descriptions.Item>
               </Descriptions>
             </Card>
 
@@ -270,8 +267,8 @@ export default function ObDetailPage() {
             </Card>
 
             <Card variant="none" title="Taariikhda Isbeddellada Xaaladda">
-              <Timeline items={(ob.statusHistory || []).map(h=>({color:h.new_status==='CLOSED'?'green':'blue',children:<><b>{statusLabels[h.previous_status] || 'Bilow'} → {statusLabels[h.new_status] || h.new_status}</b><br/><Text type="secondary">{h.created_at} · {h.performed_by}{h.reason?` · ${h.reason}`:''}</Text></>}))}/>
-              {(ob.accusedStatusHistory || []).length > 0 && <><Title level={5}>Taariikhda eedaysanaha iyo baadi-goobka</Title><Timeline items={ob.accusedStatusHistory.map(h=>({color:h.new_status==='ARRESTED'?'red':'orange',children:<><b>{statusLabels[h.previous_status] || 'Bilow'} → {statusLabels[h.new_status] || h.new_status}</b><br/><Text type="secondary">{h.created_at} · {h.performed_by}</Text></>}))}/></>}
+              <Timeline items={(ob.statusHistory || []).map(h=>({color:h.new_status==='CLOSED'?'green':'blue',content:<><b>{statusLabels[h.previous_status] || 'Bilow'} → {statusLabels[h.new_status] || h.new_status}</b><br/><Text type="secondary">{h.created_at} · {h.performed_by}{h.reason?` · ${h.reason}`:''}</Text></>}))}/>
+              {(ob.accusedStatusHistory || []).length > 0 && <><Title level={5}>Taariikhda eedaysanaha iyo baadi-goobka</Title><Timeline items={ob.accusedStatusHistory.map(h=>({color:h.new_status==='ARRESTED'?'red':'orange',content:<><b>{statusLabels[h.previous_status] || 'Bilow'} → {statusLabels[h.new_status] || h.new_status}</b><br/><Text type="secondary">{h.created_at} · {h.performed_by}</Text></>}))}/></>}
             </Card>
 
             {/* Card 5: Caddeymaha & Faylasha */}
@@ -383,7 +380,6 @@ export default function ObDetailPage() {
             <Card size="small" title="Xogta Dacwadda" style={{marginBottom:16}}><Row gutter={16}>
               <Col xs={24} md={12}><Form.Item name="case_title" label="Cinwaanka Dacwadda" rules={[{required:true,message:'Cinwaanka geli.'}]}><Input/></Form.Item></Col>
               <Col xs={12} md={6}><Form.Item name="case_type" label="Nooca Dacwadda" rules={[{required:true,message:'Nooca dacwadda qor.'}]}><Input placeholder="Qor nooca dacwadda"/></Form.Item></Col>
-              {supervisorRoles.includes(user?.role)&&<Col xs={12} md={6}><Form.Item name="court_level" label="Heerka Maxkamadda"><Select options={['Maxkamadda Degmada','Maxkamadda Gobolka','Maxkamadda Ciidamada Qalabka Sida','Maxkamadda Sare'].map(v=>({value:v,label:v}))}/></Form.Item></Col>}
               <Col xs={24} md={8}><Form.Item name="incident_type" label="Nooca Dhacdada" rules={[{required:true,message:'Nooca dhacdada geli.'}]}><Input/></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="incident_location" label="Goobta Dhacdada" rules={[{required:true,message:'Goobta geli.'}]}><Input/></Form.Item></Col>
               <Col xs={24} md={8}><Form.Item name="incident_datetime" label="Taariikhda iyo Waqtiga Dhacdada" rules={[{required:true,message:'Taariikhda geli.'}]}><DatePicker showTime style={{width:'100%'}} disabledDate={date=>date?.isAfter(new Date(),'day')}/></Form.Item></Col>

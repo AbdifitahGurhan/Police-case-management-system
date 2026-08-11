@@ -113,7 +113,7 @@ function CentralJailDashboardContent() {
   return (
     <>
       <StandardDashboard
-        allowedRoles={['jail', 'admin']}
+        allowedRoles={['jail', 'admin', 'sub_admin']}
         eyebrow="Hawlaha Xabsiga Dhexe"
         title="Central Jail / Prison"
         subtitle="Receive sentenced offender transfers, assign cells, and continue custody records."

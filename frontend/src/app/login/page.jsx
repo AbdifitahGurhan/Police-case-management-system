@@ -28,6 +28,7 @@ export default function LoginPage() {
         district_admin: '/dashboard/unit',
         personnel_registry: '/police-officers',
         investigator: '/dashboard/investigator',
+        station_jail: '/dashboard/jail',
         officer: '/dashboard/officer',
         cid: '/dashboard/cid',
         cid_director: '/dashboard/cid',

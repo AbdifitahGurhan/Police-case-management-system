@@ -151,3 +151,61 @@ Coordinates scheduling hearings, court actions, and sentencing entries.
 * **Blockchain (`/api/blockchain`)**: GET `/verify/:caseId` (Calculates blockchain hash changes to detect modifications)
 * **Search (`/api/search`)**: GET `/` (Global search by case number, name, or ob number)
 * **Notifications (`/api/notifications`)**: GET `/`, PATCH `/:id/read` (Fetches system warnings and notification logs)
+
+---
+
+### 4.8. Live API Delta: Permission-Based Routes and New Workflows
+
+The live API has moved many routes from fixed role gates to `requirePermission(...)`. The following endpoints must be treated as current live endpoints.
+
+#### Case Investigation Records (`/api/cases`)
+
+| Method | Path | Gate | Description |
+| :--- | :--- | :--- | :--- |
+| GET | `/api/cases/:id/investigations` | `cases.view` | Lists investigation records attached to a police case. |
+| POST | `/api/cases/:id/investigations` | `cases.investigate` | Creates an investigation record with evidence, witnesses, interview steps, files, and conclusions. |
+| PUT | `/api/cases/:id/investigations/:investigationId` | `cases.investigate` | Edits an existing investigation record. |
+| POST | `/api/cases/:id/remands/:remandId/return` | `cases.investigate` | Returns a court remand back to court after additional investigation. |
+
+#### Court Workflow (`/api/court`)
+
+| Method | Path | Gate | Description |
+| :--- | :--- | :--- | :--- |
+| POST | `/api/court/cases/:id/arraignment` | court admin/judge/court clerk roles | Records arraignment/horgeyn. |
+| GET | `/api/court/cases/:id/remands` | court read roles | Lists remand investigation orders. |
+| POST | `/api/court/cases/:id/remands` | court admin/judge roles | Sends a case back for additional investigation. |
+| PATCH | `/api/court/cases/:id/assign` | court admin roles | Assigns prosecutor/judge or legal team. |
+| POST | `/api/court/cases/:id/hearings` | court write roles | Schedules hearing. |
+| PATCH | `/api/court/hearings/:hearingId` | court write roles | Updates hearing details/status. |
+| POST | `/api/court/hearings/:hearingId/proceedings` | court write roles | Adds hearing proceedings. |
+| POST | `/api/court/cases/:id/evidence-defense` | court write/judge roles | Completes evidence and defense stage. |
+| POST | `/api/court/cases/:id/judgments` | court admin/judge roles | Records final judgment. |
+| POST | `/api/court/cases/:id/sentences` | court admin/judge roles | Issues sentence and updates linked arrest sentence fields. |
+| POST | `/api/court/cases/:id/appeals` | court write roles | Registers appeal. |
+| PATCH | `/api/court/cases/:id/close` | court admin roles | Closes court case. |
+
+#### Station Jail and Central Jail (`/api/custody`)
+
+| Method | Path | Gate | Description |
+| :--- | :--- | :--- | :--- |
+| GET | `/api/custody/admissions` | `station_jail.view` | Lists station jail admissions and eligible offenders. |
+| POST | `/api/custody/admissions` | `station_jail.intake` | Performs station jail admission/intake. |
+| POST | `/api/custody/admissions/:id/cell-assignments` | `station_jail.assign_cell` | Assigns station jail cell. |
+| POST | `/api/custody/admissions/:id/roll-calls` | `station_jail.intake` | Records roll call. |
+| POST | `/api/custody/roll-calls/bulk` | `station_jail.intake` | Records daily bulk roll call. |
+| GET | `/api/custody/cells` | `station_jail.view` or `jail.view` | Lists cells by station/central scope. |
+| POST | `/api/custody/cells` | `station_jail.assign_cell` | Creates/updates station jail cell capacity. |
+| POST | `/api/custody/criminals/:id/transfers` | `station_jail.intake` | Creates pending transfer document to central jail. |
+| GET | `/api/custody/transfers/:id/document` | `station_jail.view` | Fetches printable transfer document. |
+| GET | `/api/custody/central/transfers` | `jail.view` | Lists pending incoming central jail transfers. |
+| GET | `/api/custody/central/admissions` | `jail.view` | Lists prisoners received into central jail. |
+| PATCH | `/api/custody/central/transfers/:id/receive` | `jail.receive_transfer` | Completes transfer and assigns central jail cell. |
+
+#### Dynamic Permissions (`/api/permissions`)
+
+| Method | Path | Gate | Description |
+| :--- | :--- | :--- | :--- |
+| GET | `/api/permissions` | `permissions.manage` | Reads roles, permissions, matrix, and overrides. |
+| POST | `/api/permissions/roles` | `roles.manage` | Creates a role. |
+| PUT | `/api/permissions/roles/:roleId` | `permissions.manage` | Updates role permission grants. |
+| PUT | `/api/permissions/users/:userId` | `permissions.manage` | Updates user-level permission overrides. |

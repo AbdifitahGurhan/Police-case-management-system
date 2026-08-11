@@ -347,7 +347,7 @@ export default function CourtCasesPage() {
       if (modalType === 'sentence') {
         let durationStr = values.duration;
         if ((values.sentence_type === 'imprisonment' || values.sentence_type === 'both') && values.duration_value) {
-          durationStr = `${values.duration_value} ${values.duration_unit || 'sano'}`;
+          durationStr = `${values.duration_value} ${values.duration_unit || 'years'}`;
         }
         const hasDuration = Boolean(String(durationStr || '').trim());
         const hasFine = Number(values.fine_amount) > 0;
@@ -1318,13 +1318,13 @@ export default function CourtCasesPage() {
                               <Form.Item
                                 name="duration_unit"
                                 label="Unugga"
-                                initialValue="sano"
+                                initialValue="years"
                                 rules={[{ required: true, message: 'Dooro unug' }]}
                               >
                                 <Select options={[
-                                  { value: 'sano', label: 'Sano (Years)' },
-                                  { value: 'bilood', label: 'Bilood (Months)' },
-                                  { value: 'cisho', label: 'Cisho (Days)' },
+                                  { value: 'years', label: 'Sano (Years)' },
+                                  { value: 'months', label: 'Bilood (Months)' },
+                                  { value: 'days', label: 'Cisho (Days)' },
                                 ]} />
                               </Form.Item>
                             </Col>

@@ -20,6 +20,7 @@ export default function TierManager({
   parentNameKey, // e.g. "state_name"
   entityKey, // Optional: manual override for field prefix e.g. "state"
   autoParentRoles = [],
+  nameOptions = null,
   nameOptionsByParent = null,
   nameOptionsParentKey = null,
   generatedCode = false,
@@ -38,11 +39,12 @@ export default function TierManager({
   const safeEntityKey = entityKey || entityName.toLowerCase();
   const autoParent = Boolean(parentKey && autoParentRoles.includes(user?.role));
   const selectedParent = parents.find(parent => Number(parent.id) === Number(selectedParentId));
-  const entityNameOptions = nameOptionsByParent
+  const entityNameOptions = nameOptions || (nameOptionsByParent
     ? (nameOptionsByParent[selectedParent?.[nameOptionsParentKey]] || nameOptionsByParent[selectedParent?.state_code] || nameOptionsByParent[selectedParent?.[parentNameKey]] || [])
-    : [];
+    : []);
   const normalizedNameOptions = entityNameOptions.map(option => typeof option === 'string' ? { name: option } : option);
   const hasGeneratedOptions = normalizedNameOptions.length > 0;
+  const requiresParentForOptions = Boolean(nameOptionsByParent);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -157,10 +159,10 @@ export default function TierManager({
           {formItems}
 
           <Form.Item name={`${safeEntityKey}_name`} label={`${entityName} Name`} rules={[requiredRule(`${entityName} name`), textLengthRule(`${entityName} name`, 2, 150)]}>
-            {nameOptionsByParent && hasGeneratedOptions ? (
+            {hasGeneratedOptions ? (
               <Select
-                placeholder={selectedParentId ? `Select ${entityName}` : `Select ${parentLabel} first`}
-                disabled={!selectedParentId}
+                placeholder={requiresParentForOptions && !selectedParentId ? `Select ${parentLabel} first` : `Select ${entityName}`}
+                disabled={requiresParentForOptions && !selectedParentId}
                 options={normalizedNameOptions.map(option => ({ value: option.name, label: option.name }))}
                 onChange={(name) => {
                   const option = normalizedNameOptions.find(item => item.name === name);

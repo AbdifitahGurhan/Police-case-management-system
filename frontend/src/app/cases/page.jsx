@@ -25,7 +25,7 @@ import api from '@/services/api';
 const { Title, Text } = Typography;
 
 const CASE_READ_ROLES = [
-  'admin', 'staff', 'officer', 'investigator', 'station_jail', 'district_admin',
+  'admin', 'staff', 'officer', 'investigator', 'station_jail', 'region_admin', 'district_admin',
   'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
   'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
   'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',

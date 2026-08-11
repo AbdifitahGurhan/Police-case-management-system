@@ -60,9 +60,9 @@ const requireAnyPermission = (...permissionKeys) => async (req, res, next) => {
 router.use(authMiddleware);
 
 router.get('/wanted-escaped', allowRoles(...REPORT_ROLES), getWantedEscaped);
-router.get('/central/transfers', requirePermission('jail.view'), getCentralTransfers);
-router.get('/central/admissions', requirePermission('jail.view'), getCentralAdmissions);
-router.patch('/central/transfers/:id/receive', requirePermission('jail.receive_transfer'), receiveCentralTransfer);
+router.get('/central/transfers', requireAnyPermission('jail.view'), getCentralTransfers);
+router.get('/central/admissions', requireAnyPermission('jail.view'), getCentralAdmissions);
+router.patch('/central/transfers/:id/receive', requireAnyPermission('jail.receive_transfer'), receiveCentralTransfer);
 router.get('/transfers/:id/document', requirePermission('station_jail.view'), getTransferDocument);
 router.get('/admissions', requirePermission('station_jail.view'), getPrisonAdmissions);
 router.post('/admissions', requirePermission('station_jail.intake'), upload.fields([
@@ -74,7 +74,7 @@ router.post('/admissions/:id/roll-calls', requirePermission('station_jail.intake
 router.post('/roll-calls/bulk', requirePermission('station_jail.intake'), bulkRollCall);
 router.get('/cells', requireAnyPermission('station_jail.view', 'jail.view'), getPrisonCells);
 router.post('/cells', requirePermission('station_jail.assign_cell'), savePrisonCell);
-router.get('/criminals/:id', allowRoles(...REPORT_ROLES), getCustodyProfile);
+router.get('/criminals/:id', requireAnyPermission('station_jail.view', 'jail.view'), getCustodyProfile);
 router.post('/criminals/:id/biometrics', allowRoles(...CUSTODY_WRITE_ROLES), addBiometric);
 router.post('/criminals/:id/documents', allowRoles(...CUSTODY_WRITE_ROLES), upload.single('document'), addDocument);
 router.post('/criminals/:id/transfers', requirePermission('station_jail.intake'), addTransfer);

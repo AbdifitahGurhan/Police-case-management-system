@@ -122,3 +122,77 @@ Authentication is token-based. Clients must attach the returned JWT token to eve
 | **judge** | Read | Read | No | Read | Read | Write / Read |
 | **court_clerk** | Read | Read | No | No | Read | Write / Read |
 | **jail** | Read | Read | No | No | Write / Read | No |
+
+---
+
+### 5.6. Live Authorization Delta: Dynamic Permission Catalog
+
+The live system now uses two authorization layers:
+
+1. `allowRoles(...roles)` remains in older route groups and fixed workflow gates.
+2. `requirePermission(permission_key)` is the primary gate for dynamic modules and must be treated as the current source of truth for UI access.
+
+Permission data is stored in:
+
+* `permissions`
+* `role_permissions`
+* `user_permissions`
+* `permission_change_history`
+
+The permissions catalog currently includes:
+
+| Permission Key | Purpose |
+| :--- | :--- |
+| `audit_logs.view` | View audit logs |
+| `cases.view` | Read cases |
+| `cases.investigate` | Create/update investigation and case workflow records |
+| `evidence.manage` | Manage evidence |
+| `locations.view` | View state/region/district structures |
+| `locations.manage` | Manage state/region/district structures |
+| `ob.view` | View OB records |
+| `ob.create` | Create OB records |
+| `ob.update` | Update OB records |
+| `ob.print` | Print OB records |
+| `officers.view` | View officers |
+| `officers.create` | Create officers |
+| `officers.update` | Update officers |
+| `officers.delete` | Delete officers |
+| `officers.approve` | Approve officers |
+| `officers.activate` | Activate officers |
+| `officers.transfer` | Transfer officers |
+| `permissions.manage` | Manage permissions |
+| `roles.manage` | Manage roles |
+| `ranks.assign` | Assign ranks |
+| `ranks.manage` | Manage rank catalog |
+| `reports.view` | View reports |
+| `reports.export` | Export reports |
+| `station_jail.view` | View station jail |
+| `station_jail.intake` | Admit/hold prisoners at station jail |
+| `station_jail.assign_cell` | Assign station jail cells |
+| `jail.view` | View central jail |
+| `jail.receive_transfer` | Receive station jail transfers at central jail |
+| `jail.assign_cell` | Assign central jail cells |
+| `jail.medical` | Manage prisoner medical records |
+| `jail.visitors` | Manage prisoner visitor records |
+| `jail.release_confirm` | Confirm central jail release |
+| `suspects.view` | View offender/suspect records |
+| `suspects.create` | Create offender/suspect records |
+| `suspects.update` | Update offender/suspect records |
+| `suspects.manage` | Composite suspect management permission |
+| `users.manage` | Manage users |
+
+Permission implication rule:
+
+* `suspects.manage` implies `suspects.view`, `suspects.create`, and `suspects.update`.
+
+Live role redirect rules:
+
+| Role | First Dashboard |
+| :--- | :--- |
+| `station_jail` | `/dashboard/jail` |
+| `jail` | `/dashboard/central-jail` |
+| `investigator` | `/dashboard/investigator` |
+| `region_admin` | `/dashboard/unit` |
+| `district_admin` | `/dashboard/unit` |
+
+Station jail and central jail are separate roles and permission surfaces. Station jail holds offenders locally, creates transfer documents, and performs roll call. Central jail receives completed court-sentence transfers, assigns central cells, and continues custody records.

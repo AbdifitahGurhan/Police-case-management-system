@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Avatar, Card, Col, Progress, Row, Space, Spin, Statistic, Table, Tag, Typography } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Avatar, Button, Card, Col, Progress, Row, Select, Space, Spin, Statistic, Table, Tag, Typography } from 'antd';
+import dayjs from 'dayjs';
 import {
   AlertOutlined,
   ApartmentOutlined,
@@ -42,6 +43,8 @@ const SimpleRows = ({ items = [], render }) => (
 function RegionDashboard({ user }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [userRoleFilter, setUserRoleFilter] = useState('all');
+  const [userStatusFilter, setUserStatusFilter] = useState('all');
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -56,10 +59,6 @@ function RegionDashboard({ user }) {
     };
     fetchDashboard();
   }, []);
-
-  if (loading && !data) {
-    return <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>;
-  }
 
   const summary = data?.summary || {};
   const totalCases = value(summary.total_cases);
@@ -80,18 +79,13 @@ function RegionDashboard({ user }) {
 
   const stationColumns = [
     { title: 'Police Station', dataIndex: 'station_name', key: 'station_name', render: (text, row) => <Text strong>{text} <Tag>{row.station_code}</Tag></Text> },
-    { title: 'Cases', dataIndex: 'cases_count', key: 'cases_count' },
+    { title: 'Total Cases', dataIndex: 'cases_count', key: 'cases_count' },
+    { title: 'Open', dataIndex: 'open_cases', key: 'open_cases', render: (count) => <Tag color="blue">{value(count)}</Tag> },
+    { title: 'Pending', dataIndex: 'pending_cases', key: 'pending_cases', render: (count) => <Tag color="gold">{value(count)}</Tag> },
+    { title: 'Arrests', dataIndex: 'arrests_count', key: 'arrests_count', render: (count) => <Tag color="purple">{value(count)}</Tag> },
     { title: 'Officers', dataIndex: 'officers_count', key: 'officers_count' },
-    { title: 'Closed', dataIndex: 'closed_cases', key: 'closed_cases' },
+    { title: 'Closed', dataIndex: 'closed_cases', key: 'closed_cases', render: (count) => <Tag color="green">{value(count)}</Tag> },
     { title: 'Status', key: 'status', render: () => <Tag color="success">ACTIVE</Tag> },
-  ];
-
-  const waaxColumns = [
-    { title: 'Waax Station', dataIndex: 'waax_name', key: 'waax_name', render: (text, row) => <Text strong>{text} <Tag>{row.waax_code}</Tag></Text> },
-    { title: 'District', dataIndex: 'district_name', key: 'district_name' },
-    { title: 'Cases', dataIndex: 'cases_count', key: 'cases_count' },
-    { title: 'Officers', dataIndex: 'officers_count', key: 'officers_count' },
-    { title: 'Performance', key: 'performance', render: (_, row) => <Progress percent={Math.min(100, value(row.cases_count) * 10)} size="small" /> },
   ];
 
   const recentCaseColumns = [
@@ -101,6 +95,60 @@ function RegionDashboard({ user }) {
     { title: 'Waax', dataIndex: 'waax_name', key: 'waax_name' },
     { title: 'Status', dataIndex: 'status', key: 'status', render: (status) => <Tag color={status === 'closed' ? 'green' : 'blue'}>{status}</Tag> },
   ];
+
+  const userActivity = useMemo(() => data?.userActivity || [], [data?.userActivity]);
+  const userRoleOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All roles' },
+      ...[...new Set(userActivity.map((item) => item.role || item.user_type || 'User'))]
+        .filter(Boolean)
+        .map((roleName) => ({ value: roleName, label: roleName })),
+    ],
+    [userActivity]
+  );
+  const filteredUserActivity = useMemo(
+    () => userActivity.filter((item) => {
+      const roleName = item.role || item.user_type || 'User';
+      const active = Number(item.is_active) === 1 || item.status === 'ACTIVE';
+      const status = active ? 'ACTIVE' : 'INACTIVE';
+      return (userRoleFilter === 'all' || roleName === userRoleFilter)
+        && (userStatusFilter === 'all' || status === userStatusFilter);
+    }),
+    [userActivity, userRoleFilter, userStatusFilter]
+  );
+  const userSummary = useMemo(() => ({
+    total: userActivity.length,
+    active: userActivity.filter((item) => Number(item.is_active) === 1 || item.status === 'ACTIVE').length,
+    neverLoggedIn: userActivity.filter((item) => !item.last_login).length,
+  }), [userActivity]);
+  const userActivityColumns = [
+    {
+      title: 'User',
+      dataIndex: 'full_name',
+      key: 'full_name',
+      render: (text, row) => (
+        <Space>
+          <Avatar icon={<UserOutlined />}>{text?.charAt?.(0)}</Avatar>
+          <div>
+            <Text strong style={{ display: 'block' }}>{text || row.username}</Text>
+            <Text type="secondary">{row.username}</Text>
+          </div>
+        </Space>
+      ),
+    },
+    { title: 'Role', dataIndex: 'role', key: 'role', render: (roleName, row) => <Tag>{roleName || row.user_type || 'User'}</Tag> },
+    { title: 'District / Station', dataIndex: 'district_name', key: 'district_name', render: (district) => district || 'Regional account' },
+    { title: 'Last Login', dataIndex: 'last_login', key: 'last_login', render: (lastLogin) => lastLogin ? dayjs(lastLogin).format('YYYY-MM-DD HH:mm') : <Tag color="gold">No login yet</Tag> },
+    { title: 'Status', key: 'status', render: (_, row) => {
+      const active = Number(row.is_active) === 1 || row.status === 'ACTIVE';
+      return <Tag color={active ? 'green' : 'default'}>{active ? 'ACTIVE' : 'INACTIVE'}</Tag>;
+    } },
+    { title: 'Action', key: 'action', render: () => <Button size="small" href="/users">Manage</Button> },
+  ];
+
+  if (loading && !data) {
+    return <div style={{ textAlign: 'center', padding: '50px' }}><Spin size="large" /></div>;
+  }
 
   return (
     <ProtectedRoute allowedRoles={['region_admin', 'region_commander']}>
@@ -163,14 +211,9 @@ function RegionDashboard({ user }) {
         </Row>
 
         <Row gutter={[16, 16]}>
-          <Col xs={24} lg={12}>
-            <Card variant="none" className="standard-panel" title="Police Station Performance Comparison">
+          <Col xs={24}>
+            <Card variant="none" className="standard-panel" title="District Police Station Supervision">
               <Table columns={stationColumns} dataSource={data?.stationPerformance || []} rowKey="id" pagination={false} scroll={{ x: 'max-content' }} />
-            </Card>
-          </Col>
-          <Col xs={24} lg={12}>
-            <Card variant="none" className="standard-panel" title="Waax Police Station Performance">
-              <Table columns={waaxColumns} dataSource={data?.waaxPerformance || []} rowKey="id" pagination={false} scroll={{ x: 'max-content' }} />
             </Card>
           </Col>
         </Row>
@@ -203,22 +246,41 @@ function RegionDashboard({ user }) {
             </Card>
           </Col>
           <Col xs={24} lg={8}>
-            <Card variant="none" className="standard-panel" title="User Activity Reports">
-              <SimpleRows
-                items={data?.userActivity || []}
-                render={(item) => (
-                  <>
-                    <Space>
-                      <Avatar icon={<UserOutlined />} />
-                      <div>
-                        <Text strong style={{ display: 'block' }}>{item.full_name || item.username}</Text>
-                        <Text type="secondary">{item.role || item.user_type || 'User'} - {item.last_login ? `Last login ${item.last_login}` : 'No login yet'}</Text>
-                      </div>
-                    </Space>
-                    <Tag color={item.status === 'ACTIVE' ? 'green' : 'default'}>{item.status}</Tag>
-                  </>
-                )}
-              />
+            <Card
+              variant="none"
+              className="standard-panel"
+              title="User Activity Reports"
+              extra={<Button size="small" href="/users">Open Users</Button>}
+            >
+              <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+                <Space wrap>
+                  <Tag color="blue">Users {userSummary.total}</Tag>
+                  <Tag color="green">Active {userSummary.active}</Tag>
+                  <Tag color="gold">No login {userSummary.neverLoggedIn}</Tag>
+                </Space>
+                <Space wrap>
+                  <Select size="small" value={userRoleFilter} onChange={setUserRoleFilter} options={userRoleOptions} style={{ minWidth: 150 }} />
+                  <Select
+                    size="small"
+                    value={userStatusFilter}
+                    onChange={setUserStatusFilter}
+                    options={[
+                      { value: 'all', label: 'All status' },
+                      { value: 'ACTIVE', label: 'Active' },
+                      { value: 'INACTIVE', label: 'Inactive' },
+                    ]}
+                    style={{ minWidth: 130 }}
+                  />
+                </Space>
+                <Table
+                  columns={userActivityColumns}
+                  dataSource={filteredUserActivity}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  scroll={{ x: 'max-content' }}
+                />
+              </Space>
             </Card>
           </Col>
         </Row>

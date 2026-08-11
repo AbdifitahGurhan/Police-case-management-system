@@ -400,3 +400,49 @@ CREATE TABLE IF NOT EXISTS court_hearings (
   CONSTRAINT fk_hearings_case FOREIGN KEY (court_case_id) REFERENCES court_cases(id) ON DELETE CASCADE
 );
 ```
+
+---
+
+### 3.9. Live Schema Delta: Investigation, Court Remand, Permissions, and Jail Operations
+
+The live database includes additional tables and column updates beyond the earlier schema narrative.
+
+#### 3.9.1. Case Investigation Records
+
+* `case_investigations` stores the official investigation record attached to a police case.
+* It supports evidence entries, witnesses, investigation steps, narrative summary/outcome/recommendation, and uploaded investigation files.
+* It is created and updated through `/api/cases/:id/investigations`.
+
+#### 3.9.2. Court Workflow Additions
+
+Court case status now uses a staged workflow beginning at `court_received`, not the older `registered` flow. Live additions include:
+
+* `court_arraignments`
+* `court_remands`
+* `case_workflow_authorizations`
+
+`court_remands` links court cases back to the police case, station, and/or investigator assigned to perform additional investigation.
+
+#### 3.9.3. Station Jail and Central Jail Tables
+
+Live jail operation tables include:
+
+* `prison_cells`
+* `prison_admissions`
+* `prison_cell_assignments`
+* `prison_roll_calls`
+* `prison_transfers`
+* `release_approvals`
+
+`prison_transfers.status = 'pending'` represents a transfer document created by station jail and waiting for central jail receive. `status = 'completed'` means central jail has received the prisoner and assigned central custody.
+
+#### 3.9.4. Dynamic Permission Tables
+
+The permission system includes:
+
+* `permissions`
+* `role_permissions`
+* `user_permissions`
+* `permission_change_history`
+
+These tables back the `requirePermission(...)` middleware and the `/permissions` UI.

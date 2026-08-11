@@ -97,6 +97,76 @@ const buildPhotoUrl = (file) => {
   return `/uploads/offenders/${file.filename}`;
 };
 
+const generatePrisonNumber = () => `PR-${new Date().getFullYear()}-${String(Date.now()).slice(-7)}`;
+
+const ensureStationJailAdmissionForCaseSuspect = async ({ caseId, suspectId, user }) => {
+  const [[caseRow]] = await db.query(
+    `SELECT c.id, c.district_id, c.incident_location, COALESCE(c.title, c.case_title) AS case_title, d.district_name
+       FROM cases c
+       LEFT JOIN districts d ON d.id = c.district_id
+      WHERE c.id = ?`,
+    [caseId]
+  );
+  if (!caseRow) throw Object.assign(new Error('Linked case was not found.'), { status: 404 });
+  if (!caseRow.district_id || !caseRow.district_name) {
+    throw Object.assign(new Error('Case district is required before sending suspect to station jail.'), { status: 400 });
+  }
+
+  await db.query(
+    "UPDATE criminals SET arrest_status='arrested', is_arrested=1 WHERE id=?",
+    [suspectId]
+  );
+
+  let [[arrest]] = await db.query(
+    `SELECT id FROM arrests WHERE case_id = ? AND suspect_id = ? ORDER BY id DESC LIMIT 1`,
+    [caseId, suspectId]
+  );
+  if (!arrest) {
+    const [arrestResult] = await db.query(
+      `INSERT INTO arrests
+        (case_id, suspect_id, police_station_id, arrested_by, arrest_location, charges, court_decision, sentence_status, bail_status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', 'awaiting_trial', 'no_bail', ?)`,
+      [
+        caseId,
+        suspectId,
+        caseRow.district_id,
+        user?.username || user?.id || 'system',
+        caseRow.incident_location || caseRow.district_name,
+        caseRow.case_title || 'Case suspect',
+        'Auto-created because suspect/offender was registered as held at the station jail.',
+      ]
+    );
+    arrest = { id: arrestResult.insertId };
+  }
+
+  const [[activeAdmission]] = await db.query(
+    `SELECT id FROM prison_admissions WHERE arrest_id = ? AND status = 'admitted' LIMIT 1`,
+    [arrest.id]
+  );
+  if (activeAdmission) return { arrestId: arrest.id, admissionId: activeAdmission.id, alreadyAdmitted: true };
+
+  const [[suspect]] = await db.query(
+    `SELECT COALESCE(face_capture_image, offender_photo, photo_url) AS photo_url FROM criminals WHERE id = ?`,
+    [suspectId]
+  );
+  const facility = `${caseRow.district_name} Station Jail`;
+  const [admissionResult] = await db.query(
+    `INSERT INTO prison_admissions
+      (arrest_id, suspect_id, prison_number, facility, admission_date, admitted_by, notes, photo_url, confirmed_at)
+     VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, NOW())`,
+    [
+      arrest.id,
+      suspectId,
+      generatePrisonNumber(),
+      facility,
+      user?.username || user?.id || 'system',
+      `Auto-admitted from suspect/offender registration for case ${caseId}.`,
+      suspect?.photo_url || null,
+    ]
+  );
+  return { arrestId: arrest.id, admissionId: admissionResult.insertId, alreadyAdmitted: false };
+};
+
 const getFaceKeyFromDataImage = (faceImage) => parseFaceImage(faceImage).biometricKey;
 
 const saveFaceCaptureImage = (faceImage) => {
@@ -328,20 +398,22 @@ const createSuspect = async (req, res, next) => {
            VALUES (?, ?, 'SUSPECT_ADDED', ?)`,
           [case_id, req.user.username || req.user.id, `Dambiile hore oo la yiraahdo ${existingMatch.row.full_name} ayaa lagu xiray kiiskan.`]
         );
+        const custody = await ensureStationJailAdmissionForCaseSuspect({ caseId: case_id, suspectId, user: req.user });
         await writeAuditLog({
           userId: req.user.username || req.user.id,
           userEmail: req.user.email || req.user.username,
           action: 'LINK_EXISTING_SUSPECT',
           entityType: 'criminals',
           entityId: suspectId,
-          newData: { case_id, role_in_case }
+          newData: { case_id, role_in_case, custody }
         });
 
         return res.status(201).json({
           success: true,
-          message: `Dambiile hore '${existingMatch.row.full_name}' waa lagu guuleystay in lagu xiro kiiska.`,
+          message: `Dambiile hore '${existingMatch.row.full_name}' waa lagu xiray kiiska, waxaana loo diray station jail-ka degmada.`,
           suspectId,
           matchedExisting: true,
+          custody,
         });
       }
 
@@ -360,7 +432,8 @@ const createSuspect = async (req, res, next) => {
     const faceCaptureUrl = faceCapture?.url || null;
     const faceKey = faceCapture?.biometricKey || null;
     const profilePhotoUrl = photoUrl || faceCaptureUrl;
-    const isArrested = ['arrested', 'wanted'].includes(arrest_status) ? 1 : 0;
+    const normalizedArrestStatus = case_id ? 'arrested' : (normalizeOptional(arrest_status) || 'arrested');
+    const isArrested = normalizedArrestStatus === 'arrested' ? 1 : 0;
     const [result] = await db.query(
       `INSERT INTO criminals
         (full_name, mother_name, alias, gender, date_of_birth, age, nationality, id_type, id_number,
@@ -385,7 +458,7 @@ const createSuspect = async (req, res, next) => {
         faceCaptureUrl,
         normalizeOptional(face_capture_notes),
         normalizeOptional(profile_notes),
-        normalizeOptional(arrest_status) || 'not_arrested',
+        normalizedArrestStatus,
         faceKey,
         isArrested,
       ]
@@ -403,8 +476,9 @@ const createSuspect = async (req, res, next) => {
         [case_id, req.user.username || req.user.id, `Suspect ${full_name.trim()} added and linked to this case.`]
       );
     }
-    await writeAuditLog({ userId: req.user.username || req.user.id, userEmail: req.user.email || req.user.username, action: 'CREATE_SUSPECT', entityType: 'criminals', entityId: suspectId, newData: req.body });
-    res.status(201).json({ success: true, message: 'Suspect added.', suspectId });
+    const custody = case_id ? await ensureStationJailAdmissionForCaseSuspect({ caseId: case_id, suspectId, user: req.user }) : null;
+    await writeAuditLog({ userId: req.user.username || req.user.id, userEmail: req.user.email || req.user.username, action: 'CREATE_SUSPECT', entityType: 'criminals', entityId: suspectId, newData: { ...req.body, arrest_status: normalizedArrestStatus, custody } });
+    res.status(201).json({ success: true, message: case_id ? 'Suspect added and admitted to station jail.' : 'Suspect added.', suspectId, custody });
   } catch (err) { next(err); }
 };
 

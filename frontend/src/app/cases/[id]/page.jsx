@@ -339,8 +339,8 @@ export default function CaseDetailsPage() {
           ...values,
           case_id: id,
           face_capture_image: (suspectFaceImage && suspectFaceImage.startsWith('data:')) ? suspectFaceImage : null,
-          arrest_status: values.arrest_status || 'not_arrested',
-          is_arrested: ['arrested', 'wanted'].includes(values.arrest_status) ? 1 : 0
+          arrest_status: values.arrest_status || 'arrested',
+          is_arrested: (values.arrest_status || 'arrested') === 'arrested' ? 1 : 0
         });
         message.success("Suspect details updated successfully.");
       } else {
@@ -348,7 +348,7 @@ export default function CaseDetailsPage() {
           ...values,
           case_id: id,
           face_capture_image: (suspectFaceImage && suspectFaceImage.startsWith('data:')) ? suspectFaceImage : null,
-          arrest_status: values.arrest_status || 'not_arrested',
+          arrest_status: values.arrest_status || 'arrested',
         });
         message.success("Suspect added successfully.");
       }

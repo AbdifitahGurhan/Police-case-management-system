@@ -23,6 +23,15 @@ const addVisibilityFilter = (req, params, alias = 'cid') => {
   return ` AND ${alias}.assigned_officer IN (${names.map(() => '?').join(',')})`;
 };
 
+const addCourtCidRemandFilter = (alias = 'cid') => (
+  ` AND EXISTS (
+      SELECT 1
+      FROM court_remands cr
+      WHERE cr.police_case_id = ${alias}.police_case_id
+        AND LOWER(cr.sent_to_role) = 'cid'
+    )`
+);
+
 const auditMeta = (req) => ({ ipAddress: req.ip, userAgent: req.get?.('user-agent') || null });
 
 const getCidDashboard = async (req, res, next) => {
@@ -30,34 +39,36 @@ const getCidDashboard = async (req, res, next) => {
     await syncAllCidCases(actor(req));
     const params = [];
     const visibility = addVisibilityFilter(req, params, 'cid');
+    const courtCidOnly = addCourtCidRemandFilter('cid');
+    const courtCidOnlySubquery = addCourtCidRemandFilter('c2');
     const [[stats]] = await db.query(`
       SELECT
         COUNT(*) AS total_cid_cases,
         SUM(CASE WHEN investigation_status IN ('open','under_investigation','evidence_collection','witness_interviews','suspect_tracking','arrest_made') THEN 1 ELSE 0 END) AS active_investigations,
         SUM(CASE WHEN investigation_status IN ('open','supervisor_review') THEN 1 ELSE 0 END) AS pending_investigations,
         SUM(CASE WHEN investigation_status IN ('investigation_completed','approved','sent_to_prosecutor','sent_to_court') THEN 1 ELSE 0 END) AS completed_investigations,
-        (SELECT COUNT(*) FROM evidence e JOIN cid_cases c2 ON c2.police_case_id = e.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')}) AS evidence_collected,
-        (SELECT COUNT(*) FROM case_criminals cs JOIN cid_cases c2 ON c2.police_case_id = cs.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')}) AS criminals_identified,
-        (SELECT COUNT(*) FROM arrests a JOIN cid_cases c2 ON c2.police_case_id = a.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')}) AS arrested_criminals,
+        (SELECT COUNT(*) FROM evidence e JOIN cid_cases c2 ON c2.police_case_id = e.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')} ${courtCidOnlySubquery}) AS evidence_collected,
+        (SELECT COUNT(*) FROM case_criminals cs JOIN cid_cases c2 ON c2.police_case_id = cs.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')} ${courtCidOnlySubquery}) AS criminals_identified,
+        (SELECT COUNT(*) FROM arrests a JOIN cid_cases c2 ON c2.police_case_id = a.case_id WHERE 1=1 ${visibility.replaceAll('cid.', 'c2.')} ${courtCidOnlySubquery}) AS arrested_criminals,
         SUM(CASE WHEN investigation_status = 'sent_to_prosecutor' THEN 1 ELSE 0 END) AS cases_sent_to_prosecutor,
         SUM(CASE WHEN investigation_status = 'sent_to_court' THEN 1 ELSE 0 END) AS cases_sent_to_court
       FROM cid_cases cid
-      WHERE 1=1 ${visibility}
+      WHERE 1=1 ${visibility} ${courtCidOnly}
     `, [...params, ...params, ...params, params].flat());
 
-    const [byStatus] = await db.query(`SELECT investigation_status AS label, COUNT(*) AS value FROM cid_cases cid WHERE 1=1 ${visibility} GROUP BY investigation_status ORDER BY value DESC`, params);
-    const [byCrime] = await db.query(`SELECT crime_category AS label, COUNT(*) AS value FROM cid_cases cid WHERE 1=1 ${visibility} GROUP BY crime_category ORDER BY value DESC LIMIT 10`, params);
+    const [byStatus] = await db.query(`SELECT investigation_status AS label, COUNT(*) AS value FROM cid_cases cid WHERE 1=1 ${visibility} ${courtCidOnly} GROUP BY investigation_status ORDER BY value DESC`, params);
+    const [byCrime] = await db.query(`SELECT crime_category AS label, COUNT(*) AS value FROM cid_cases cid WHERE 1=1 ${visibility} ${courtCidOnly} GROUP BY crime_category ORDER BY value DESC LIMIT 10`, params);
     const [monthly] = await db.query(`
       SELECT DATE_FORMAT(assigned_date, '%Y-%m') AS label, COUNT(*) AS value
       FROM cid_cases cid
-      WHERE 1=1 ${visibility}
+      WHERE 1=1 ${visibility} ${courtCidOnly}
       GROUP BY DATE_FORMAT(assigned_date, '%Y-%m')
       ORDER BY label ASC
       LIMIT 12`, params);
     const [officers] = await db.query(`
       SELECT COALESCE(assigned_officer, 'Unassigned') AS label, COUNT(*) AS value
       FROM cid_cases cid
-      WHERE 1=1 ${visibility}
+      WHERE 1=1 ${visibility} ${courtCidOnly}
       GROUP BY assigned_officer
       ORDER BY value DESC
       LIMIT 10`, params);
@@ -82,6 +93,7 @@ const getCidCases = async (req, res, next) => {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
     where += addVisibilityFilter(req, params, 'cid');
+    where += addCourtCidRemandFilter('cid');
 
     const [rows] = await db.query(`
       SELECT cid.*, c.complainant_name, c.incident_location
@@ -109,12 +121,13 @@ const getCidCaseById = async (req, res, next) => {
   try {
     const params = [req.params.id];
     const visibility = addVisibilityFilter(req, params, 'cid');
+    const courtCidOnly = addCourtCidRemandFilter('cid');
     const [[cidCase]] = await db.query(`
       SELECT cid.*, c.description, c.incident_date, c.incident_location, c.complainant_name,
              c.complainant_phone, c.status AS police_status
       FROM cid_cases cid
       JOIN cases c ON c.id = cid.police_case_id
-      WHERE cid.id = ? ${visibility}`,
+      WHERE cid.id = ? ${visibility} ${courtCidOnly}`,
       params
     );
     if (!cidCase) return res.status(404).json({ success: false, message: 'CID case not found.' });

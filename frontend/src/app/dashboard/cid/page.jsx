@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   App,
@@ -45,16 +45,6 @@ const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
 const { TextArea } = Input;
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000/api').replace(/\/api\/?$/, '');
-const DISMISSED_CID_ALERTS_KEY = 'dismissed-cid-dashboard-alerts';
-
-const getDismissedAlertIds = () => {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    return new Set(JSON.parse(window.localStorage.getItem(DISMISSED_CID_ALERTS_KEY) || '[]'));
-  } catch {
-    return new Set();
-  }
-};
 
 const cidRoles = ['admin', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'prosecutor_liaison'];
 const supervisorRoles = ['admin', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'prosecutor_liaison'];
@@ -125,7 +115,6 @@ export default function CIDDashboard() {
   const router = useRouter();
   const [dashboard, setDashboard] = useState(null);
   const [cases, setCases] = useState([]);
-  const [alerts, setAlerts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -144,11 +133,8 @@ export default function CIDDashboard() {
         api.get('/cid/dashboard'),
         api.get('/cid/cases', { params: { limit: 50, ...nextFilters } }),
       ]);
-      const notificationsRes = await api.get('/notifications', { params: { limit: 8, scope: 'cid' } });
-      const dismissedAlertIds = getDismissedAlertIds();
       setDashboard(dashboardRes.data.data);
       setCases(casesRes.data.data || []);
-      setAlerts((notificationsRes.data.data || []).filter((item) => !dismissedAlertIds.has(item.id)));
     } catch (error) {
       message.error(error.response?.data?.message || 'Failed to load CID dashboard.');
     } finally {
@@ -175,7 +161,6 @@ export default function CIDDashboard() {
     try {
       await api.patch(`/cid/cases/${id}/acknowledge`);
       message.success('Case acknowledged.');
-      setAlerts((current) => current.filter((item) => item.cid_case_id !== id));
       setCases((current) => current.map((item) => (
         item.id === id ? { ...item, assignment_status: 'accepted' } : item
       )));
@@ -183,28 +168,6 @@ export default function CIDDashboard() {
       await loadDashboard(filters);
     } catch (error) {
       message.error(error.response?.data?.message || 'Acknowledge failed.');
-    }
-  };
-
-  const openAlertCase = async (item) => {
-    const dismissedAlertIds = getDismissedAlertIds();
-    if (item.id) dismissedAlertIds.add(item.id);
-    window.localStorage.setItem(DISMISSED_CID_ALERTS_KEY, JSON.stringify([...dismissedAlertIds]));
-    setAlerts((current) => current.filter((alert) => alert.id !== item.id));
-
-    const queuedCase = cases.find((row) => Number(row.id) === Number(item.cid_case_id));
-    if (queuedCase?.police_case_id) {
-      router.push(`/cases/${queuedCase.police_case_id}`);
-      return;
-    }
-
-    try {
-      const response = await api.get(`/cid/cases/${item.cid_case_id}`);
-      const policeCaseId = response.data?.data?.cidCase?.police_case_id;
-      if (!policeCaseId) throw new Error('Missing police case id');
-      router.push(`/cases/${policeCaseId}`);
-    } catch (error) {
-      message.error(error.response?.data?.message || 'Case View-ga lama furi karin.');
     }
   };
 
@@ -275,21 +238,34 @@ export default function CIDDashboard() {
 
   const stats = dashboard?.stats || {};
   const metrics = [
-    { title: 'Total CID cases', value: stats.total_cid_cases, icon: <FileSearchOutlined /> },
-    { title: 'Active investigations', value: stats.active_investigations, icon: <AuditOutlined /> },
-    { title: 'Pending review', value: stats.pending_investigations, icon: <WarningOutlined /> },
-    { title: 'Completed', value: stats.completed_investigations, icon: <CheckCircleOutlined /> },
-    { title: 'Evidence collected', value: stats.evidence_collected, icon: <FileProtectOutlined /> },
-    { title: 'Suspects identified', value: stats.criminals_identified, icon: <TeamOutlined /> },
-    { title: 'Arrested suspects', value: stats.arrested_criminals, icon: <UserSwitchOutlined /> },
-    { title: 'Sent to prosecutor', value: stats.cases_sent_to_prosecutor, icon: <SendOutlined /> },
+    { title: 'Kiisaska CID', description: 'Maxkamaddu CID u dirtay', value: stats.total_cid_cases, icon: <FileSearchOutlined /> },
+    { title: 'Baaritaanno Socda', description: 'Baaritaanno firfircoon', value: stats.active_investigations, icon: <AuditOutlined /> },
+    { title: 'Dib-u-eegis Sugaya', description: 'Sugaya dib-u-eegis', value: stats.pending_investigations, icon: <WarningOutlined /> },
+    { title: 'La Dhammaystiray', description: 'Kiisaska la xiray', value: stats.completed_investigations, icon: <CheckCircleOutlined /> },
+    { title: 'Caddeymo La Ururiyey', description: 'Caddeymo la diiwaan geliyey', value: stats.evidence_collected, icon: <FileProtectOutlined /> },
+    { title: 'Eedeysanayaal La Aqoonsaday', description: 'Eedeysanayaal la aqoonsaday', value: stats.criminals_identified, icon: <TeamOutlined /> },
   ];
 
-  const chartRows = useMemo(() => [
-    { title: 'Investigation status', rows: dashboard?.byStatus || [] },
-    { title: 'Cases by crime type', rows: dashboard?.byCrime || [] },
-    { title: 'Officer performance', rows: dashboard?.officers || [] },
-  ], [dashboard]);
+  const statusRows = dashboard?.byStatus || [];
+  const crimeRows = dashboard?.byCrime || [];
+  const officerRows = dashboard?.officers || [];
+  const trendRows = dashboard?.monthly || [];
+  const urgentTasks = [
+    ...cases
+      .filter((item) => (
+        ['critical', 'high'].includes(String(item.priority || '').toLowerCase())
+        || item.assignment_status === 'assigned'
+        || item.investigation_status === 'supervisor_review'
+      ))
+      .slice(0, 3)
+      .map((item) => ({
+        key: `case-${item.id}`,
+        title: `${item.ob_number || item.case_number}`,
+        message: item.case_title || item.crime_category,
+        action: () => openCaseView(item),
+        tone: item.priority === 'critical' ? 'critical' : 'warning',
+      })),
+  ].slice(0, 5);
 
   const columns = [
     { title: 'Case #', dataIndex: 'case_number', render: (value, row) => <Button type="link" onClick={() => openCaseView(row)}>{value}</Button> },
@@ -370,24 +346,11 @@ export default function CIDDashboard() {
               Hawlaha Baaritaanka
             </Title>
             <Text type="secondary" style={{ fontSize: 13 }}>
-              Kiisaska laguu xilsaaray, caddeymaha, markhaatiyaasha, eedaysanayaasha iyo taariikhda baaritaanka.
+              La soco kiisaska ay maxkamaddu u dirtay CID, baaritaannada socda, caddeymaha iyo hawlaha saraakiisha.
             </Text>
           </div>
           <Button type="primary" onClick={() => loadDashboard(filters)}>Cusboonaysii</Button>
         </div>
-
-        <Row gutter={[16, 16]}>
-          {alerts.length > 0 && alerts.slice(0, 4).map((item) => (
-            <Col xs={24} md={12} key={item.id}>
-              <Alert
-                showIcon
-                type={item.type === 'CID_REPORT_SUBMITTED' ? 'warning' : 'info'}
-                title={item.title}
-                description={<Button type="link" style={{ padding: 0 }} onClick={() => openAlertCase(item)}>{item.message}</Button>}
-              />
-            </Col>
-          ))}
-        </Row>
 
         <Row gutter={[16, 16]}>
           {metrics.map((metric) => (
@@ -395,6 +358,7 @@ export default function CIDDashboard() {
               <Card variant="none" className="standard-metric-card">
                 <div className="standard-metric-icon">{metric.icon}</div>
                 <Statistic title={metric.title} value={metric.value || 0} loading={loading} />
+                <Text type="secondary" style={{ fontSize: 12 }}>{metric.description}</Text>
               </Card>
             </Col>
           ))}
@@ -414,25 +378,88 @@ export default function CIDDashboard() {
         </Card>
 
         <Row gutter={[16, 16]}>
-          {chartRows.map((chart) => (
-            <Col xs={24} lg={8} key={chart.title}>
-              <Card variant="none" className="standard-panel" title={chart.title}>
-                <Space orientation="vertical" style={{ width: '100%' }}>
-                  {chart.rows.length ? chart.rows.map((row) => (
-                    <div key={`${chart.title}-${row.label}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                      <Text>{statusMeta[row.label]?.label || row.label || 'Unknown'}</Text>
-                      <Tag color="blue">{row.value}</Tag>
+          <Col xs={24} xl={16}>
+            <Card variant="none" className="standard-panel" title="Dhaqdhaqaaqa Baaritaannada">
+              <Space orientation="vertical" style={{ width: '100%' }}>
+                {trendRows.length ? trendRows.map((row) => (
+                  <div key={`trend-${row.label}`} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 46px', alignItems: 'center', gap: 12 }}>
+                    <Text type="secondary">{row.label}</Text>
+                    <div style={{ height: 8, borderRadius: 99, background: '#eef4ff', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(100, Math.max(8, Number(row.value || 0) * 8))}%`, height: '100%', background: '#2563eb' }} />
                     </div>
-                  )) : <Text type="secondary">No CID activity yet</Text>}
-                </Space>
-              </Card>
-            </Col>
-          ))}
+                    <Text strong>{row.value}</Text>
+                  </div>
+                )) : <Text type="secondary">Wali dhaqdhaqaaq CID oo maxkamad laga soo diray ma jiro.</Text>}
+              </Space>
+            </Card>
+          </Col>
+          <Col xs={24} xl={8}>
+            <Card variant="none" className="standard-panel" title="Xaaladda Baaritaannada">
+              <Space orientation="vertical" style={{ width: '100%' }}>
+                {statusRows.length ? statusRows.map((row) => (
+                  <div key={`status-${row.label}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <Text>{statusMeta[row.label]?.label || row.label || 'Unknown'}</Text>
+                    <Tag color="blue">{row.value}</Tag>
+                  </div>
+                )) : <Text type="secondary">Wali status lama hayo.</Text>}
+              </Space>
+            </Card>
+          </Col>
         </Row>
 
-        <Card variant="none" className="standard-panel" title="CID case queue">
-          <Table columns={columns} dataSource={cases} rowKey="id" loading={loading || detailLoading} scroll={{ x: 1300 }} />
-        </Card>
+        <Row gutter={[16, 16]} align="top">
+          <Col xs={24} xl={17}>
+            <Card variant="none" className="standard-panel" title="Safka Kiisaska CID">
+              <Table columns={columns} dataSource={cases} rowKey="id" loading={loading || detailLoading} scroll={{ x: 1300 }} />
+            </Card>
+          </Col>
+          <Col xs={24} xl={7}>
+            <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+              <Card variant="none" className="standard-panel" title="Waxqabadka Saraakiisha">
+                <Space orientation="vertical" style={{ width: '100%' }}>
+                  {officerRows.length ? officerRows.map((row) => (
+                    <div key={`officer-${row.label}`} style={{ display: 'grid', gridTemplateColumns: '1fr 46px', gap: 12 }}>
+                      <Text>{row.label || 'Unassigned'}</Text>
+                      <Tag color="blue">{row.value}</Tag>
+                    </div>
+                  )) : <Text type="secondary">Wali waxqabad sarkaal lama hayo.</Text>}
+                </Space>
+              </Card>
+              <Card variant="none" className="standard-panel" title="Hawlaha Degdegga ah">
+                <Space orientation="vertical" style={{ width: '100%' }}>
+                  {urgentTasks.length ? urgentTasks.map((item) => (
+                    <Button
+                      key={item.key}
+                      type="text"
+                      block
+                      onClick={item.action}
+                      style={{ height: 'auto', padding: 10, textAlign: 'left' }}
+                    >
+                      <Space align="start">
+                        <WarningOutlined style={{ color: item.tone === 'critical' ? '#ef4444' : '#f59e0b', marginTop: 3 }} />
+                        <span>
+                          <Text strong>{item.title}</Text>
+                          <br />
+                          <Text type="secondary" style={{ whiteSpace: 'normal' }}>{item.message}</Text>
+                        </span>
+                      </Space>
+                    </Button>
+                  )) : <Text type="secondary">Ma jiraan hawlo degdeg ah.</Text>}
+                </Space>
+              </Card>
+              <Card variant="none" className="standard-panel" title="Noocyada Dambiyada">
+                <Space orientation="vertical" style={{ width: '100%' }}>
+                  {crimeRows.length ? crimeRows.map((row) => (
+                    <div key={`crime-${row.label}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <Text>{row.label || 'Unknown'}</Text>
+                      <Tag>{row.value}</Tag>
+                    </div>
+                  )) : <Text type="secondary">Wali xog nooc dambi lama hayo.</Text>}
+                </Space>
+              </Card>
+            </Space>
+          </Col>
+        </Row>
 
         <Drawer
           title={cidCase ? `${cidCase.case_number} — ${cidCase.case_title}` : 'CID case'}

@@ -35,7 +35,7 @@ const ProtectedRoute = ({ children, allowedRoles = [], requiredPermissions = [] 
 
   if (isDenied) {
     const roleRedirects = {
-      admin: '/dashboard/admin',
+      admin: '/dashboard/operations',
       sub_admin: '/police-officers',
       officer: '/dashboard/officer',
       cid: '/dashboard/cid',
@@ -50,16 +50,16 @@ const ProtectedRoute = ({ children, allowedRoles = [], requiredPermissions = [] 
       court_clerk: '/dashboard/court',
       jail: '/dashboard/central-jail',
       station_jail: '/dashboard/jail',
-      state_commander: '/dashboard/unit',
-      region_commander: '/dashboard/unit',
-      district_commander: '/dashboard/unit',
-      police_station_commander: '/dashboard/unit',
+      state_commander: '/dashboard/operations',
+      region_commander: '/dashboard/operations',
+      district_commander: '/dashboard/operations',
+      police_station_commander: '/dashboard/operations',
       ob_staff: '/ob-register',
       staff: '/cases',
-      state_admin: '/dashboard/unit',
-      region_admin: '/dashboard/unit',
-      city_admin: '/dashboard/unit',
-      district_admin: '/dashboard/unit',
+      state_admin: '/dashboard/operations',
+      region_admin: '/dashboard/operations',
+      city_admin: '/districts',
+      district_admin: '/dashboard/operations',
       personnel_registry: '/police-officers',
       investigator: '/dashboard/investigator',
     };

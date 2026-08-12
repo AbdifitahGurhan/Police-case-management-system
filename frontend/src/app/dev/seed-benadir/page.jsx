@@ -25,8 +25,8 @@ export default function SeedBenadir() {
     Cookies.set('token', fakeToken, { expires: 1 });
     Cookies.set('user', JSON.stringify(benadirUser), { expires: 1 });
 
-    // Redirect to regional dashboard
-    router.push('/dashboard/unit');
+    // Redirect to unified operations dashboard
+    router.push('/dashboard/operations');
   }, [router]);
 
   return <div style={{ padding: 24 }}>Seeding Benadir sample user and redirecting...</div>;

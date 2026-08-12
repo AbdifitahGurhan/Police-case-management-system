@@ -11,7 +11,7 @@ const { Text, Title } = Typography;
 const number = (value) => Number(value || 0);
 const statusColor = (status) => ({ present: 'green', absent: 'red', leave: 'gold', patrol: 'blue', critical: 'red', high: 'orange' }[String(status).toLowerCase()] || 'default');
 
-export default function DistrictOperationsDashboard({ user, mode = 'summary' }) {
+export default function DistrictOperationsDashboard({ user, mode = 'summary', embedded = false }) {
   const hasPermission = key => user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes(key);
   const canInvestigate = hasPermission('cases.investigate');
   const canManageOfficers = hasPermission('officers.update');
@@ -174,7 +174,7 @@ export default function DistrictOperationsDashboard({ user, mode = 'summary' }) 
 
   return <ProtectedRoute allowedRoles={['district_admin','district_commander','police_station_commander','admin']} requiredPermissions={['cases.view']}>
     <div className="standard-dashboard">
-      <div className="standard-dashboard-hero"><div><Text className="dashboard-eyebrow">Dashboard-ka Maamulka Degmada</Text><Title level={2}>{data?.district?.district_name || user?.fullName || 'Degmada'}</Title><Text type="secondary">OB-yada, kiisaska, askarta, maxaabiista, baarayaasha iyo users-ka degmada.</Text></div><Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Cusboonaysii</Button></div>
+      {!embedded && <div className="standard-dashboard-hero"><div><Text className="dashboard-eyebrow">Dashboard-ka Maamulka Degmada</Text><Title level={2}>{data?.district?.district_name || user?.fullName || 'Degmada'}</Title><Text type="secondary">OB-yada, kiisaska, askarta, maxaabiista, baarayaasha iyo users-ka degmada.</Text></div><Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Cusboonaysii</Button></div>}
       {mode === 'summary' && <Row gutter={[16,16]}>
         {[
           ['OB-yada Degmada',metrics.total_ob,<FileDoneOutlined key="ob" />],['Kiisaska Degmada',metrics.total_cases,<FolderOpenOutlined key="total" />],

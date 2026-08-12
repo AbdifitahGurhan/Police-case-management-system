@@ -19,13 +19,13 @@ export default function LoginPage() {
   useEffect(() => {
     if (user) {
       const roleRedirects = {
-        admin: '/dashboard/admin',
+        admin: '/dashboard/operations',
         sub_admin: '/police-officers',
         ob_staff: '/ob-register',
-        state_admin: '/dashboard/unit',
-        region_admin: '/dashboard/unit',
-        city_admin: '/dashboard/unit',
-        district_admin: '/dashboard/unit',
+        state_admin: '/dashboard/operations',
+        region_admin: '/dashboard/operations',
+        city_admin: '/districts',
+        district_admin: '/dashboard/operations',
         personnel_registry: '/police-officers',
         investigator: '/dashboard/investigator',
         station_jail: '/dashboard/jail',
@@ -38,10 +38,10 @@ export default function LoginPage() {
         prosecutor: '/dashboard/court',
         prosecutor_liaison: '/dashboard/cid',
         jail: '/dashboard/central-jail',
-        state_commander: '/dashboard/unit',
-        region_commander: '/dashboard/unit',
-        district_commander: '/dashboard/unit',
-        police_station_commander: '/dashboard/unit'
+        state_commander: '/dashboard/operations',
+        region_commander: '/dashboard/operations',
+        district_commander: '/dashboard/operations',
+        police_station_commander: '/dashboard/operations'
       };
       router.replace(roleRedirects[user.role] || '/police-officers');
     }

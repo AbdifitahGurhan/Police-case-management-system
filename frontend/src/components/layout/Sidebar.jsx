@@ -34,7 +34,7 @@ const Sidebar = ({ collapsed }) => {
 
   const role = user?.role;
   const dashboardPathMap = {
-    admin: '/dashboard/admin',
+    admin: '/dashboard/operations',
     sub_admin: '/police-officers',
     personnel_registry: '/police-officers',
     investigator: '/dashboard/investigator',
@@ -44,14 +44,14 @@ const Sidebar = ({ collapsed }) => {
     cid_director: '/dashboard/cid',
     cid_supervisor: '/dashboard/cid',
     cid_officer: '/dashboard/cid',
-    state_admin: '/dashboard/unit',
-    region_admin: '/dashboard/unit',
-    city_admin: '/dashboard/unit',
-    district_admin: '/dashboard/unit',
-    state_commander: '/dashboard/unit',
-    region_commander: '/dashboard/unit',
-    district_commander: '/dashboard/unit',
-    police_station_commander: '/dashboard/unit',
+    state_admin: '/dashboard/operations',
+    region_admin: '/dashboard/operations',
+    city_admin: '/districts',
+    district_admin: '/dashboard/operations',
+    state_commander: '/dashboard/operations',
+    region_commander: '/dashboard/operations',
+    district_commander: '/dashboard/operations',
+    police_station_commander: '/dashboard/operations',
     ob_staff: '/ob-register',
     staff: '/cases',
     court: '/dashboard/court',
@@ -125,11 +125,6 @@ const Sidebar = ({ collapsed }) => {
         key: dashboardPath,
         icon: dashboardPath === '/ob-register' ? <DatabaseOutlined /> : <DashboardOutlined />,
         label: role === 'investigator' ? 'Hawlaha Baaraha' : (isCourtRole ? 'Dashboard-ka Maxkamadda' : (dashboardPath === '/ob-register' ? 'Diiwaanka OB-da' : 'Dashboard-ka Guud')),
-      }] : []),
-      ...(['district_admin', 'district_commander', 'police_station_commander'].includes(role) && hasPermission('cases.view') ? [{
-        key: '/district-operations',
-        icon: <ApartmentOutlined />,
-        label: 'Hawlaha Degmada',
       }] : []),
       ...(role === 'district_admin' && hasPermission('cases.view') && dashboardPath !== '/dashboard/cid' ? [{
         key: '/dashboard/cid',
@@ -298,7 +293,7 @@ const Sidebar = ({ collapsed }) => {
       collapsible
       collapsed={collapsed}
       collapsedWidth={64}
-      width={276}
+      width={252}
     >
       <div className="police-sidebar-shell">
         <div className="police-sidebar-brand">
@@ -306,8 +301,8 @@ const Sidebar = ({ collapsed }) => {
             <Image
               src="/somali-police-logo.png"
               alt="Somali Police Force logo"
-              width={35}
-              height={28}
+              width={58}
+              height={58}
               priority
             />
           </div>

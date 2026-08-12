@@ -19,7 +19,10 @@ import {
   ClockCircleOutlined,
   SunOutlined,
   MoonOutlined,
+  CalendarOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import api from '@/services/api';
@@ -333,7 +336,16 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
         onClick={() => setCollapsed(!collapsed)}
       />
 
+      <div className="topbar-search">
+        <Input prefix={<SearchOutlined />} placeholder="Raadi kiis ama OB..." variant="borderless" />
+        <span>Ctrl + K</span>
+      </div>
+
       <Space size="large">
+        <div className="topbar-date">
+          <CalendarOutlined />
+          <span>{dayjs().format('dddd, D MMMM YYYY')}</span>
+        </div>
         {/* ── Theme toggle ── */}
         <Tooltip title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
           <Button

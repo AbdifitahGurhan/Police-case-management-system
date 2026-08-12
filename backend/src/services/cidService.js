@@ -6,7 +6,8 @@ const CID_READY_STATUSES = ['referred_to_cid', 'referred_cid', 'assigned_to_cid'
 
 const isCidReadyStatus = (status) => CID_READY_STATUSES.includes(String(status || '').toLowerCase());
 
-const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system', executor = db) => {
+const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system', executor = db, options = {}) => {
+  const forceCreate = Boolean(options.force);
   const [[policeCase]] = await executor.query(
     `SELECT c.id, c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
             COALESCE(c.case_type, c.incident_type) AS crime_category,
@@ -24,17 +25,25 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system', executor
   );
 
   const isCidReady = isCidReadyStatus(policeCase.status) || (referral && ['accepted', 'pending', 'completed'].includes(referral.status));
-  if (!isCidReady) return null;
+  const [courtCidRemands] = await executor.query(
+    "SELECT id FROM court_remands WHERE police_case_id = ? AND LOWER(sent_to_role) = 'cid' LIMIT 1",
+    [caseId]
+  );
+  const hasCourtCidRemand = forceCreate || courtCidRemands.length > 0;
+  if (!isCidReady && !hasCourtCidRemand) return null;
 
   const [[existing]] = await executor.query('SELECT * FROM cid_cases WHERE police_case_id = ?', [caseId]);
   if (existing) {
-    if (['sent_to_court'].includes(existing.investigation_status)) {
+    if (['sent_to_court'].includes(existing.investigation_status) && !hasCourtCidRemand) {
       return { ...existing, alreadyExists: true, terminal: true };
     }
     await executor.query(
       `UPDATE cid_cases
        SET case_number = ?, case_title = ?, crime_category = ?, priority = ?,
-           assigned_officer = COALESCE(assigned_officer, ?), updated_at = NOW()
+           assigned_officer = COALESCE(assigned_officer, ?),
+           assignment_status = CASE WHEN ? THEN 'assigned' ELSE assignment_status END,
+           investigation_status = CASE WHEN ? THEN 'under_investigation' ELSE investigation_status END,
+           updated_at = NOW()
        WHERE id = ?`,
       [
         policeCase.case_number,
@@ -42,6 +51,8 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system', executor
         policeCase.crime_category || 'General',
         policeCase.priority || 'medium',
         policeCase.assigned_officer_name || null,
+        hasCourtCidRemand,
+        hasCourtCidRemand,
         existing.id,
       ]
     );
@@ -49,11 +60,12 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system', executor
   }
 
   const supervisor = createdBy || 'system';
+  const initialInvestigationStatus = hasCourtCidRemand ? 'under_investigation' : 'open';
   const [result] = await executor.query(
     `INSERT INTO cid_cases
        (police_case_id, case_number, ob_number, case_title, crime_category, priority,
         assigned_officer, supervisor, assignment_status, investigation_status, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'assigned', 'open', ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?)`,
     [
       policeCase.id,
       policeCase.case_number,
@@ -63,6 +75,7 @@ const ensureCidCaseForPoliceCase = async (caseId, createdBy = 'system', executor
       policeCase.priority || 'medium',
       policeCase.assigned_officer_name || null,
       supervisor,
+      initialInvestigationStatus,
       createdBy,
     ]
   );
@@ -83,12 +96,10 @@ const syncAllCidCases = async (createdBy = 'system') => {
       SELECT DISTINCT c.id, c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
              COALESCE(c.case_type, c.incident_type) AS crime_category,
              c.priority, c.status AS case_status, po.full_name AS assigned_officer_name,
-             r.status AS referral_status, r.referred_by AS referral_by
+             cr.sent_by AS referral_by
       FROM cases c
       LEFT JOIN police_officers po ON po.id = c.assigned_officer_id
-      LEFT JOIN referrals r ON r.case_id = c.id AND r.referred_to_role IN ('cid','investigator')
-      WHERE LOWER(c.status) IN ('referred_to_cid', 'referred_cid', 'assigned_to_cid')
-         OR (r.id IS NOT NULL AND r.status IN ('accepted', 'pending', 'completed'))
+      JOIN court_remands cr ON cr.police_case_id = c.id AND LOWER(cr.sent_to_role) = 'cid'
     `);
 
     let syncCount = 0;
@@ -107,7 +118,7 @@ const syncAllCidCases = async (createdBy = 'system') => {
         } else if (pc.case_status === 'ready_for_court') {
           investigation_status = 'sent_to_prosecutor';
           assignment_status = 'accepted';
-        } else if (pc.case_status === 'under_investigation' || pc.referral_status === 'accepted') {
+        } else if (pc.case_status === 'under_investigation') {
           investigation_status = 'under_investigation';
           assignment_status = 'accepted';
         }

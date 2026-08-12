@@ -3,6 +3,7 @@
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { ensureCourtCaseForPoliceCase } = require('../services/courtService');
+const { ensureCidCaseForPoliceCase } = require('../services/cidService');
 const { syncCriminalCustodyStatus } = require('../utils/custodyStatus');
 const {
   WorkflowError,
@@ -380,7 +381,6 @@ const orderRemandInvestigation = async (req, res, next) => {
     const {
       sent_to_user_id,
       sent_to_role,
-      sent_to_station_id,
       reason,
       instructions,
       deadline_date,
@@ -390,9 +390,17 @@ const orderRemandInvestigation = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'instructions are required.' });
     }
 
+    const targetRole = String(sent_to_role || 'station').toLowerCase();
+    if (!['station', 'cid'].includes(targetRole)) {
+      return res.status(400).json({ success: false, message: 'sent_to_role must be station or cid.' });
+    }
+
     const result = await withTransaction(async (connection) => {
       const [[courtCase]] = await connection.query(
-        'SELECT id, police_case_id, status FROM court_cases WHERE id = ? FOR UPDATE',
+        `SELECT cc.id, cc.police_case_id, cc.status, c.district_id
+           FROM court_cases cc
+           JOIN cases c ON c.id = cc.police_case_id
+          WHERE cc.id = ? FOR UPDATE`,
         [req.params.id]
       );
       if (!courtCase) throw new WorkflowError('Court case not found.', 404);
@@ -409,6 +417,7 @@ const orderRemandInvestigation = async (req, res, next) => {
       }
       assertCourtTransition('remand_investigation', 'remanded_to_investigator');
 
+      const targetStationId = targetRole === 'station' ? courtCase.district_id : null;
       const [insert] = await connection.query(
         `INSERT INTO court_remands
           (court_case_id, police_case_id, sent_to_user_id, sent_to_role, sent_to_station_id,
@@ -418,8 +427,8 @@ const orderRemandInvestigation = async (req, res, next) => {
           courtCase.id,
           courtCase.police_case_id,
           sent_to_user_id || null,
-          sent_to_role || null,
-          sent_to_station_id || null,
+          targetRole,
+          targetStationId,
           reason || null,
           String(instructions).trim(),
           deadline_date || null,
@@ -429,12 +438,20 @@ const orderRemandInvestigation = async (req, res, next) => {
 
       await connection.query("UPDATE court_cases SET status = 'remanded_to_investigator' WHERE id = ?", [req.params.id]);
       await connection.query("UPDATE cases SET status = 'under_investigation' WHERE id = ?", [courtCase.police_case_id]);
+      if (targetRole === 'cid') {
+        await ensureCidCaseForPoliceCase(courtCase.police_case_id, actor(req), connection, { force: true });
+      }
       await connection.query(
         `INSERT INTO case_actions (case_id, performed_by, action_type, description, status_after)
          VALUES (?, ?, 'COURT_REMAND_ORDERED', ?, 'under_investigation')`,
         [courtCase.police_case_id, actor(req), reason || 'Court ordered additional investigation.']
       );
-      return { remandId: insert.insertId, policeCaseId: courtCase.police_case_id };
+      return {
+        remandId: insert.insertId,
+        policeCaseId: courtCase.police_case_id,
+        sentToRole: targetRole,
+        sentToStationId: targetStationId,
+      };
     });
 
     await writeAuditLog({
@@ -443,7 +460,15 @@ const orderRemandInvestigation = async (req, res, next) => {
       action: 'COURT_REMAND_ORDERED',
       entityType: 'court_remands',
       entityId: result.remandId,
-      newData: { court_case_id: Number(req.params.id), police_case_id: result.policeCaseId, ...req.body },
+      newData: {
+        court_case_id: Number(req.params.id),
+        police_case_id: result.policeCaseId,
+        sent_to_role: result.sentToRole,
+        sent_to_station_id: result.sentToStationId,
+        reason,
+        instructions: String(instructions).trim(),
+        deadline_date,
+      },
       ...auditRequestMeta(req),
     });
     res.status(201).json({ success: true, message: 'Remand investigation ordered.', remandId: result.remandId });

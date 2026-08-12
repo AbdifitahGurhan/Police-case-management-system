@@ -240,7 +240,7 @@ export default function CourtCasesPage() {
       values.decision_date = dayjs();
     }
     if (type === 'remand') {
-      values.sent_to_role = values.sent_to_role || 'investigator';
+      values.sent_to_role = values.sent_to_role || 'station';
     }
     if (type === 'sentence') {
       const sent = initial.sentence || (selected?.sentences?.length > 0 ? selected.sentences[0] : null);
@@ -1208,10 +1208,10 @@ export default function CourtCasesPage() {
       {modalType === 'remand' && (
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item name="sent_to_role" label="Cidda loo dirayo" initialValue="investigator">
+            <Form.Item name="sent_to_role" label="Cidda loo dirayo" initialValue="station">
               <Select options={[
-                { value: 'investigator', label: 'Baaraha Kiiska' },
                 { value: 'station', label: 'Saldhiggii soo gudbiyay' },
+                { value: 'cid', label: 'CID' },
               ]} />
             </Form.Item>
           </Col>
@@ -1219,6 +1219,13 @@ export default function CourtCasesPage() {
             <Form.Item name="deadline_date" label="Deadline">
               <DatePicker style={{ width: '100%' }} />
             </Form.Item>
+          </Col>
+          <Col span={24}>
+            <Alert
+              showIcon
+              type="info"
+              message="Haddii Saldhiggii soo gudbiyay la doorto, nidaamku wuxuu si otomaatig ah ugu celinayaa degmada/saldhigga case-ka soo gudbiyay. Haddii CID la doorto, kiisku wuxuu ka muuqanayaa dashboard-ka CID."
+            />
           </Col>
           <Col span={24}>
             <Form.Item name="reason" label="Sababta">

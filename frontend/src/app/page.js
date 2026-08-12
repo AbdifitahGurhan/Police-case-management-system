@@ -16,13 +16,13 @@ export default function Home() {
         router.push('/login');
       } else {
         const roleRedirects = {
-          admin: '/dashboard/admin',
+          admin: '/dashboard/operations',
           sub_admin: '/police-officers',
           ob_staff: '/ob-register',
-          state_admin: '/dashboard/unit',
-          region_admin: '/dashboard/unit',
-          city_admin: '/dashboard/unit',
-          district_admin: '/dashboard/unit',
+          state_admin: '/dashboard/operations',
+          region_admin: '/dashboard/operations',
+          city_admin: '/districts',
+          district_admin: '/dashboard/operations',
           personnel_registry: '/police-officers',
           station_jail: '/dashboard/jail',
           officer: '/dashboard/officer',
@@ -33,7 +33,11 @@ export default function Home() {
           court: '/dashboard/court',
           prosecutor: '/dashboard/court',
           prosecutor_liaison: '/dashboard/cid',
-          jail: '/dashboard/central-jail'
+          jail: '/dashboard/central-jail',
+          state_commander: '/dashboard/operations',
+          region_commander: '/dashboard/operations',
+          district_commander: '/dashboard/operations',
+          police_station_commander: '/dashboard/operations'
         };
         router.push(roleRedirects[user.role] || '/police-officers');
       }

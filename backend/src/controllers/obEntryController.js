@@ -104,6 +104,7 @@ const getObEntryById = async (req, res, next) => {
     const params = [req.params.id, ...scope.params];
     const [[row]] = await db.query(
       `SELECT ob.*,
+              COALESCE(NULLIF(u.full_name, ''), NULLIF(ob.registered_by_name, ''), u.username) AS registered_by_display_name,
               sa.state_name,
               r.region_name,
               d.district_name AS district_police_station_name,
@@ -111,6 +112,7 @@ const getObEntryById = async (req, res, next) => {
               c.case_number AS linked_case_number,
               c.status AS linked_case_status
        FROM ob_entries ob
+       LEFT JOIN users u ON u.id = ob.registered_by_user_id
        LEFT JOIN state_administrations sa ON ob.state_administration_id = sa.id
        LEFT JOIN regions r ON ob.region_id = r.id
        LEFT JOIN districts d ON ob.district_id = d.id

@@ -92,6 +92,7 @@ const getUsers = async (req, res, next) => {
               u.phone, u.\`rank\`, u.user_type, u.assigned_level, u.is_commander,
               u.is_active, u.status, u.last_login, u.created_by, u.created_at,
               r.name AS role,
+              u.district_id,
               sa.state_name,
               rg.region_name,
               d.district_name AS district_police_station_name

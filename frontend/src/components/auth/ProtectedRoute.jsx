@@ -13,7 +13,15 @@ const ProtectedRoute = ({ children, allowedRoles = [], requiredPermissions = [] 
   const role = String(user?.role || '').toLowerCase();
   const isAdmin = role === 'admin';
   const userPermissions = user?.permissions || [];
-  const hasRequiredPermission = requiredPermissions.some(permission => userPermissions.includes('*') || userPermissions.includes(permission));
+  const permissionImplies = {
+    'stations.manage': ['stations.view'],
+  };
+  const hasPermission = permission => (
+    userPermissions.includes('*') ||
+    userPermissions.includes(permission) ||
+    Object.entries(permissionImplies).some(([parent, children]) => userPermissions.includes(parent) && children.includes(permission))
+  );
+  const hasRequiredPermission = requiredPermissions.some(permission => hasPermission(permission));
   const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(role);
   const isDenied = Boolean(user && !isAdmin && !roleAllowed && !hasRequiredPermission);
 

@@ -26,6 +26,7 @@ function JailDashboardContent() {
   const hasPermission = key => user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes(key);
   const canIntake = hasPermission('station_jail.intake');
   const canAssignCell = hasPermission('station_jail.assign_cell');
+  const canCreateCentralTransfer = (row) => ['sentenced', 'serving'].includes(row.sentence_status) && !row.latest_transfer_status;
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message } = App.useApp();
@@ -257,7 +258,7 @@ function JailDashboardContent() {
     { title: 'Xaaladda', dataIndex: 'status', render: value => <Tag color={value === 'admitted' ? 'green' : 'default'}>{value === 'admitted' ? 'Ku jira' : 'Laga saaray'}</Tag> },
     { title: 'Qolka', render: (_, row) => row.cell_number ? `${row.block_name} / ${row.cell_number} (${row.cell_occupancy || 0}/${row.cell_capacity || '?'})` : 'Looma qoondeyn' },
     { title: 'Sentence', dataIndex: 'sentence_status', render: (value) => <Tag>{value}</Tag> },
-    { title: 'Transfer', render: (_, row) => row.latest_transfer_status === 'completed' ? <Tag color="green">{`Ku jira Central Jail${row.latest_transfer_to_facility ? ` - ${row.latest_transfer_to_facility}` : ''}`}</Tag> : row.latest_transfer_status ? <Tag color="gold">{`${row.latest_transfer_status} ${row.latest_transfer_to_facility ? `-> ${row.latest_transfer_to_facility}` : ''}`}</Tag> : (row.sentence_status === 'serving' ? <Tag color="orange">Sugaya transfer</Tag> : <Tag>Ma jiro</Tag>) },
+    { title: 'Transfer', render: (_, row) => row.latest_transfer_status === 'completed' ? <Tag color="green">{`Ku jira Central Jail${row.latest_transfer_to_facility ? ` - ${row.latest_transfer_to_facility}` : ''}`}</Tag> : row.latest_transfer_status ? <Tag color="gold">{`${row.latest_transfer_status} ${row.latest_transfer_to_facility ? `-> ${row.latest_transfer_to_facility}` : ''}`}</Tag> : (['sentenced', 'serving'].includes(row.sentence_status) ? <Tag color="orange">Sugaya transfer</Tag> : <Tag>Ma jiro</Tag>) },
     { title: 'Release', render: (_, row) => row.expected_release_date ? <Space orientation="vertical" size={0}><span>{dayjs(row.expected_release_date).format('DD MMM YYYY')}</span><Tag color={Number(row.days_remaining) <= 7 ? 'red' : Number(row.days_remaining) <= 30 ? 'orange' : 'blue'}>{row.days_remaining} days left</Tag></Space> : 'N/A' },
     { title: 'Release workflow', render: (_, row) => row.release_approval_status ? <Tag color={row.release_approval_status === 'rejected' ? 'red' : row.release_approval_status === 'released' ? 'green' : 'gold'}>{row.release_approval_status.replaceAll('_', ' ')}</Tag> : 'Not requested' },
     { title: 'Last roll call', render: (_, row) => row.last_roll_status ? <Tag color={row.last_roll_status === 'present' ? 'green' : 'orange'}>{row.last_roll_status}</Tag> : 'Not recorded' },
@@ -267,7 +268,7 @@ function JailDashboardContent() {
         const isCentralJail = row.latest_transfer_status === 'completed';
         return <Space>
         {canAssignCell && !isCentralJail && <Button size="small" onClick={() => openAction('cell', row)}>Qol U Qoondee</Button>}
-        {canIntake && row.sentence_status === 'serving' && !row.latest_transfer_status && <Button size="small" onClick={() => openAction('transfer', row)}>Samee Transfer Document</Button>}
+        {canIntake && canCreateCentralTransfer(row) && <Button size="small" onClick={() => openAction('transfer', row)}>Samee Transfer Document</Button>}
         {row.latest_transfer_id && <Button size="small" onClick={() => printTransferDocument(row.latest_transfer_id)}>Daabac Transfer</Button>}
         <Button size="small" onClick={() => openHistory(row)}>Taariikhda</Button>
         {canIntake && !isCentralJail && <Button size="small" type="primary" onClick={() => openAction('roll', row)}>Tiro-koob</Button>}

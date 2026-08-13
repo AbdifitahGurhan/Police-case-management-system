@@ -108,6 +108,7 @@ const Sidebar = ({ collapsed }) => {
     // Role visibility aligned to Part 5 permission matrix
     const canViewOffenders = hasPermission('suspects.view') || hasPermission('suspects.manage');
     const canViewReports = hasPermission('reports.view') || hasPermission('reports.export');
+    const canViewStations = hasPermission('stations.view') || hasPermission('stations.manage');
 
     const caseReadRoles = [
       'admin', 'sub_admin', 'officer', 'staff', 'investigator', 'station_jail', 'region_admin', 'district_admin',
@@ -189,7 +190,7 @@ const Sidebar = ({ collapsed }) => {
     if (hasPermission('audit_logs.view')) adminMenus.push({ key: '/audit-logs', icon: <FileDoneOutlined />, label: 'Diiwaanka Hawlaha' });
     if (hasPermission('ranks.manage') || hasPermission('ranks.assign')) adminMenus.push({ key: '/ranks', icon: <StarOutlined />, label: 'Darajooyinka Booliska' });
     if (hasPermission('officers.view') || hasPermission('officers.create') || hasPermission('officers.approve')) adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Saraakiisha Booliska' });
-    if (hasPermission('evidence.manage')) adminMenus.push({ key: '/evidence', icon: <SafetyCertificateOutlined />, label: 'Caddeymaha' });
+    if (canViewStations && !['region_admin', 'region_commander'].includes(role)) adminMenus.push({ key: '/stations', icon: <BankOutlined />, label: 'Xarumaha Boliiska' });
     if (role === 'admin') { adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Garsoorayaasha & Xeer-ilaaliyaasha' }); adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'Maamul-goboleedyada' }); }
     if (['court','court_admin'].includes(role)) {
       adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Garsoorayaasha & Xeer-ilaaliyaasha' });
@@ -213,7 +214,7 @@ const Sidebar = ({ collapsed }) => {
         label: 'Saldhigyada Booliska',
         children: [
           { key: '/districts', label: 'Degmooyinka' },
-          { key: '/stations', label: 'Saldhigyada Degmooyinka' },
+          ...(canViewStations ? [{ key: '/stations', label: 'Xarumaha Boliiska' }] : []),
           { key: '/reports?section=station-performance', label: 'Warbixinada Saldhigga' },
         ],
       });

@@ -217,7 +217,7 @@ const getCourtCaseById = async (req, res, next) => {
     if (!courtCase) return res.status(404).json({ success: false, message: 'Court case not found.' });
 
     const policeCaseId = courtCase.police_case_id;
-    const [criminals] = await db.query(`
+    let [criminals] = await db.query(`
       SELECT s.*, cs.role_in_case, cs.status AS case_criminal_status
       FROM criminals s
       JOIN case_criminals cs ON cs.criminal_id = s.id
@@ -266,6 +266,23 @@ const getCourtCaseById = async (req, res, next) => {
         ORDER BY cs.sentence_date DESC`,
       [courtCase.id]
     );
+    const sentenceByCriminalId = new Map();
+    for (const sentence of sentences) {
+      const criminalId = Number(sentence.criminal_id);
+      if (!sentenceByCriminalId.has(criminalId)) sentenceByCriminalId.set(criminalId, sentence);
+    }
+    criminals = criminals.map((criminal) => {
+      const sentence = sentenceByCriminalId.get(Number(criminal.id));
+      return {
+        ...criminal,
+        has_court_sentence: Boolean(sentence),
+        court_sentence_id: sentence?.id || null,
+        court_sentence_type: sentence?.sentence_type || null,
+        court_sentence_duration: sentence?.duration || null,
+        court_sentence_fine_amount: sentence?.fine_amount || null,
+        court_sentence_date: sentence?.sentence_date || null,
+      };
+    });
     const [appeals] = await db.query('SELECT * FROM court_appeals WHERE court_case_id = ? ORDER BY filing_date DESC', [courtCase.id]);
     const [remands] = await db.query('SELECT * FROM court_remands WHERE court_case_id = ? ORDER BY sent_at DESC, id DESC', [courtCase.id]);
     const [auditTrail] = await db.query(`
@@ -1045,6 +1062,60 @@ const closeCourtCase = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const reopenCourtCaseForSentence = async (req, res, next) => {
+  try {
+    const [[courtCase]] = await db.query(
+      'SELECT id, police_case_id, status, final_outcome FROM court_cases WHERE id = ?',
+      [req.params.id]
+    );
+    if (!courtCase) return res.status(404).json({ success: false, message: 'Court case not found.' });
+    if (courtCase.status !== 'closed') {
+      return res.status(409).json({ success: false, message: `Only a closed court case can be reopened for sentencing. Current status: ${courtCase.status}.` });
+    }
+    if (courtCase.final_outcome !== 'convicted') {
+      return res.status(409).json({ success: false, message: 'Only a convicted court case can be reopened for sentencing.' });
+    }
+
+    const [[unsentenced]] = await db.query(
+      `SELECT cr.id
+         FROM case_criminals link
+         JOIN criminals cr ON cr.id = link.criminal_id
+        WHERE link.case_id = ?
+          AND link.status = 'active'
+          AND NOT EXISTS (
+            SELECT 1 FROM court_sentences sentence
+             WHERE sentence.court_case_id = ?
+               AND sentence.criminal_id = cr.id
+          )
+        LIMIT 1`,
+      [courtCase.police_case_id, courtCase.id]
+    );
+    if (!unsentenced) {
+      return res.status(409).json({ success: false, message: 'No active unsentenced suspect is linked to this court case.' });
+    }
+
+    await db.query(
+      `UPDATE court_cases
+          SET status = 'judgment',
+              closure_reason = NULL,
+              closure_date = NULL
+        WHERE id = ?`,
+      [courtCase.id]
+    );
+    await writeAuditLog({
+      userId: actor(req),
+      userEmail: req.user.email,
+      action: 'REOPEN_COURT_CASE_FOR_SENTENCE',
+      entityType: 'court_cases',
+      entityId: Number(req.params.id),
+      oldData: courtCase,
+      newData: { status: 'judgment', reason: 'Active unsentenced suspect linked after closure.' },
+      ...auditRequestMeta(req),
+    });
+    res.json({ success: true, message: 'Court case reopened for sentencing.' });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   getCourtDashboard,
   getCourtPersonnel,
@@ -1067,4 +1138,5 @@ module.exports = {
   updateCourtWitness,
   decideAppeal,
   closeCourtCase,
+  reopenCourtCaseForSentence,
 };

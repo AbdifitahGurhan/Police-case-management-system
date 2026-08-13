@@ -9,6 +9,7 @@ const permissions=[
  ['cases.view','Arag kiis'],['cases.investigate','Baar kiis'],['evidence.manage','Maamul caddeyn'],
  ['suspects.view','Arag eedaysane'],['suspects.create','Abuur eedaysane'],['suspects.update','Wax ka beddel eedaysane'],['suspects.manage','Maamul eedaysane'],
  ['station_jail.view','Arag xabsiga saldhigga'],['station_jail.intake','Qaabil maxbuus'],['station_jail.assign_cell','U qoondee qol'],
+ ['stations.view','Arag Xarumaha Boliiska'],['stations.manage','Maamul Xarumaha Boliiska'],
  ['jail.view','Arag xabsiga dhexe'],['jail.receive_transfer','Qaabil wareejinta xabsiga dhexe'],['jail.assign_cell','U qoondee qol xabsiga dhexe'],['jail.medical','Maamul caafimaadka maxbuuska'],['jail.visitors','Maamul booqdayaasha maxbuuska'],['jail.release_confirm','Xaqiiji sii-daynta xabsiga dhexe'],
  ['officers.update','Wax ka beddel askari'],['officers.delete','Ka saar askari'],['officers.transfer','Wareeji askari'],
  ['locations.view','Arag maamul-goboleedyada iyo degmooyinka'],['locations.manage','Maamul maamul-goboleedyada iyo degmooyinka'],
@@ -17,12 +18,12 @@ const permissions=[
 const grants={
  admin:['*'], sub_admin:['users.manage','officers.view','officers.create','reports.view'],
  state_admin:['officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ranks.assign','ranks.manage','reports.view','locations.view','locations.manage','ob.view','cases.view'],
- region_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ob.view','cases.view','reports.view','locations.view','locations.manage'],
+ region_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ob.view','cases.view','reports.view','locations.view','locations.manage','stations.view'],
  district_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','ob.view','cases.view','cases.investigate','station_jail.view','reports.view','locations.view'],
  personnel_registry:['officers.view','officers.create'], ob_staff:['ob.view','ob.create','ob.update','ob.print'],
  investigator:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage'],
  cid:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view'], cid_director:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view'], cid_supervisor:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view'], cid_officer:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage'],
- district_commander:['officers.view','ob.view','cases.view','station_jail.view','reports.view'], police_station_commander:['officers.view','ob.view','cases.view','station_jail.view','reports.view'], region_commander:['officers.view','ob.view','cases.view','reports.view'], state_commander:['officers.view','ob.view','cases.view','reports.view'],
+ district_commander:['officers.view','ob.view','cases.view','station_jail.view','reports.view'], police_station_commander:['officers.view','ob.view','cases.view','station_jail.view','reports.view'], region_commander:['officers.view','ob.view','cases.view','reports.view','stations.view'], state_commander:['officers.view','ob.view','cases.view','reports.view'],
  station_jail:['cases.view','station_jail.view','station_jail.intake','station_jail.assign_cell'],
  officer:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage'], jail:['cases.view','jail.view','jail.receive_transfer','jail.assign_cell','jail.medical','jail.visitors','jail.release_confirm']
 };

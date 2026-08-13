@@ -162,6 +162,17 @@ export default function CourtCasesPage() {
   const can = (action) => config.actions.includes(action);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const sentenceByCriminalId = useMemo(() => {
+    const map = new Map();
+    for (const sentence of selected?.sentences || []) {
+      const criminalId = Number(sentence.criminal_id);
+      if (!map.has(criminalId)) map.set(criminalId, sentence);
+    }
+    return map;
+  }, [selected?.sentences]);
+  const hasUnsentencedSuspect = useMemo(() => (
+    (selected?.suspects || []).some((suspect) => !sentenceByCriminalId.has(Number(suspect.id)))
+  ), [selected?.suspects, sentenceByCriminalId]);
 
   const loadCases = useCallback(async (nextFilters = {}) => {
     setLoading(true);
@@ -243,7 +254,7 @@ export default function CourtCasesPage() {
       values.sent_to_role = values.sent_to_role || 'station';
     }
     if (type === 'sentence') {
-      const sent = initial.sentence || (selected?.sentences?.length > 0 ? selected.sentences[0] : null);
+      const sent = initial.sentence || null;
       if (sent) {
         values.criminal_id = sent.criminal_id || values.criminal_id;
         values.sentence_type = sent.sentence_type || 'imprisonment';
@@ -282,6 +293,19 @@ export default function CourtCasesPage() {
     setModalType(null);
     setActiveHearing(null);
     form.resetFields();
+  };
+
+  const reopenForSentence = async () => {
+    const id = selected?.courtCase?.id;
+    if (!id) return;
+    try {
+      await api.patch(`/court/cases/${id}/reopen-for-sentence`, {}, { skipErrorNotification: true });
+      message.success('Kiiska waxaa dib loogu furay xukun qof cusub.');
+      await loadDetail(id);
+      await loadCases(filters);
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Kiiska dib looma furi karin.');
+    }
   };
 
   const refreshAfterAction = async () => {
@@ -628,7 +652,13 @@ export default function CourtCasesPage() {
               {/* ── Action Buttons (Two-Tier) ──────────────────────────── */}
               {(() => {
                 const s = courtCase.status;
+                const canReopenForSentence = can('sentence')
+                  && s === 'closed'
+                  && courtCase.final_outcome === 'convicted'
+                  && hasUnsentencedSuspect;
                 const primaryAction = (() => {
+                  if (canReopenForSentence)
+                    return { label: 'Dib u fur si xukun loogu sameeyo', action: 'reopen_for_sentence' };
                   if (s === 'court_received' && can('arraignment'))
                     return { label: 'Samee Horgeyn + Qirasho', action: 'arraignment' };
                   if (s === 'arraignment' && can('remand'))
@@ -669,9 +699,9 @@ export default function CourtCasesPage() {
                     label: 'Ku dar Qoraalka Fadhiga',
                     onClick: () => openModal('proceeding'),
                   } : null,
-                  can('sentence') && s === 'judgment' ? {
+                  can('sentence') && ['judgment', 'sentenced'].includes(s) ? {
                     key: 'sentence',
-                    label: selected?.sentences?.length > 0 ? 'Wax ka baddal Xukunka (Update Sentence)' : 'Xukun rid (Issue Sentence)',
+                    label: 'Xukun rid (Issue Sentence)',
                     onClick: () => openModal('sentence'),
                   } : null,
                   can('appeal') && ['judgment', 'sentenced'].includes(s) ? {
@@ -686,7 +716,7 @@ export default function CourtCasesPage() {
                     {primaryAction && (
                       <Button
                         type="primary"
-                        onClick={() => openModal(primaryAction.action)}
+                        onClick={() => primaryAction.action === 'reopen_for_sentence' ? reopenForSentence() : openModal(primaryAction.action)}
                         style={{ fontWeight: 600 }}
                       >
                         {primaryAction.label}
@@ -932,6 +962,39 @@ export default function CourtCasesPage() {
                               { title: 'Aqoonsiga', render: (_, row) => safe(row.national_id || row.id_number) },
                               { title: 'Doorka Kiiska', dataIndex: 'role_in_case', render: safe },
                               { title: 'Heerka Xarigga', dataIndex: 'arrest_status', render: (v) => <Tag>{safe(v)}</Tag> },
+                              {
+                                title: 'Xukunka',
+                                render: (_, row) => {
+                                  const sentence = sentenceByCriminalId.get(Number(row.id));
+                                  return sentence
+                                    ? <Tag color="red">{`${sentence.sentence_type}${sentence.duration ? ` - ${sentence.duration}` : ''}`}</Tag>
+                                    : <Tag color="default">Wali xukun looma ridin</Tag>;
+                                },
+                              },
+                              {
+                                title: 'Ficil',
+                                render: (_, row) => {
+                                  if (!can('sentence') || !['judgment', 'sentenced'].includes(courtCase.status)) return null;
+                                  const sentence = sentenceByCriminalId.get(Number(row.id));
+                                  return sentence ? (
+                                    <Button size="small" icon={<EditOutlined />} onClick={() => openModal('sentence', { sentence })}>
+                                      Baddal Xukunka
+                                    </Button>
+                                  ) : (
+                                    <Button size="small" type="primary" onClick={() => openModal('sentence', {
+                                      values: {
+                                        criminal_id: row.id,
+                                        defendant_name: row.full_name,
+                                        sentence_type: 'imprisonment',
+                                        sentence_date: dayjs(),
+                                        duration_unit: 'sano',
+                                      },
+                                    })}>
+                                      Xukun u samee
+                                    </Button>
+                                  );
+                                },
+                              },
                             ]}
                           />
                         </Card>

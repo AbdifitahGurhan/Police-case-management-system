@@ -711,15 +711,15 @@ export default function OffendersPage() {
       dataIndex: 'full_name',
       width: 260,
       render: (name, row) => (
-        <Space align="start" style={{ minWidth: 220 }}>
+        <Space className="offender-identity-cell" align="start">
           {(row.face_capture_image || row.photo_url) ? (
-            <Avatar size={48} src={<Image src={(() => { const img = row.face_capture_image || row.photo_url; return (img.startsWith('data:') || img.startsWith('http')) ? img : `${UPLOAD_BASE_URL}${img}`; })()} alt={name} preview={false} />} />
+            <Avatar className="offender-avatar" size={48} src={<Image src={(() => { const img = row.face_capture_image || row.photo_url; return (img.startsWith('data:') || img.startsWith('http')) ? img : `${UPLOAD_BASE_URL}${img}`; })()} alt={name} preview={false} />} />
           ) : (
-            <Avatar size={48} icon={<UserOutlined />} />
+            <Avatar className="offender-avatar offender-avatar--empty" size={48} icon={<UserOutlined />} />
           )}
-          <div style={{ minWidth: 150, maxWidth: 260 }}>
-            <Text strong style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</Text>
-            <Text type="secondary" style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.alias || 'No alias'}</Text>
+          <div className="offender-identity-copy">
+            <Text strong>{name}</Text>
+            <Text type="secondary">{row.alias || 'No alias'}</Text>
           </div>
         </Space>
       ),
@@ -773,28 +773,28 @@ export default function OffendersPage() {
           />
         )}
 
-        <div className="reports-hero">
+        <div className="offenders-hero">
           <div>
             <Text className="dashboard-eyebrow">Record Management</Text>
             <Title level={2}>Offender Registry</Title>
-            <Text type="secondary">Manage identity, photos, biometrics, search, and repeat offender analysis.</Text>
+            <Text className="offenders-hero-subtitle">Manage identity, photos, biometrics, search, and repeat offender analysis.</Text>
           </div>
-          <Space wrap>
+          <Space className="offenders-hero-actions" wrap>
             <Button icon={<PrinterOutlined />} onClick={printList}>Print</Button>
             <Button icon={<DownloadOutlined />} onClick={exportCsv}>Export CSV</Button>
             {canCreateOffenders && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Register Offender</Button>}
           </Space>
         </div>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Total Offenders" value={stats.total} prefix={<TeamOutlined />} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Repeat Offenders" value={stats.repeat} prefix={<IdcardOutlined />} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="Arrested" value={stats.arrested} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="report-kpi-card"><Statistic title="With Photos" value={stats.withPhotos} prefix={<FileImageOutlined />} /></Card></Col>
+        <Row className="offenders-kpi-row" gutter={[14, 14]}>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Total Offenders" value={stats.total} prefix={<TeamOutlined />} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Repeat Offenders" value={stats.repeat} prefix={<IdcardOutlined />} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Arrested" value={stats.arrested} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="With Photos" value={stats.withPhotos} prefix={<FileImageOutlined />} /></Card></Col>
         </Row>
 
-        <Card variant="none" className="report-panel" style={{ marginTop: 16 }}>
-          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Card variant="none" className="offenders-panel">
+          <Row className="offenders-filter-row" gutter={[12, 12]}>
             <Col xs={24} lg={10}>
               <Input prefix={<SearchOutlined />} placeholder="Search name, alias, ID, phone, or address" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} allowClear />
             </Col>
@@ -802,7 +802,7 @@ export default function OffendersPage() {
             <Col xs={12} lg={4}><Select placeholder="Status" value={filters.arrested} onChange={(value) => setFilters((prev) => ({ ...prev, arrested: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Arrested' }, { value: '0', label: 'Not Arrested' }]} /></Col>
             <Col xs={24} lg={4}><Select placeholder="Repeat" value={filters.repeat} onChange={(value) => setFilters((prev) => ({ ...prev, repeat: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Repeat' }]} /></Col>
           </Row>
-          <Table columns={columns} dataSource={offenders} rowKey="id" loading={loading} scroll={{ x: 1200 }} />
+          <Table className="offenders-table" columns={columns} dataSource={offenders} rowKey="id" loading={loading} scroll={{ x: 1200 }} />
         </Card>
 
         <Modal

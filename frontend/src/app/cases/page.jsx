@@ -1,7 +1,7 @@
 // src/app/cases/page.jsx
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import {
   Breadcrumb,
   Alert,
@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { EyeOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import dayjs from 'dayjs';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import CaseStatusTag from '@/components/shared/CaseStatusTag';
@@ -61,8 +62,11 @@ const priorityTone = {
   low: 'neutral',
 };
 
-export default function CaseListPage() {
+function CaseListContent() {
   const { user, loading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const initialDistrictId = searchParams.get('district_id') ? Number(searchParams.get('district_id')) : undefined;
+  const initialScope = searchParams.get('scope') || undefined;
   const [cases, setCases] = useState([]);
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +76,8 @@ export default function CaseListPage() {
     search: '',
     status: undefined,
     priority: undefined,
-    district_id: undefined,
+    district_id: initialDistrictId,
+    scope: initialScope,
   });
   const [pagination, setPagination] = useState({
     current: 1,
@@ -98,6 +103,7 @@ export default function CaseListPage() {
       if (activeFilters.status) params.status = activeFilters.status;
       if (activeFilters.priority) params.priority = activeFilters.priority;
       if (activeFilters.district_id) params.district_id = activeFilters.district_id;
+      if (activeFilters.scope) params.scope = activeFilters.scope;
 
       const res = await api.get('/cases', { params });
       const meta = res.data.pagination || {};
@@ -313,5 +319,13 @@ export default function CaseListPage() {
         </Card>
       </Space>
     </ProtectedRoute>
+  );
+}
+
+export default function CaseListPage() {
+  return (
+    <Suspense fallback={null}>
+      <CaseListContent />
+    </Suspense>
   );
 }

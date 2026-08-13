@@ -1,22 +1,26 @@
 // src/app/users/page.jsx
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { Table, Card, Typography, Space, Button, Tag, Modal, Form, Input, Select, Popconfirm, Row, Col, App, Avatar, Descriptions } from 'antd';
 import { UserAddOutlined, EditOutlined, DeleteOutlined, LockOutlined, EyeOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { emailRule, nameRules, optionalPasswordRules, passwordRules, phoneRules, requiredRule, textLengthRule, usernameRules } from '@/utils/validation';
+import { useSearchParams } from 'next/navigation';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
 
 
-export default function UserManagementPage() {
+function UserManagementContent() {
   const { user } = useAuth();
   const { message } = App.useApp();
+  const searchParams = useSearchParams();
+  const queryRole = String(searchParams.get('role') || '').toLowerCase();
+  const queryDistrictId = searchParams.get('district_id');
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [states, setStates] = useState([]);
@@ -69,6 +73,17 @@ export default function UserManagementPage() {
     investigator: 'Baare',
     station_jail: 'Station Jail',
   }[String(role?.name || '').toLowerCase()] || role?.name);
+
+  const filteredUsers = useMemo(() => {
+    return (users || []).filter((item) => {
+      const isCurrentUser = String(item.id) === String(user?.id)
+        || String(item.username).toLowerCase() === String(user?.username || '').toLowerCase();
+      if (isCurrentUser) return false;
+      if (queryRole && String(item.role || '').toLowerCase() !== queryRole) return false;
+      if (queryDistrictId && String(item.district_id || '') !== String(queryDistrictId)) return false;
+      return true;
+    });
+  }, [queryDistrictId, queryRole, user?.id, user?.username, users]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -271,7 +286,7 @@ export default function UserManagementPage() {
         </div>
 
         <Card variant="none">
-          <Table columns={columns} dataSource={(users || []).filter(u => String(u.id) !== String(user?.id) && String(u.username).toLowerCase() !== String(user?.username || '').toLowerCase())} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
+          <Table columns={columns} dataSource={filteredUsers} rowKey="id" loading={loading} scroll={{ x: 'max-content' }} />
         </Card>
 
         {/* View Details Modal */}
@@ -463,5 +478,13 @@ export default function UserManagementPage() {
         </Modal>
       </Space>
     </ProtectedRoute>
+  );
+}
+
+export default function UserManagementPage() {
+  return (
+    <Suspense fallback={null}>
+      <UserManagementContent />
+    </Suspense>
   );
 }

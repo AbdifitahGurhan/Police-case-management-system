@@ -6,10 +6,13 @@ import dayjs from 'dayjs';
 import api from '@/services/api';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSearchParams } from 'next/navigation';
 
 function StationJailAdmissionsContent() {
   const { user } = useAuth();
   const { message } = App.useApp();
+  const searchParams = useSearchParams();
+  const districtId = searchParams.get('district_id');
   const [admissions, setAdmissions] = useState([]);
   const [custodyHistory, setCustodyHistory] = useState(null);
   const [selectedAdmission, setSelectedAdmission] = useState(null);
@@ -19,18 +22,21 @@ function StationJailAdmissionsContent() {
   const [transferForm] = Form.useForm();
   const hasPermission = key => user?.role === 'admin' || user?.permissions?.includes('*') || user?.permissions?.includes(key);
   const canTransfer = hasPermission('station_jail.intake');
+  const canCreateCentralTransfer = (row) => ['sentenced', 'serving'].includes(row.sentence_status) && !row.latest_transfer_status;
 
   const loadAdmissions = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await api.get('/custody/admissions');
+      const response = await api.get('/custody/admissions', {
+        params: districtId ? { district_id: districtId } : undefined,
+      });
       setAdmissions(response.data.data || []);
     } catch (error) {
       message.error(error.response?.data?.message || 'Maxaabiista lama soo qaadi karin.');
     } finally {
       setLoading(false);
     }
-  }, [message]);
+  }, [districtId, message]);
 
   useEffect(() => {
     loadAdmissions();
@@ -136,14 +142,14 @@ function StationJailAdmissionsContent() {
     { title: 'Xaaladda', dataIndex: 'status', render: value => <Tag color={value === 'admitted' ? 'green' : 'default'}>{value === 'admitted' ? 'Ku jira' : 'Laga saaray'}</Tag> },
     { title: 'Qolka', render: (_, row) => row.cell_number ? `${row.block_name} / ${row.cell_number} (${row.cell_occupancy || 0}/${row.cell_capacity || '?'})` : 'Looma qoondeyn' },
     { title: 'Sentence', dataIndex: 'sentence_status', render: (value) => <Tag>{value}</Tag> },
-    { title: 'Transfer', render: (_, row) => row.latest_transfer_status === 'completed' ? <Tag color="green">{`Ku jira Central Jail${row.latest_transfer_to_facility ? ` - ${row.latest_transfer_to_facility}` : ''}`}</Tag> : row.latest_transfer_status ? <Tag color="gold">{`${row.latest_transfer_status} ${row.latest_transfer_to_facility ? `-> ${row.latest_transfer_to_facility}` : ''}`}</Tag> : (row.sentence_status === 'serving' ? <Tag color="orange">Sugaya transfer</Tag> : <Tag>Ma jiro</Tag>) },
+    { title: 'Transfer', render: (_, row) => row.latest_transfer_status === 'completed' ? <Tag color="green">{`Ku jira Central Jail${row.latest_transfer_to_facility ? ` - ${row.latest_transfer_to_facility}` : ''}`}</Tag> : row.latest_transfer_status ? <Tag color="gold">{`${row.latest_transfer_status} ${row.latest_transfer_to_facility ? `-> ${row.latest_transfer_to_facility}` : ''}`}</Tag> : (['sentenced', 'serving'].includes(row.sentence_status) ? <Tag color="orange">Sugaya transfer</Tag> : <Tag>Ma jiro</Tag>) },
     { title: 'Release', render: (_, row) => row.expected_release_date ? dayjs(row.expected_release_date).format('DD MMM YYYY') : 'N/A' },
     { title: 'Release workflow', render: (_, row) => row.release_approval_status ? <Tag color="gold">{row.release_approval_status.replaceAll('_', ' ')}</Tag> : 'Not requested' },
     { title: 'Last roll call', render: (_, row) => row.last_roll_status ? <Tag color={row.last_roll_status === 'present' ? 'green' : 'orange'}>{row.last_roll_status}</Tag> : 'Not recorded' },
     {
       title: 'Ficillada',
       render: (_, row) => <Space>
-        {canTransfer && row.sentence_status === 'serving' && !row.latest_transfer_status && <Button size="small" type="primary" onClick={() => openTransfer(row)}>Samee Transfer Document</Button>}
+        {canTransfer && canCreateCentralTransfer(row) && <Button size="small" type="primary" onClick={() => openTransfer(row)}>Samee Transfer Document</Button>}
         {row.latest_transfer_id && <Button size="small" onClick={() => printTransferDocument(row.latest_transfer_id)}>Daabac Transfer</Button>}
         <Button size="small" onClick={() => openHistory(row)}>Taariikhda</Button>
       </Space>,

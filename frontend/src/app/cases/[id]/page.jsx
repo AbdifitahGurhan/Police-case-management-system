@@ -101,9 +101,11 @@ const renderInterviewPeople = (step) => {
   }
   return `<b>Dadka la wareystay:</b> ${step.interview_people || '—'}<br/><b>Warbixinta wareysiga:</b> ${step.step_text || '—'}`;
 };
-export default function CaseDetailsPage() {
-  const { id } = useParams();
+export default function CaseDetailsPage({ caseId, mode = 'page', onClose, onBack } = {}) {
+  const params = useParams();
+  const id = caseId || params?.id;
   const router = useRouter();
+  const isOverlayMode = mode === 'overlay';
   const { user, loading: authLoading } = useAuth();
   const userPermissions = user?.permissions || [];
   const hasPermission = (key) => user?.role === 'admin' || userPermissions.includes('*') || userPermissions.includes(key);
@@ -156,11 +158,11 @@ export default function CaseDetailsPage() {
     } catch (err) {
       console.error(err);
       message.error(err.response?.data?.message || "Failed to load case details.");
-      router.push('/cases');
+      if (!isOverlayMode) router.push('/cases');
     } finally {
       setLoading(false);
     }
-  }, [id, message, router]);
+  }, [id, isOverlayMode, message, router]);
 
   const fetchAssignableOfficers = async () => {
     try {
@@ -575,7 +577,7 @@ export default function CaseDetailsPage() {
     setSubmitting(true);
     try {
       await api.patch(`/cases/${id}/assign`, { officer_id: values.officer_id });
-      message.success('Case assigned successfully.');
+      message.success('Case assigned to baare successfully.');
       setIsAssignmentModalOpen(false);
       assignmentForm.resetFields();
       fetchCaseDetails();
@@ -956,10 +958,10 @@ export default function CaseDetailsPage() {
   const stationCommanderName = data.station_commander_name || null;
 
   const courtStatusTab = (
-    <Space orientation="vertical" style={{ width: '100%' }} size="large">
-      <Title level={4} style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Court status</Title>
+    <Space className="case-court-tab" orientation="vertical" style={{ width: '100%' }} size="large">
+      <Title className="case-court-title" level={4}>Court status</Title>
       <CaseStatusStepper status={data.status} />
-      <Descriptions bordered column={1} size="small">
+      <Descriptions className="case-detail-descriptions" bordered column={1} size="small">
         <Descriptions.Item label="Current status">
           <CaseStatusTag status={data.status} />
         </Descriptions.Item>
@@ -978,8 +980,9 @@ export default function CaseDetailsPage() {
             : 'No further transitions'}
         </Descriptions.Item>
       </Descriptions>
-      <Card size="small" title="Court referrals" className="standard-panel">
+      <Card size="small" title="Court referrals" className="case-detail-panel case-court-referrals">
         <Table
+          className="case-detail-table"
           size="small"
           pagination={false}
           rowKey={(r) => `court-ref-${r.id}`}
@@ -1058,11 +1061,15 @@ export default function CaseDetailsPage() {
   );
 
   const suspectsTab = (
-    <Space orientation="vertical" style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4}>Suspects</Title>
+    <Space className="case-suspects-tab" orientation="vertical" style={{ width: '100%' }} size={12}>
+      <div className="case-suspects-toolbar">
+        <div>
+          <Title className="case-suspects-title" level={4}>Suspects</Title>
+          <Text className="case-suspects-count">{data.suspects?.length || 0} linked suspects</Text>
+        </div>
         {canManageInvestigation && !caseEndedAtCourtReferral && (
           <Button
+            className="case-suspects-add"
             type="primary"
             icon={<UserAddOutlined />}
             onClick={() => {
@@ -1076,6 +1083,8 @@ export default function CaseDetailsPage() {
         )}
       </div>
       <Table
+        className="case-suspects-table"
+        size="small"
         dataSource={data.suspects}
         rowKey={(record) => `suspect-${record.id || `${record.full_name}-${record.role_in_case}`}`}
         scroll={{ x: 'max-content' }}
@@ -1085,12 +1094,21 @@ export default function CaseDetailsPage() {
             dataIndex: 'face_image',
             render: (src, record) => src ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={`${src}`.startsWith('/uploads') ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5001'}${src}` : src} alt={record.full_name} style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 6 }} />
+              <img className="case-suspect-face" src={`${src}`.startsWith('/uploads') ? `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5001'}${src}` : src} alt={record.full_name} />
             ) : (
-              <Avatar size={52} icon={<UserOutlined />} />
+              <Avatar className="case-suspect-face case-suspect-face--empty" size={52} icon={<UserOutlined />} />
             )
           },
-          { title: 'Full Name', dataIndex: 'full_name', render: (t, r) => <Typography.Text strong>{t} {r.alias && `(${r.alias})`}</Typography.Text> },
+          {
+            title: 'Full Name',
+            dataIndex: 'full_name',
+            render: (t, r) => (
+              <Space className="case-suspect-name-cell" orientation="vertical" size={2}>
+                <Typography.Text strong>{t}</Typography.Text>
+                {r.alias && <Tag className="status-tag status-tag--neutral">{r.alias}</Tag>}
+              </Space>
+            ),
+          },
           { title: 'Gender', dataIndex: 'gender' },
           { title: 'Age', dataIndex: 'age' },
           { title: 'Phone', dataIndex: 'phone' },
@@ -1104,17 +1122,17 @@ export default function CaseDetailsPage() {
             render: (_, record) => (
               <Space wrap>
                 {canManageInvestigation && !caseEndedAtCourtReferral && !record.is_arrested && (
-                  <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => handleOpenArrestModal(record)}>
+                  <Button className="case-suspect-action" size="small" type="primary" icon={<PlusOutlined />} onClick={() => handleOpenArrestModal(record)}>
                     Record Arrest
                   </Button>
                 )}
                 {canManageInvestigation && !caseEndedAtCourtReferral && (record.is_arrested === 1 || record.is_arrested === true || record.arrest_status === 'arrested') && (
-                  <Button size="small" type="primary" danger icon={<CheckCircleOutlined />} onClick={() => handleOpenReleaseModal(record)}>
+                  <Button className="case-suspect-action" size="small" type="primary" danger icon={<CheckCircleOutlined />} onClick={() => handleOpenReleaseModal(record)}>
                     Release Suspect
                   </Button>
                 )}
                 {canManageInvestigation && canUpdateSuspects && !caseEndedAtCourtReferral && (
-                  <Button size="small" icon={<EditOutlined />} onClick={() => handleOpenEditSuspect(record)}>
+                  <Button className="case-suspect-action" size="small" icon={<EditOutlined />} onClick={() => handleOpenEditSuspect(record)}>
                     Edit
                   </Button>
                 )}
@@ -1127,11 +1145,11 @@ export default function CaseDetailsPage() {
   );
 
   const investigationTab = (
-    <Space orientation="vertical" style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+    <Space className="case-investigation-tab" orientation="vertical" style={{ width: '100%' }}>
+      <div className="case-investigation-toolbar">
         <div>
-          <Title level={4} style={{ margin: 0 }}>Diiwaanka Baaritaanka Kiiska</Title>
-          <Text type="secondary">Maamul oo diiwaangeli warbixinta baaritaanka nidaamka</Text>
+          <Title className="case-investigation-title" level={4}>Diiwaanka Baaritaanka Kiiska</Title>
+          <Text className="case-investigation-subtitle">Maamul oo diiwaangeli warbixinta baaritaanka nidaamka</Text>
         </div>
         {canWorkOnInvestigation && (
           <Button
@@ -1186,7 +1204,7 @@ export default function CaseDetailsPage() {
       )}
 
       {(data.investigations || []).length === 0 ? (
-        <Card size="small" style={{ textAlign: 'center', padding: 32 }}>
+        <Card className="case-investigation-empty" size="small" style={{ textAlign: 'center', padding: 32 }}>
           <Space orientation="vertical" size="middle">
             <Text type="secondary">Wali ma jiro baaritaan la diiwaangeliyey kiiskan. Taabo batoonka hoose si aad u furto foomka baaritaanka cusub.</Text>
             {canWorkOnInvestigation && (
@@ -1197,12 +1215,12 @@ export default function CaseDetailsPage() {
           </Space>
         </Card>
       ) : (
-        <Space orientation="vertical" style={{ width: '100%' }}>
+        <Space className="case-investigation-list" orientation="vertical" style={{ width: '100%' }}>
           {(data.investigations || []).map((inv, idx) => {
             const statusColor = inv.status === 'Dhammaystiran' ? 'green' : inv.status === 'Xiran' ? 'red' : 'blue';
 
             return (
-              <Card key={`inv-${inv.id || idx}`} size="small" title={`Warbixinta Baaritaanka #${inv.investigation_number}`} extra={
+              <Card className="case-investigation-record" key={`inv-${inv.id || idx}`} size="small" title={`Warbixinta Baaritaanka #${inv.investigation_number}`} extra={
                 <Space>
                   <Tag color={statusColor}>{inv.status}</Tag>
                   {canWorkOnInvestigation && (
@@ -1215,7 +1233,7 @@ export default function CaseDetailsPage() {
                   </Button>
                 </Space>
               }>
-                <Descriptions column={2} size="small" bordered style={{ marginBottom: 12 }}>
+                <Descriptions className="case-investigation-descriptions" column={2} size="small" bordered style={{ marginBottom: 12 }}>
                   <Descriptions.Item label="Lambarka Baaritaanka"><b>{inv.investigation_number}</b></Descriptions.Item>
                   <Descriptions.Item label="Lambarka OB">{inv.ob_number || data.ob_number || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                   <Descriptions.Item label="Magaca Baaraha">{inv.investigator_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
@@ -1225,19 +1243,19 @@ export default function CaseDetailsPage() {
                 {inv.summary && (
                   <div style={{ marginTop: 8 }}>
                     <Text strong style={{ fontSize: 13 }}>Gungaarka Baaritaanka:</Text>
-                    <Paragraph style={{ background: '#1c1c1c', padding: 8, borderRadius: 6, marginTop: 4, marginBottom: 8, fontSize: 13 }}>{inv.summary}</Paragraph>
+                    <Paragraph className="case-investigation-note">{inv.summary}</Paragraph>
                   </div>
                 )}
                 {inv.outcome && (
                   <div style={{ marginTop: 8 }}>
                     <Text strong style={{ fontSize: 13 }}>Natiijada Baaritaanka:</Text>
-                    <Paragraph style={{ background: '#1c1c1c', padding: 8, borderRadius: 6, marginTop: 4, marginBottom: 8, fontSize: 13 }}>{inv.outcome}</Paragraph>
+                    <Paragraph className="case-investigation-note">{inv.outcome}</Paragraph>
                   </div>
                 )}
                 {inv.recommendation && (
                   <div style={{ marginTop: 8 }}>
                     <Text strong style={{ fontSize: 13 }}>Go&apos;aanka Baaraha:</Text>
-                    <Paragraph style={{ background: '#1c1c1c', padding: 8, borderRadius: 6, marginTop: 4, marginBottom: 8, fontSize: 13 }}>{inv.recommendation}</Paragraph>
+                    <Paragraph className="case-investigation-note">{inv.recommendation}</Paragraph>
                   </div>
                 )}
               </Card>
@@ -1255,26 +1273,30 @@ export default function CaseDetailsPage() {
       'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
       'prosecutor', 'judge', 'court_clerk', 'court', 'court_admin', 'jail',
     ]} requiredPermissions={['cases.view', 'cases.investigate']}>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
-          <Space orientation="vertical">
-            <Link href="/cases">
-              <Button type="text" icon={<ArrowLeftOutlined />}>Back to cases</Button>
-            </Link>
-            <Space align="center" wrap>
-              <Title level={2} style={{ margin: 0, fontSize: 20, fontWeight: 500 }}>
+      <Space className={`case-detail-shell ${isOverlayMode ? 'case-detail-shell--overlay' : ''}`} orientation="vertical" size={0} style={{ width: '100%' }}>
+        <div className="case-detail-hero">
+          <Space className="case-detail-title-block" orientation="vertical">
+            {isOverlayMode ? (
+              <Button className="case-detail-back" type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>Back to cases</Button>
+            ) : (
+              <Link href="/cases">
+                <Button className="case-detail-back" type="text" icon={<ArrowLeftOutlined />}>Back to cases</Button>
+              </Link>
+            )}
+            <Space className="case-detail-title-row" align="center" wrap>
+              <Title className="case-detail-title" level={2} style={{ margin: 0 }}>
                 {data.case_number || data.ob_number}
               </Title>
               <CaseStatusTag status={data.status} />
             </Space>
-            <Text type="secondary" style={{ fontSize: 13 }}>
+            <Text className="case-detail-meta">
               {data.title || 'Untitled case'}
               {data.station_name ? ` · ${data.station_name}` : ''}
               {assignedOfficerName ? ` · ${assignedOfficerName}` : ''}
             </Text>
           </Space>
 
-          <Space wrap>
+          <Space className="case-detail-hero-actions" wrap>
             {canSubmitForReview && data.status === 'draft' && (
               <Button type="primary" onClick={submitForReview}>Submit for review</Button>
             )}
@@ -1295,7 +1317,7 @@ export default function CaseDetailsPage() {
                   setIsAssignmentModalOpen(true);
                 }}
               >
-                Assign officer
+                Assign baare
               </Button>
             )}
             {canUpdateStatus && !caseEndedAtCourtReferral && (
@@ -1325,13 +1347,14 @@ export default function CaseDetailsPage() {
           </Space>
         </div>
 
-        <Card variant="none" className="standard-panel" style={{ marginBottom: 0 }}>
-          <CaseStatusStepper status={data.status} />
-        </Card>
+        <div className="case-detail-content">
+          <Card variant="none" className="case-detail-stepper-card">
+            <CaseStatusStepper status={data.status} />
+          </Card>
 
-        <Row gutter={[24, 24]}>
+        <Row className="case-detail-grid" gutter={[14, 14]}>
           <Col xs={24} lg={16}>
-            <Card variant="none" className="standard-panel">
+            <Card variant="none" className="case-detail-panel case-detail-tabs-panel">
               <Tabs
                 defaultActiveKey="overview"
                 items={[
@@ -1340,7 +1363,7 @@ export default function CaseDetailsPage() {
                     label: 'Overview',
                     children: (
                       <Space orientation="vertical" style={{ width: '100%' }} size="large">
-                        <Descriptions title="Incident particulars" bordered column={1} size="small">
+                        <Descriptions className="case-detail-descriptions" title="Incident particulars" bordered column={1} size="small">
                           <Descriptions.Item label="Case number">{data.case_number || data.id}</Descriptions.Item>
                           <Descriptions.Item label="Subject">{data.title}</Descriptions.Item>
                           <Descriptions.Item label="Category">{data.case_type || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
@@ -1359,7 +1382,7 @@ export default function CaseDetailsPage() {
                           </Descriptions.Item>
                         </Descriptions>
 
-                        <Descriptions title="Linked OB" bordered column={1} size="small">
+                        <Descriptions className="case-detail-descriptions" title="Linked OB" bordered column={1} size="small">
                           <Descriptions.Item label="OB number">{data.ob_number || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                           <Descriptions.Item label="Original OB staff">{data.ob_registered_by_name || data.original_ob_staff_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                           <Descriptions.Item label="OB registration date">
@@ -1370,16 +1393,16 @@ export default function CaseDetailsPage() {
                           <Descriptions.Item label="District station">{data.district_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                         </Descriptions>
 
-                        <Descriptions title="Complainant" bordered column={2} size="small">
+                        <Descriptions className="case-detail-descriptions" title="Complainant" bordered column={2} size="small">
                           <Descriptions.Item label="Full name">{data.complainant_name || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                           <Descriptions.Item label="Phone">{data.complainant_phone || 'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â'}</Descriptions.Item>
                         </Descriptions>
 
-                        <div style={{ padding: 16, border: '0.5px solid #2B2B2B', borderRadius: 12, background: '#171717' }}>
+                        <div className="case-detail-hash-panel">
                           <HashVerifier entityType="case" entityId={data.id} />
                         </div>
 
-                        <Card size="small" title="Activity timeline" className="standard-panel">
+                        <Card size="small" title="Activity timeline" className="case-detail-panel case-detail-activity">
                           <Timeline
                             items={(data.actions || []).map((action, index) => ({
                               key: `action-${action.id || index}`,
@@ -1410,12 +1433,12 @@ export default function CaseDetailsPage() {
           </Col>
 
           <Col xs={24} lg={8}>
-            <Card title="Case assignment" variant="none" className="standard-panel" style={{ marginBottom: 24 }}>
-              <Descriptions column={1} size="small">
+            <Card title="Case assignment" variant="none" className="case-detail-panel case-detail-side-card">
+              <Descriptions className="case-detail-side-descriptions" column={1} size="small">
                 <Descriptions.Item label="Region">{data.region_name || '—'}</Descriptions.Item>
                 <Descriptions.Item label="District">{data.district_name || '—'}</Descriptions.Item>
                 <Descriptions.Item label="Station">{data.station_name || '—'}</Descriptions.Item>
-                <Descriptions.Item label="Assigned officer">{assignedOfficerName || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Assigned baare">{assignedOfficerName || '—'}</Descriptions.Item>
                 <Descriptions.Item label="Station commander">{stationCommanderName || '—'}</Descriptions.Item>
               </Descriptions>
               {canAssignCase && !caseEndedAtCourtReferral && (
@@ -1428,11 +1451,11 @@ export default function CaseDetailsPage() {
                   }}
                   block
                 >
-                  Assign / reassign officer
+                  Assign / reassign baare
                 </Button>
               )}
             </Card>
-            <Card title="Victims & witnesses" variant="none" className="standard-panel">
+            <Card title="Victims & witnesses" variant="none" className="case-detail-panel case-detail-side-card">
               <Space orientation="vertical" style={{ width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text strong>Victims ({data.victims?.length || 0})</Text>
@@ -1444,7 +1467,7 @@ export default function CaseDetailsPage() {
                   <Text type="secondary" style={{ fontSize: 12 }}>No victims recorded</Text>
                 ) : (
                   data.victims.map((v, index) => (
-                    <div key={`victim-${v.id || index}-${index}`} style={{ marginBottom: 8, padding: '8px 12px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 6 }}>
+                    <div className="case-side-person-row" key={`victim-${v.id || index}-${index}`}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Text strong style={{ fontSize: 13 }}>{v.full_name}</Text>
                         {v.phone && <Tag style={{ fontSize: 11 }}>{v.phone}</Tag>}
@@ -1470,7 +1493,7 @@ export default function CaseDetailsPage() {
                   <Text type="secondary" style={{ fontSize: 12 }}>No statements taken</Text>
                 ) : (
                   data.witnesses.map((w, index) => (
-                    <div key={`witness-${w.id || index}-${index}`} style={{ marginBottom: 8, padding: '8px 12px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 6 }}>
+                    <div className="case-side-person-row" key={`witness-${w.id || index}-${index}`}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Text strong style={{ fontSize: 13 }}>{w.full_name}</Text>
                         {w.statement_date && <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(w.statement_date).format('DD MMM YYYY')}</Text>}
@@ -1485,16 +1508,38 @@ export default function CaseDetailsPage() {
             </Card>
           </Col>
         </Row>
+          <div className="case-detail-footer-actions">
+            {isOverlayMode ? (
+              <Button onClick={onClose}>Close</Button>
+            ) : (
+              <Link href="/cases">
+                <Button>Close</Button>
+              </Link>
+            )}
+            {canReferCase && !caseEndedAtCourtReferral && (
+              <Button
+                type="primary"
+                icon={<ShareAltOutlined />}
+                onClick={() => {
+                  referralForm.setFieldsValue({ referred_to_role: 'court' });
+                  setIsReferralModalOpen(true);
+                }}
+              >
+                U Gudbi Maxkamad
+              </Button>
+            )}
+          </div>
+        </div>
       </Space>
 
       {/* Modals */}
-      <Modal title="Assign Case Officer" open={isAssignmentModalOpen} onCancel={() => setIsAssignmentModalOpen(false)} onOk={() => assignmentForm.submit()}>
+      <Modal title="Assign Case Baare" open={isAssignmentModalOpen} onCancel={() => setIsAssignmentModalOpen(false)} onOk={() => assignmentForm.submit()}>
         <Form form={assignmentForm} onFinish={handleAssignment} layout="vertical">
-          <Form.Item name="officer_id" label="Officer" rules={[requiredRule('Officer')]}>
+          <Form.Item name="officer_id" label="Baare" rules={[requiredRule('Baare')]}>
             <Select
               showSearch
               optionFilterProp="label"
-              placeholder="Select active officer"
+              placeholder="Select active baare"
               options={assignableOfficers.map((officer) => ({
                 value: officer.id,
                 label: `${officer.full_name} (${officer.force_number || 'No force #'}${officer.rank_name ? `, ${officer.rank_name}` : ''})`,
@@ -1648,9 +1693,7 @@ export default function CaseDetailsPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: '1px dashed #d9d9d9',
                   borderRadius: 8,
-                  backgroundColor: '#f8fafc',
                   overflow: 'hidden'
                 }}>
                   {suspectFaceImage ? (
@@ -1830,7 +1873,7 @@ export default function CaseDetailsPage() {
         confirmLoading={submitting}
         width={760}
       >
-        <Card size="small" variant="none" style={{ marginBottom: 16, background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <Card className="case-modal-summary-card" size="small" variant="none" style={{ marginBottom: 16 }}>
           <Row gutter={[16, 8]}>
             <Col xs={24} sm={12}>
               <Text type="secondary" style={{ fontSize: 12 }}>Eedeysanaha (Suspect)</Text><br />
@@ -1891,7 +1934,7 @@ export default function CaseDetailsPage() {
         confirmLoading={submitting}
         width={600}
       >
-        <Card size="small" variant="none" style={{ marginBottom: 16, background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <Card className="case-modal-summary-card" size="small" variant="none" style={{ marginBottom: 16 }}>
           <Row gutter={[16, 8]}>
             <Col xs={24} sm={12}>
               <Text type="secondary" style={{ fontSize: 12 }}>Eedeysanaha (Suspect)</Text><br />

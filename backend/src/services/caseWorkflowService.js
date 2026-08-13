@@ -66,9 +66,9 @@ class WorkflowError extends Error {
 
 const POLICE_TRANSITIONS = {
   draft: ['under_investigation'],
-  registered: ['under_investigation'],
+  registered: ['under_investigation', 'referred_to_cid'],
   CASE_REGISTERED: ['under_investigation'],
-  pending_commander_review: ['under_investigation'],
+  pending_commander_review: ['registered', 'under_investigation'],
   confirmed_by_ward_commander: ['under_investigation'],
   confirmed_by_commander: ['under_investigation'],
   CONFIRMED_BY_COMMANDER: ['under_investigation'],
@@ -76,7 +76,7 @@ const POLICE_TRANSITIONS = {
   under_investigation: ['referred_to_court'],
   ready_for_court: ['referred_to_court'],
   forwarded_to_court: ['referred_to_court'],
-  approved_for_court: ['referred_to_court'],
+  approved_for_court: ['referred_to_court', 'court_decided'],
   referred_to_court: [],
   court_decided: ['closed'],
   closed: ['archived'],
@@ -91,7 +91,6 @@ const POLICE_STATUS_ALIASES = {
   assigned_to_cid: 'referred_to_cid',
   ready_for_court: 'referred_to_court',
   forwarded_to_court: 'referred_to_court',
-  approved_for_court: 'referred_to_court',
 };
 
 const normalizePoliceStatus = (status) => {

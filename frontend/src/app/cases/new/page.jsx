@@ -257,7 +257,6 @@ function NewCaseWizardContent() {
         complainant_email: complainant.complainant_email || undefined,
         complainant_address: complainant.complainant_address || undefined,
         victim_name: complainant.victim_name || undefined,
-        status: 'under_investigation',
       });
 
       const caseId = createRes.data.caseId;

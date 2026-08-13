@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { App, Button, Card, Col, DatePicker, Dropdown, Form, Input, Modal, Row, Select, Space, Table, Tabs, Tag, Timeline, Typography } from 'antd';
+import { App, Button, Card, Col, DatePicker, Dropdown, Form, Input, Modal, Row, Select, Space, Table, Tag, Timeline, Typography } from 'antd';
 import {
   ArrowLeftOutlined,
   BankOutlined,
@@ -81,32 +81,6 @@ function InfoBlock({ label, value }) {
   );
 }
 
-function DetailStepper({ status }) {
-  const active = status === 'SENT_TO_CID_OR_COURT' || status === 'CONVERTED_TO_CASE' || status === 'CASE_OPENED' ? 3
-    : status === 'INVESTIGATION_TRACING' || status === 'ARRESTED_IN_CUSTODY' ? 2
-      : status === 'PRELIMINARY_REVIEW' ? 2
-        : 1;
-  const steps = ['OB la diiwaangeliyey', 'Kiis la furay', 'Baaritaan', 'Maxkamad'];
-
-  return (
-    <Card className="ob-card ob-detail-step-card">
-      <div className="ob-detail-stepper">
-        {steps.map((step, index) => {
-          const stepNumber = index + 1;
-          const complete = stepNumber < active;
-          const current = stepNumber === active;
-          return (
-            <div className={`ob-detail-step ${complete ? 'is-complete' : ''} ${current ? 'is-current' : ''}`} key={step}>
-              <span>{complete ? <CheckCircleOutlined /> : stepNumber}</span>
-              <strong>{stepNumber}. {step}</strong>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
 export default function ObDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -131,7 +105,6 @@ export default function ObDetailPage() {
 
   const caseReadRoles = ['admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', 'state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
   const canReadCases = user && caseReadRoles.includes(user.role);
-  const canUpdateSuspects = hasPermission('suspects.update') || hasPermission('suspects.manage');
 
   const loadOb = useCallback(async () => {
     setLoading(true);
@@ -304,14 +277,6 @@ export default function ObDetailPage() {
     ),
   })), [ob]);
 
-  const accusedColumns = [
-    { title: 'Magaca', dataIndex: 'full_name' },
-    { title: 'Telefoonka', dataIndex: 'phone', render: (value) => value || 'N/A' },
-    { title: 'Jinsiga', dataIndex: 'gender', render: (value) => value || 'N/A' },
-    { title: 'Xaaladda', dataIndex: 'status', render: (value) => <Tag color={value === 'ARRESTED' ? 'red' : 'orange'}>{statusLabels[value] || value}</Tag> },
-    { title: 'Ficil', render: (_, record) => record.status === 'ARRESTED' ? (record.arrest_date || 'La qabtay') : (canUpdateSuspects ? <Button type="primary" size="small" onClick={() => setArrestTarget(record)}>Diiwaangeli Qabashada</Button> : <Tag color="blue">View Only</Tag>) },
-  ];
-
   const overview = ob && (
     <div className="ob-detail-grid">
       <div className="ob-detail-main">
@@ -409,13 +374,6 @@ export default function ObDetailPage() {
     </div>
   );
 
-  const tabs = ob ? [
-    { key: 'overview', label: 'Guudmar', children: overview },
-    { key: 'accused', label: `Eedeysanayaasha (${ob.accused?.length || 0})`, children: <Card className="ob-card"><Table rowKey="id" columns={accusedColumns} dataSource={ob.accused || []} pagination={false} scroll={{ x: 800 }} /></Card> },
-    { key: 'investigation', label: `Baaritaan (${timelineItems.length})`, children: <Card className="ob-card"><Timeline items={timelineItems} /></Card> },
-    { key: 'court', label: 'Xaaladda Maxkamadda', children: <Card className="ob-card"><Text>{converted ? 'OB-gan waxaa loo beddelay kiis/maxkamad.' : 'Weli maxkamad looma gudbin.'}</Text></Card> },
-  ] : [];
-
   return (
     <ProtectedRoute allowedRoles={['admin', 'ob_staff', 'staff', 'officer', 'investigator', 'district_admin', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer', ...commanderRoles]} requiredPermissions={['ob.view', 'ob.update', 'ob.print', 'cases.investigate']}>
       <div className="ob-page">
@@ -450,12 +408,11 @@ export default function ObDetailPage() {
           <Card className="ob-card" loading />
         ) : ob ? (
           <>
-            <DetailStepper status={ob.status} />
-            <Tabs className="ob-tabs" items={tabs} />
+            {overview}
 
             {ob.attachments?.length > 0 && (
               <Card className="ob-card" title="Caddeymaha & Faylasha Ku Xiran">
-                <Table rowKey="id" pagination={false} dataSource={ob.attachments} columns={[
+                <Table className="ob-detail-table" rowKey="id" pagination={false} dataSource={ob.attachments} columns={[
                   { title: 'Magaca Faylka', dataIndex: 'file_name', render: (text) => <Space><PaperClipOutlined /> <Text strong>{text}</Text></Space> },
                   { title: 'Nooca', dataIndex: 'mime_type' },
                   { title: 'Kii Soo Upload-gareeyey', dataIndex: 'uploaded_by' },
@@ -466,7 +423,7 @@ export default function ObDetailPage() {
 
             {ob.resolutionDocuments?.length > 0 && (
               <Card className="ob-card" title="Warqadaha Rasmiga ah ee Xalinta OB-ga">
-                <Table rowKey="id" pagination={false} dataSource={ob.resolutionDocuments} columns={[
+                <Table className="ob-detail-table" rowKey="id" pagination={false} dataSource={ob.resolutionDocuments} columns={[
                   { title: 'Warqadda', dataIndex: 'document_title' },
                   { title: 'Nooca', dataIndex: 'document_type', render: (value) => <Tag color="blue">{value}</Tag> },
                   { title: 'Sameeyey', dataIndex: 'created_by' },
@@ -500,7 +457,7 @@ export default function ObDetailPage() {
           </Form>
         </Modal>
 
-        <Modal width={850} title="Hordhaca Warqadda Xalinta" open={!!previewHtml} onCancel={() => setPreviewHtml('')} footer={<Space><Button onClick={() => setPreviewHtml('')}>Xir</Button><Button icon={<PrinterOutlined />} onClick={() => { const win = window.open('', '_blank'); win.document.write(previewHtml); win.document.close(); setTimeout(() => win.print(), 300); }}>Daabac / Soo Degso PDF</Button></Space>}><iframe title="Hordhaca warqadda xalinta" srcDoc={previewHtml} style={{ width: '100%', height: '65vh', border: '1px solid #ddd' }} /></Modal>
+        <Modal width={850} title="Hordhaca Warqadda Xalinta" open={!!previewHtml} onCancel={() => setPreviewHtml('')} footer={<Space><Button onClick={() => setPreviewHtml('')}>Xir</Button><Button icon={<PrinterOutlined />} onClick={() => { const win = window.open('', '_blank'); win.document.write(previewHtml); win.document.close(); setTimeout(() => win.print(), 300); }}>Daabac / Soo Degso PDF</Button></Space>}><iframe className="ob-preview-frame" title="Hordhaca warqadda xalinta" srcDoc={previewHtml} style={{ width: '100%', height: '65vh' }} /></Modal>
 
         <Modal title="Dib u fur OB-ga" open={reopenOpen} onCancel={() => setReopenOpen(false)} footer={null}>
           <Form form={reopenForm} layout="vertical" onFinish={reopenOb}>
@@ -511,7 +468,7 @@ export default function ObDetailPage() {
 
         <Modal title={`Wax ka Beddel OB-ga - ${ob?.ob_number || ''}`} open={editOpen} onCancel={() => setEditOpen(false)} width={900} footer={null}>
           <Form form={editForm} layout="vertical" onFinish={updateOb}>
-            <Card size="small" title="Xogta Dacwadda" style={{ marginBottom: 16 }}>
+            <Card className="ob-modal-card" size="small" title="Xogta Dacwadda" style={{ marginBottom: 16 }}>
               <Row gutter={16}>
                 <Col xs={24} md={12}><Form.Item name="case_title" label="Cinwaanka Dacwadda" rules={[{ required: true, message: 'Cinwaanka geli.' }]}><Input /></Form.Item></Col>
                 <Col xs={12} md={6}><Form.Item name="case_type" label="Nooca Dacwadda" rules={[{ required: true, message: 'Nooca dacwadda qor.' }]}><Input /></Form.Item></Col>
@@ -521,7 +478,7 @@ export default function ObDetailPage() {
                 <Col span={24}><Form.Item name="description" label="Sharaxaadda Dacwadda" rules={[{ required: true, min: 10, message: 'Sharaxaad ugu yaraan 10 xaraf ah geli.' }]}><Input.TextArea rows={4} /></Form.Item></Col>
               </Row>
             </Card>
-            <Card size="small" title="Xogta Dacwoodaha">
+            <Card className="ob-modal-card" size="small" title="Xogta Dacwoodaha">
               <Row gutter={16}>
                 <Col xs={24} md={8}><Form.Item name="reported_by" label="Magaca oo Buuxa" rules={[{ required: true, message: 'Magaca geli.' }]}><Input /></Form.Item></Col>
                 <Col xs={12} md={8}><Form.Item name="reporter_phone" label="Telefoonka" rules={[{ required: true, message: 'Telefoonka geli.' }]}><Input /></Form.Item></Col>

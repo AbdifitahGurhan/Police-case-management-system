@@ -18,6 +18,7 @@ async function loadPermissions(user){
 
 const permissionImplies = {
  'suspects.manage': ['suspects.view', 'suspects.create', 'suspects.update'],
+ 'stations.manage': ['stations.view'],
 };
 
 const hasPermission = (permissions, key) => (

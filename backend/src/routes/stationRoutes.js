@@ -3,17 +3,18 @@
 
 const express = require('express');
 const router = express.Router();
-const { getStations, getStationById, createStation, updateStation, deleteStation, getGeography } = require('../controllers/stationController');
+const { getStations, getStationOverview, getStationById, createStation, updateStation, deleteStation, getGeography } = require('../controllers/stationController');
 const authMiddleware = require('../middleware/authMiddleware');
-const { allowRoles } = require('../middleware/roleMiddleware');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 router.use(authMiddleware);
 
-router.get('/', getStations);
-router.get('/geography', getGeography);
-router.get('/:id', getStationById);
-router.post('/', allowRoles('admin'), createStation);
-router.put('/:id', allowRoles('admin'), updateStation);
-router.delete('/:id', allowRoles('admin'), deleteStation);
+router.get('/', requirePermission('stations.view'), getStations);
+router.get('/geography', requirePermission('stations.view'), getGeography);
+router.get('/:id/overview', requirePermission('stations.view'), getStationOverview);
+router.get('/:id', requirePermission('stations.view'), getStationById);
+router.post('/', requirePermission('stations.manage'), createStation);
+router.put('/:id', requirePermission('stations.manage'), updateStation);
+router.delete('/:id', requirePermission('stations.manage'), deleteStation);
 
 module.exports = router;

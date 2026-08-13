@@ -27,6 +27,7 @@ const {
   updateCourtWitness,
   decideAppeal,
   closeCourtCase,
+  reopenCourtCaseForSentence,
 } = require('../controllers/courtController');
 
 router.use(authMiddleware);
@@ -51,6 +52,7 @@ router.post('/cases/:id/sentences', allowRoles(...COURT_ADMIN_ROLES, 'judge'), i
 router.post('/cases/:id/appeals', allowRoles(...COURT_WRITE_ROLES), registerAppeal);
 router.patch('/cases/:id/witnesses/:witnessId', allowRoles(...COURT_WRITE_ROLES), updateCourtWitness);
 router.patch('/appeals/:appealId/decision', allowRoles(...COURT_ADMIN_ROLES, 'judge'), decideAppeal);
+router.patch('/cases/:id/reopen-for-sentence', allowRoles(...COURT_ADMIN_ROLES, 'judge'), reopenCourtCaseForSentence);
 router.patch('/cases/:id/close', allowRoles(...COURT_ADMIN_ROLES), closeCourtCase);
 
 module.exports = router;

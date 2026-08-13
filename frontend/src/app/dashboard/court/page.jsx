@@ -192,7 +192,35 @@ export default function CourtDashboard() {
   const stats = dashboard?.stats || {};
   const courtCase = selected?.courtCase;
   const canIssueJudgment = canJudgeForms && courtCase?.status === 'evidence_defense';
-  const canIssueSentence = canJudgeForms && courtCase?.status === 'judgment';
+  const canIssueSentence = canJudgeForms && ['judgment', 'sentenced'].includes(courtCase?.status);
+  const sentenceByCriminalId = useMemo(() => {
+    const map = new Map();
+    for (const sentence of selected?.sentences || []) {
+      const criminalId = Number(sentence.criminal_id);
+      if (!map.has(criminalId)) map.set(criminalId, sentence);
+    }
+    return map;
+  }, [selected?.sentences]);
+  const hasUnsentencedSuspect = useMemo(() => (
+    (selected?.suspects || []).some((suspect) => !sentenceByCriminalId.has(Number(suspect.id)))
+  ), [selected?.suspects, sentenceByCriminalId]);
+  const canReopenForSentence = canJudgeForms
+    && courtCase?.status === 'closed'
+    && courtCase?.final_outcome === 'convicted'
+    && hasUnsentencedSuspect;
+
+  const reopenForSentence = async () => {
+    const id = selected?.courtCase?.id;
+    if (!id) return;
+    try {
+      await api.patch(`/court/cases/${id}/reopen-for-sentence`, {}, { skipErrorNotification: true });
+      message.success('Court case reopened for sentencing.');
+      await loadCaseDetail(id);
+      await loadDashboard(calendarFilters);
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Could not reopen court case for sentencing.');
+    }
+  };
 
   const metrics = [
     { title: 'Total court cases', value: stats.total_court_cases || 0, icon: <BankOutlined /> },
@@ -396,6 +424,11 @@ export default function CourtDashboard() {
               >
                 Issue sentence
               </Button>
+              {canReopenForSentence && (
+                <Button type="primary" onClick={reopenForSentence}>
+                  Dib u fur si xukun loogu sameeyo
+                </Button>
+              )}
             </Space>
           )}
         >
@@ -447,11 +480,16 @@ export default function CourtDashboard() {
                       Record judgment
                     </Button>
                     <Button
-                      disabled={courtCase.status !== 'judgment'}
+                      disabled={!canIssueSentence}
                       onClick={() => openModal('sentence', { sentence_date: dayjs(), sentence_type: 'imprisonment' })}
                     >
                       Issue sentence
                     </Button>
+                    {canReopenForSentence && (
+                      <Button type="primary" onClick={reopenForSentence}>
+                        Dib u fur si xukun loogu sameeyo
+                      </Button>
+                    )}
                     <Link href={`/dashboard/court/cases?id=${courtCase.id}`}>
                       <Button>Open full case file</Button>
                     </Link>
@@ -470,6 +508,45 @@ export default function CourtDashboard() {
                     { title: 'Decision', dataIndex: 'decision_type' },
                     { title: 'Date', dataIndex: 'decision_date' },
                     { title: 'Summary', dataIndex: 'judgment_summary', ellipsis: true },
+                  ]}
+                />
+              </Card>
+
+              <Card size="small" className="standard-panel" title={`Defendants (${selected.suspects?.length || 0})`}>
+                <Table
+                  size="small"
+                  rowKey="id"
+                  pagination={false}
+                  dataSource={selected.suspects || []}
+                  locale={{ emptyText: 'No active suspects linked to this case' }}
+                  columns={[
+                    { title: 'Defendant', dataIndex: 'full_name' },
+                    {
+                      title: 'Sentence status',
+                      render: (_, row) => {
+                        const sentence = sentenceByCriminalId.get(Number(row.id));
+                        return sentence
+                          ? <Tag color="red">{`${sentence.sentence_type}${sentence.duration ? ` - ${sentence.duration}` : ''}`}</Tag>
+                          : <Tag>Suspect cusub - wali xukun looma ridin</Tag>;
+                      },
+                    },
+                    {
+                      title: 'Action',
+                      render: (_, row) => {
+                        if (!canIssueSentence) return null;
+                        const sentence = sentenceByCriminalId.get(Number(row.id));
+                        return sentence ? null : (
+                          <Button size="small" type="primary" onClick={() => openModal('sentence', {
+                            criminal_id: row.id,
+                            defendant_name: row.full_name,
+                            sentence_date: dayjs(),
+                            sentence_type: 'imprisonment',
+                          })}>
+                            Xukun u samee / Issue sentence
+                          </Button>
+                        );
+                      },
+                    },
                   ]}
                 />
               </Card>

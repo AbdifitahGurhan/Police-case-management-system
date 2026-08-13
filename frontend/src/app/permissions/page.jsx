@@ -26,12 +26,14 @@ const PERMISSION_GROUPS = [
   { key: 'cases', title: 'Kiisaska & Baaritaanka', prefixes: ['cases.', 'evidence.'] },
   { key: 'suspects', title: 'Eedaysanayaasha', prefixes: ['suspects.'] },
   { key: 'station_jail', title: 'Xabsiga Saldhigga', prefixes: ['station_jail.'] },
+  { key: 'stations', title: 'Xarumaha Boliiska', prefixes: ['stations.'] },
   { key: 'central_jail', title: 'Xabsiga Dhexe', prefixes: ['jail.'] },
   { key: 'locations', title: 'Goobaha & Maamulka', prefixes: ['locations.'] },
   { key: 'reports', title: 'Warbixinada', prefixes: ['reports.'] },
 ];
 const IMPLIED_PERMISSIONS = {
   'suspects.manage': ['suspects.view', 'suspects.create', 'suspects.update'],
+  'stations.manage': ['stations.view'],
 };
 const HIGH_RISK_PERMISSIONS = new Set([
   'permissions.manage',
@@ -139,7 +141,7 @@ export default function PermissionsPage() {
 
   return (
     <ProtectedRoute allowedRoles={['admin']} requiredPermissions={['permissions.manage', 'roles.manage']}>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+      <Space className="permissions-admin-page" orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <div><Title level={2}>Maamulka Awoodaha</Title><Text type="secondary">Roles-ka iyo user kasta awoodihiisa si gaar ah u maamul.</Text></div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Abuur Role Cusub</Button>
@@ -166,6 +168,7 @@ export default function PermissionsPage() {
                         const checkedCount = groupKeys.filter(key => values.includes(key)).length;
                         return (
                           <Card
+                            className="permission-module-card"
                             key={group.key}
                             size="small"
                             title={<Space><span>{group.title}</span><Tag>{checkedCount}/{group.items.length}</Tag>{group.danger && <Tag color="red">High risk</Tag>}</Space>}

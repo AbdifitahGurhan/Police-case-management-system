@@ -494,7 +494,7 @@ async function seedCourtData() {
     // 10. Sentence & Arrest seeding
     if (data.targetStatus === 'sentenced') {
       await db.query(`
-        INSERT INTO court_sentences (court_case_id, suspect_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
+        INSERT INTO court_sentences (court_case_id, criminal_id, defendant_name, sentence_type, duration, fine_amount, sentence_date, created_by)
         VALUES (?, ?, ?, 'imprisonment', '12 months', 400.00, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'system')
       `, [courtCaseId, criminalId, data.suspectName]);
 

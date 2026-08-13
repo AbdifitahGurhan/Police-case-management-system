@@ -529,9 +529,22 @@ const getWantedEscaped = async (_req, res, next) => {
 
 const getPrisonAdmissions = async (req, res, next) => {
   try {
-    const districtId = req.user?.scopeType === 'district' ? Number(req.user.scopeId) : null;
-    const scopeSql = districtId ? ' AND c.district_id = ?' : '';
-    const params = districtId ? [districtId] : [];
+    const requestedDistrictId = req.query.district_id ? Number(req.query.district_id) : null;
+    const params = [];
+    let scopeSql = '';
+    if (req.user?.scopeType === 'district') {
+      scopeSql = ' AND c.district_id = ?';
+      params.push(Number(req.user.scopeId));
+    } else if (req.user?.scopeType === 'region') {
+      scopeSql = requestedDistrictId
+        ? ' AND c.district_id = ? AND c.district_id IN (SELECT d.id FROM districts d JOIN cities ci ON ci.id = d.city_id WHERE ci.region_id = ?)'
+        : ' AND c.district_id IN (SELECT d.id FROM districts d JOIN cities ci ON ci.id = d.city_id WHERE ci.region_id = ?)';
+      if (requestedDistrictId) params.push(requestedDistrictId);
+      params.push(Number(req.user.scopeId));
+    } else if (requestedDistrictId) {
+      scopeSql = ' AND c.district_id = ?';
+      params.push(requestedDistrictId);
+    }
     const [rows] = await db.query(`
       SELECT pa.*, s.full_name, a.case_id, a.expected_release_date, a.sentence_status,
              c.case_number, c.ob_number, d.district_name,
@@ -554,6 +567,7 @@ const getPrisonAdmissions = async (req, res, next) => {
         LEFT JOIN prison_cells pc ON pc.facility=pca.facility AND pc.block_name=pca.block_name AND pc.cell_number=pca.cell_number
        WHERE 1=1 ${scopeSql}
        ORDER BY pa.admission_date DESC`, params);
+    const eligibleParams = [...params];
     const [eligible] = await db.query(`
       SELECT a.id AS arrest_id, a.suspect_id, s.full_name, c.case_number, c.ob_number,
              c.district_id, d.district_name, a.arrest_date, a.arrest_location
@@ -564,7 +578,7 @@ const getPrisonAdmissions = async (req, res, next) => {
        WHERE a.sentence_status NOT IN ('released','acquitted','dismissed')
          AND NOT EXISTS (SELECT 1 FROM prison_admissions pa WHERE pa.arrest_id=a.id AND pa.status='admitted')
          ${scopeSql}
-       ORDER BY a.arrest_date DESC`, params);
+       ORDER BY a.arrest_date DESC`, eligibleParams);
     res.json({success:true,data:rows,eligible});
   } catch(err) { next(err); }
 };

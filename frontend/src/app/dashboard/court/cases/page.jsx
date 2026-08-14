@@ -32,7 +32,6 @@ import {
   EllipsisOutlined,
   FileTextOutlined,
   PrinterOutlined,
-  SearchOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import { Gavel, Scale } from 'lucide-react';
@@ -45,7 +44,6 @@ import api from '@/services/api';
 import { useTheme } from '@/contexts/ThemeContext';
 import { formatUSD } from '@/utils/currency';
 
-const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
 const { TextArea } = Input;
 
@@ -152,10 +150,8 @@ export default function CourtCasesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [modalType, setModalType] = useState(null);
   const [activeHearing, setActiveHearing] = useState(null);
-  const [filters, setFilters] = useState({});
   const [courtPersonnel, setCourtPersonnel] = useState({ judges: [], prosecutors: [] });
   const [form] = Form.useForm();
-  const [searchForm] = Form.useForm();
 
   const role = user?.role || 'court';
   const config = roleConfig[role] || roleConfig.court;
@@ -200,10 +196,10 @@ export default function CourtCasesPage() {
   }, [message]);
 
   useEffect(() => {
-    loadCases(filters);
-    const timer = setInterval(() => loadCases(filters), 30000);
+    loadCases();
+    const timer = setInterval(() => loadCases(), 30000);
     return () => clearInterval(timer);
-  }, [filters, loadCases]);
+  }, [loadCases]);
 
   useEffect(() => {
     const loadCourtPersonnel = async () => {
@@ -302,7 +298,7 @@ export default function CourtCasesPage() {
       await api.patch(`/court/cases/${id}/reopen-for-sentence`, {}, { skipErrorNotification: true });
       message.success('Kiiska waxaa dib loogu furay xukun qof cusub.');
       await loadDetail(id);
-      await loadCases(filters);
+      await loadCases();
     } catch (error) {
       message.error(error.response?.data?.message || 'Kiiska dib looma furi karin.');
     }
@@ -310,7 +306,7 @@ export default function CourtCasesPage() {
 
   const refreshAfterAction = async () => {
     const id = selected?.courtCase?.id;
-    await loadCases(filters);
+    await loadCases();
     if (id) await loadDetail(id);
   };
 
@@ -406,18 +402,6 @@ export default function CourtCasesPage() {
         || 'Ficilka maxkamaddu waa ku guuldareystay.'
       );
     }
-  };
-
-  const applySearch = async (values) => {
-    const next = { ...values };
-    if (values.date_range?.length === 2) {
-      next.from_date = values.date_range[0].format('YYYY-MM-DD');
-      next.to_date = values.date_range[1].format('YYYY-MM-DD');
-    }
-    delete next.date_range;
-    Object.keys(next).forEach((key) => (next[key] === undefined || next[key] === '') && delete next[key]);
-    setFilters(next);
-    await loadCases(next);
   };
 
   const printCourtDocument = (type) => {
@@ -543,34 +527,11 @@ export default function CourtCasesPage() {
           </div>
           <Space wrap>
             {role === 'admin' && <Button icon={<AuditOutlined style={{ width: 16 }} />} href="/reports">Warbixinada</Button>}
-            <Button type="primary" icon={<Scale style={{ width: 16 }} />} onClick={() => loadCases(filters)}>Cusbooneysii</Button>
+            <Button type="primary" icon={<Scale style={{ width: 16 }} />} onClick={() => loadCases()}>Cusbooneysii</Button>
           </Space>
         </div>
 
-        <Card variant="none" className="standard-panel" title="Baaritaan Dheeraad Ah">
-          <Form form={searchForm} layout="vertical" onFinish={applySearch}>
-            <Row gutter={12}>
-              <Col xs={24} md={8}><Form.Item name="court_case_number" label="Lambarka Kiiska Maxkamadda"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="police_case_number" label="Lambarka Kiiska Booliska"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="ob_number" label="Lambarka Diiwaanka (OB #)"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="suspect_name" label="Magaca Eedaysanaha"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="complainant_name" label="Magaca Dhibanaha (Complainant)"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="judge" label="Garsooraha"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="status" label="Heerka (Status)"><Select allowClear options={Object.entries(statusMeta).map(([value, meta]) => ({ value, label: meta.label }))} /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="date_range" label="Muddada Diiwaangelinta"><RangePicker style={{ width: '100%' }} /></Form.Item></Col>
-              <Col xs={24} md={8}>
-                <Form.Item label=" ">
-                  <Space>
-                    <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>Baar</Button>
-                    <Button onClick={() => { searchForm.resetFields(); setFilters({}); loadCases({}); }}>Dib u Deji</Button>
-                  </Space>
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-        </Card>
-
-        <Card variant="none" className="standard-panel" title="Diiwaanka Kiisaska Maxkamadda">
+        <Card variant="none" className="standard-panel" title="Kiisaska Maxkamadda">
           <Table columns={caseColumns} dataSource={cases} rowKey="id" loading={loading || detailLoading} scroll={{ x: 1250 }} />
         </Card>
 

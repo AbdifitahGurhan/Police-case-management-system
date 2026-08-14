@@ -14,18 +14,26 @@ const permissions=[
  ['officers.update','Wax ka beddel askari'],['officers.delete','Ka saar askari'],['officers.transfer','Wareeji askari'],
  ['locations.view','Arag maamul-goboleedyada iyo degmooyinka'],['locations.manage','Maamul maamul-goboleedyada iyo degmooyinka'],
  ['reports.view','Arag warbixin'],['reports.export','Dhoofso warbixin'],['audit_logs.view','Arag audit log']
+ ,['warrants.view','Arag garannada maxkamadda'],['warrants.create','Bixi garan cusub'],['warrants.update','Wax ka beddel garan'],['warrants.execute','Fulinta garan'],['warrants.cancel','Jooji garan'],['warrants.print','Daabac garan']
 ];
+const warrantPermissions=['warrants.view','warrants.create','warrants.update','warrants.execute','warrants.cancel','warrants.print'];
 const grants={
  admin:['*'], sub_admin:['users.manage','officers.view','officers.create','reports.view'],
  state_admin:['officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ranks.assign','ranks.manage','reports.view','locations.view','locations.manage','ob.view','cases.view'],
  region_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ob.view','cases.view','reports.view','locations.view','locations.manage','stations.view'],
- district_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','ob.view','cases.view','cases.investigate','station_jail.view','reports.view','locations.view'],
+ district_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','ob.view','cases.view','cases.investigate','station_jail.view','reports.view','locations.view',...warrantPermissions],
  personnel_registry:['officers.view','officers.create'], ob_staff:['ob.view','ob.create','ob.update','ob.print'],
  investigator:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage'],
- cid:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view'], cid_director:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view'], cid_supervisor:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view'], cid_officer:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage'],
- district_commander:['officers.view','ob.view','cases.view','station_jail.view','reports.view'], police_station_commander:['officers.view','ob.view','cases.view','station_jail.view','reports.view'], region_commander:['officers.view','ob.view','cases.view','reports.view','stations.view'], state_commander:['officers.view','ob.view','cases.view','reports.view'],
+ cid:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view',...warrantPermissions], cid_director:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view',...warrantPermissions], cid_supervisor:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage','reports.view',...warrantPermissions], cid_officer:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage',...warrantPermissions],
+ district_commander:['officers.view','ob.view','cases.view','station_jail.view','reports.view',...warrantPermissions], police_station_commander:['officers.view','ob.view','cases.view','station_jail.view','reports.view',...warrantPermissions], region_commander:['officers.view','ob.view','cases.view','reports.view','stations.view'], state_commander:['officers.view','ob.view','cases.view','reports.view'],
  station_jail:['cases.view','station_jail.view','station_jail.intake','station_jail.assign_cell'],
- officer:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage'], jail:['cases.view','jail.view','jail.receive_transfer','jail.assign_cell','jail.medical','jail.visitors','jail.release_confirm']
+ officer:['ob.view','cases.view','cases.investigate','evidence.manage','suspects.view','suspects.create','suspects.update','suspects.manage',...warrantPermissions], jail:['cases.view','jail.view','jail.receive_transfer','jail.assign_cell','jail.medical','jail.visitors','jail.release_confirm'],
+ court:[...warrantPermissions],
+ court_admin:[...warrantPermissions],
+ court_clerk:[...warrantPermissions],
+ judge:[...warrantPermissions],
+ prosecutor:[...warrantPermissions],
+ prosecutor_liaison:[...warrantPermissions]
 };
 async function run(){
  await db.query(`CREATE TABLE IF NOT EXISTS permissions(id INT PRIMARY KEY AUTO_INCREMENT,permission_key VARCHAR(100) NOT NULL UNIQUE,description VARCHAR(255),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);

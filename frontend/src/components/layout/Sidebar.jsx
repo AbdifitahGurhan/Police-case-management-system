@@ -136,6 +136,10 @@ const Sidebar = ({ collapsed }) => {
         key: '/dashboard/court/cases',
         icon: <BankOutlined />,
         label: 'Kiisaska Maxkamadda',
+      }, {
+        key: '/dashboard/court/search',
+        icon: <FileSearchOutlined />,
+        label: 'Baaritaan Dheeraad Ah',
       }] : []),
       ...(canViewStationJail ? [{
         key: 'station_jail_operations',
@@ -176,7 +180,7 @@ const Sidebar = ({ collapsed }) => {
         icon: <IdcardOutlined />,
         label: 'Dambiilayaasha & Eedeysanayaasha',
       }] : []),
-      ...(['admin','court','court_admin','court_clerk','judge','prosecutor','prosecutor_liaison','officer','cid','cid_director','cid_supervisor','cid_officer','district_admin','district_commander','police_station_commander'].includes(role) ? [{
+      ...(hasPermission('warrants.view') ? [{
         key: '/warrants',
         icon: <FileDoneOutlined />,
         label: 'Waraaqaha Qabashada (Warrants)',

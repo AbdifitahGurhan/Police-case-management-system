@@ -11,6 +11,7 @@ import {
   Form,
   Input,
   Modal,
+  Result,
   Row,
   Select,
   Space,
@@ -21,6 +22,7 @@ import {
 import { PlusOutlined, PrinterOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import { disabledFutureDate, nameRules, requiredRule, textLengthRule } from '@/utils/validation';
 
@@ -55,6 +57,7 @@ const WARRANT_TYPES = [
 
 export default function WarrantsPage() {
   const { message } = App.useApp();
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -63,14 +66,22 @@ export default function WarrantsPage() {
   const [filter, setFilter] = useState({});
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const userPermissions = user?.permissions || [];
+  const hasPermission = (permission) => userPermissions.includes('*') || userPermissions.includes(permission);
+  const canView = hasPermission('warrants.view');
+  const canCreate = hasPermission('warrants.create');
+  const canExecute = hasPermission('warrants.execute');
+  const canCancel = hasPermission('warrants.cancel');
+  const canPrint = hasPermission('warrants.print');
 
   const loadData = useCallback(async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       const [{ data: wRes }, { data: jRes }, { data: obRes }] = await Promise.all([
         api.get('/warrants', { params: filter }),
-        api.get('/legal-personnel/options', { params: { type: 'judge' } }),
-        api.get('/ob-entries'),
+        canCreate ? api.get('/legal-personnel/options', { params: { type: 'judge' } }) : Promise.resolve({ data: { data: [] } }),
+        canCreate ? api.get('/warrants/ob-options') : Promise.resolve({ data: { data: [] } }),
       ]);
       setRows(wRes.data || []);
       setJudges(jRes.data || []);
@@ -80,13 +91,14 @@ export default function WarrantsPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, message]);
+  }, [canCreate, canView, filter, message]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   const handleCreate = async () => {
+    if (!canCreate) return;
     try {
       const values = await form.validateFields();
       setSubmitting(true);
@@ -150,7 +162,14 @@ export default function WarrantsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={allowedRoles}>
+    <ProtectedRoute allowedRoles={allowedRoles} requiredPermissions={['warrants.view']}>
+      {!canView ? (
+        <Result
+          status="403"
+          title="Access Restricted"
+          subTitle="Awoodda loo baahan yahay: warrants.view"
+        />
+      ) : (
       <Space orientation="vertical" style={{ width: '100%' }} size="large">
         <div className="standard-dashboard-hero">
           <div>
@@ -162,22 +181,24 @@ export default function WarrantsPage() {
               Jaridda, la socodka, iyo fulinta garannada soo-qabashada, baarista, iyo u-yeeridda maxkamadda.
             </Text>
           </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              form.resetFields();
-              form.setFieldsValue({
-                warrant_type: 'arrest',
-                status: 'issued',
-                issue_date: dayjs(),
-                expiry_date: dayjs().add(30, 'day'),
-              });
-              setOpen(true);
-            }}
-          >
-            Bixi Garan Cusub (Create Warrant)
-          </Button>
+          {canCreate && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                form.resetFields();
+                form.setFieldsValue({
+                  warrant_type: 'arrest',
+                  status: 'issued',
+                  issue_date: dayjs(),
+                  expiry_date: dayjs().add(30, 'day'),
+                });
+                setOpen(true);
+              }}
+            >
+              Bixi Garan Cusub (Create Warrant)
+            </Button>
+          )}
         </div>
 
         <Card variant="none" className="standard-panel">
@@ -267,19 +288,20 @@ export default function WarrantsPage() {
                 key: 'actions',
                 render: (_, r) => (
                   <Space>
-                    <Button size="small" icon={<PrinterOutlined />} onClick={() => printDocument(r.id)}>
+                    {canPrint && <Button size="small" icon={<PrinterOutlined />} onClick={() => printDocument(r.id)}>
                       Print
-                    </Button>
-                    {['issued', 'pending'].includes(r.status) && (
+                    </Button>}
+                    {canExecute && ['issued', 'pending'].includes(r.status) && (
                       <Button size="small" icon={<CheckOutlined />} onClick={() => handleAction(r.id, 'execute')}>
                         Execute
                       </Button>
                     )}
-                    {!['executed', 'cancelled'].includes(r.status) && (
+                    {canCancel && !['executed', 'cancelled'].includes(r.status) && (
                       <Button size="small" danger icon={<CloseOutlined />} onClick={() => handleAction(r.id, 'cancel')}>
                         Cancel
                       </Button>
                     )}
+                    {!canPrint && !canExecute && !canCancel && <Text type="secondary">-</Text>}
                   </Space>
                 ),
               },
@@ -385,6 +407,7 @@ export default function WarrantsPage() {
           </Form>
         </Modal>
       </Space>
+      )}
     </ProtectedRoute>
   );
 }

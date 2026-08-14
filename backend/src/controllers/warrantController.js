@@ -50,6 +50,32 @@ const list = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+const obOptions = async (req, res, next) => {
+  try {
+    const { search, limit = 50 } = req.query;
+    const station = await stationIdFor(req, null);
+    const params = [];
+    let where = '1=1';
+    if (station) { where += ' AND ob.district_id=?'; params.push(station); }
+    if (search) {
+      where += ' AND (ob.ob_number LIKE ? OR ob.case_title LIKE ? OR ob.incident_type LIKE ? OR ob.reported_by LIKE ? OR ob.respondent_name LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+    const [rows] = await db.query(
+      `SELECT ob.id, ob.ob_number, c.id AS case_id, ob.case_title, ob.incident_type,
+              ob.reported_by, ob.respondent_name, ob.district_id
+       FROM ob_entries ob
+       LEFT JOIN cases c ON c.ob_entry_id = ob.id
+       WHERE ${where}
+       ORDER BY ob.created_at DESC
+       LIMIT ?`,
+      [...params, safeLimit]
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) { next(error); }
+};
+
 const getOne = async (req, res, next) => {
   try {
     await expireWarrants();
@@ -187,4 +213,4 @@ const document = async (req,res,next) => {
   } catch(error){next(error);}
 };
 
-module.exports={list,getOne,create,update,updateStatus,document};
+module.exports={list,obOptions,getOne,create,update,updateStatus,document};

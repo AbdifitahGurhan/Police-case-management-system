@@ -24,6 +24,7 @@ const PERMISSION_GROUPS = [
   { key: 'officers', title: 'Saraakiisha & Darajooyinka', prefixes: ['officers.', 'ranks.'] },
   { key: 'ob', title: 'Diiwaanka OB', prefixes: ['ob.'] },
   { key: 'cases', title: 'Kiisaska & Baaritaanka', prefixes: ['cases.', 'evidence.'] },
+  { key: 'warrants', title: 'Garannada Maxkamadda', prefixes: ['warrants.'] },
   { key: 'suspects', title: 'Eedaysanayaasha', prefixes: ['suspects.'] },
   { key: 'station_jail', title: 'Xabsiga Saldhigga', prefixes: ['station_jail.'] },
   { key: 'stations', title: 'Xarumaha Boliiska', prefixes: ['stations.'] },

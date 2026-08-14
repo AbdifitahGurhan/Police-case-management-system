@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import AppLayout from '@/components/layout/AppLayout';
 import NotificationBridge from '@/components/shared/NotificationBridge';
 import "./globals.css";
+import "./dashboard-reference.css";
 
 export const metadata = {
   title: "Somali Police Force | Case Management System",
@@ -14,7 +15,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" data-theme="dark">
+    <html lang="so" data-theme="light">
       <body>
         <AntdRegistry>
           <AntdApp>

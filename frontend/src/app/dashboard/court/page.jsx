@@ -30,6 +30,9 @@ import {
   FileDoneOutlined,
   FileTextOutlined,
   AuditOutlined,
+  HourglassOutlined,
+  UserOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import dayjs from 'dayjs';
@@ -71,6 +74,33 @@ const statusTag = (status) => (
 
 const safe = (value) => value || '—';
 
+const completedCourtStatuses = ['judgment','sentenced','closed','archived'];
+const activeCourtStatuses = ['case_scheduled','trial_hearing','evidence_defense'];
+
+function CourtTrendChart({ rows = [], cases = [] }) {
+  const width = 760; const height = 190; const left = 34; const right = 16; const top = 18; const bottom = 32;
+  const plotW = width - left - right; const plotH = height - top - bottom;
+  const data = rows.map((row) => {
+    const monthly = cases.filter((item) => dayjs(item.registration_date).format('YYYY-MM') === row.label);
+    return {
+      label: dayjs(`${row.label}-01`).format('MMM YYYY'), total: Number(row.value || 0),
+      active: monthly.filter((item) => activeCourtStatuses.includes(item.status)).length,
+      pending: monthly.filter((item) => !activeCourtStatuses.includes(item.status) && !completedCourtStatuses.includes(item.status)).length,
+    };
+  });
+  const max = Math.max(5, ...data.flatMap((item) => [item.total, item.active, item.pending]));
+  const points = (key) => data.map((item, index) => ({ x: left + (plotW * index) / Math.max(1, data.length - 1), y: top + plotH - (item[key] / max) * plotH, value: item[key], label: item.label }));
+  const path = (items) => items.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+  const total = points('total'); const active = points('active'); const pending = points('pending');
+  return <div className="court-trend"><div className="cid-chart-legend"><span className="blue">Wadarta Kiisaska</span><span className="green">Dhageysiyo Socda</span><span className="amber">{'Go\'aan Sugaya'}</span></div><svg viewBox={`0 0 ${width} ${height}`} aria-label="Dhaqdhaqaaqa kiisaska maxkamadda">{[0,.25,.5,.75,1].map((ratio)=><line key={ratio} x1={left} x2={width-right} y1={top+plotH*ratio} y2={top+plotH*ratio} className="cid-grid-line"/>)}<path d={path(total)} className="cid-line cid-line-blue"/><path d={path(active)} className="cid-line cid-line-green"/><path d={path(pending)} className="cid-line cid-line-amber"/>{total.map((point)=><g key={point.label}><circle cx={point.x} cy={point.y} r="3.5" className="cid-dot-blue"/><text x={point.x} y={point.y-9} textAnchor="middle" className="cid-chart-value">{point.value}</text><text x={point.x} y={height-8} textAnchor="middle" className="cid-chart-label">{point.label}</text></g>)}</svg></div>;
+}
+
+function CourtStatusDonut({ stats }) {
+  const rows=[{label:'Socda',value:Number(stats.active_hearings||0),color:'#2878f0'},{label:'Sugaya',value:Number(stats.pending_cases||0),color:'#f5b313'},{label:'Dhammaystiran',value:Number(stats.completed_cases||0),color:'#42ad72'}];
+  const total=Number(stats.total_court_cases||0);const sum=rows.reduce((acc,row)=>acc+row.value,0)||1;const segments=rows.map((row,index)=>({...row,length:(row.value/sum)*358,offset:rows.slice(0,index).reduce((acc,item)=>acc+(item.value/sum)*358,0)}));
+  return <div className="cid-donut-wrap"><svg viewBox="0 0 180 180" className="cid-donut" aria-label="Xaaladda kiisaska"><circle cx="90" cy="90" r="57" className="cid-donut-track"/>{segments.map(row=><circle key={row.label} cx="90" cy="90" r="57" fill="none" stroke={row.color} strokeWidth="34" strokeDasharray={`${row.length} ${358-row.length}`} strokeDashoffset={-row.offset} transform="rotate(-90 90 90)"/>)}<text x="90" y="86" textAnchor="middle" className="cid-donut-total">{total}</text><text x="90" y="105" textAnchor="middle" className="cid-donut-caption">Kiisas</text></svg><div className="cid-donut-legend">{rows.map(row=><div key={row.label}><i style={{background:row.color}}/><span>{row.label}</span><strong>{row.value}</strong></div>)}<div className="court-total-row"><span>Wadarta Kiisaska</span><strong>{total}</strong></div></div></div>;
+}
+
 export default function CourtDashboard() {
   const { message } = App.useApp();
   const { user } = useAuth();
@@ -83,6 +113,7 @@ export default function CourtDashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [modalType, setModalType] = useState(null);
+  const [modalInitialValues, setModalInitialValues] = useState({});
   const [calendarForm] = Form.useForm();
   const [form] = Form.useForm();
 
@@ -141,8 +172,6 @@ export default function CourtDashboard() {
   };
 
   const openModal = (type, values = {}) => {
-    setModalType(type);
-    form.resetFields();
     if (type === 'sentence') {
       const suspects = selected?.suspects || [];
       if (suspects.length === 1) {
@@ -150,13 +179,21 @@ export default function CourtDashboard() {
         values.defendant_name = suspects[0].full_name;
       }
     }
-    form.setFieldsValue(values);
+    setModalInitialValues(values);
+    setModalType(type);
   };
 
   const closeModal = () => {
-    setModalType(null);
     form.resetFields();
+    setModalType(null);
+    setModalInitialValues({});
   };
+
+  useEffect(() => {
+    if (!modalType) return;
+    form.resetFields();
+    form.setFieldsValue(modalInitialValues);
+  }, [form, modalInitialValues, modalType]);
 
   const submitModal = async (values) => {
     const id = selected?.courtCase?.id;
@@ -223,92 +260,80 @@ export default function CourtDashboard() {
   };
 
   const metrics = [
-    { title: 'Total court cases', value: stats.total_court_cases || 0, icon: <BankOutlined /> },
-    { title: 'Pending decision', value: stats.pending_cases || 0, icon: <FileTextOutlined /> },
-    { title: 'Active hearings', value: stats.active_hearings || 0, icon: <CalendarOutlined /> },
-    { title: 'Completed', value: stats.completed_cases || 0, icon: <FileDoneOutlined /> },
-    { title: 'Convicted', value: stats.convicted_cases || 0, icon: <AuditOutlined /> },
-    { title: 'Acquitted', value: stats.acquitted_cases || 0, icon: <CheckCircleOutlined /> },
+    { title: 'Wadarta Kiisaska', note: 'Kiisaska oo dhan', value: stats.total_court_cases || 0, icon: <BankOutlined />, tone: 'blue' },
+    { title: "Go'aan Sugaya", note: "Go'aannada sugaya", value: stats.pending_cases || 0, icon: <FileTextOutlined />, tone: 'orange' },
+    { title: 'Dhageysiyo Socda', note: 'Dhageysiyada socda', value: stats.active_hearings || 0, icon: <HourglassOutlined />, tone: 'amber' },
+    { title: 'La Dhammaystiray', note: 'Kiisaska la xidhay', value: stats.completed_cases || 0, icon: <CheckCircleOutlined />, tone: 'green' },
+    { title: 'La Xukumay', note: 'Kiisaska la xukumay', value: stats.convicted_cases || 0, icon: <AuditOutlined />, tone: 'purple' },
+    { title: 'La Sii Daayay', note: 'Kiisaska la sii daayay', value: stats.acquitted_cases || 0, icon: <UserOutlined />, tone: 'cyan' },
   ];
+
+  const judgeRows = Object.values((dashboard?.recentCases || []).reduce((acc, item) => {
+    const name = item.assigned_judge || 'Lama xilsaarin';
+    if (!acc[name]) acc[name] = { name, total: 0, completed: 0 };
+    acc[name].total += 1;
+    if (completedCourtStatuses.includes(item.status)) acc[name].completed += 1;
+    return acc;
+  }, {})).slice(0, 4);
 
   return (
     <ProtectedRoute allowedRoles={courtRoles}>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+      <div className="standard-dashboard court-dashboard">
         <div className="standard-dashboard-hero">
           <div>
-            <Text className="dashboard-eyebrow">Court administration</Text>
+            <Text className="dashboard-eyebrow">Bogga Hore&nbsp;&nbsp; / &nbsp;&nbsp;Maamulka Maxkamadda</Text>
             <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
-              Court dashboard
+              Hawlaha Maxkamadda
             </Title>
             <Text type="secondary" style={{ fontSize: 13 }}>
-              Hearings calendar, case status progress, and judge judgment/sentence actions.
+              {'La soco kiisaska maxkamadda, dhageysiyada, go\'aannada iyo waxqabadka garsoorayaasha.'}
             </Text>
           </div>
           <Space wrap>
             <Link href="/dashboard/court/cases">
-              <Button type="primary" icon={<BankOutlined />}>Court cases</Button>
+              <Button type="primary" icon={<BankOutlined />}>Kiisaska Maxkamadda</Button>
             </Link>
-            <Button onClick={() => loadDashboard(calendarFilters)}>Refresh</Button>
+            <Button onClick={() => loadDashboard(calendarFilters)}>Cusboonaysii</Button>
           </Space>
         </div>
 
-        {notifications.length > 0 && (
-          <Row gutter={[16, 16]}>
-            {notifications.slice(0, 4).map((item, index) => (
-              <Col xs={24} md={12} key={`${item.type}-${item.court_case_id}-${index}`}>
-                <Alert
-                  showIcon
-                  type={item.type === 'new_case' ? 'info' : 'warning'}
-                  title={<Text strong>{item.title}</Text>}
-                  description={
-                    <Space orientation="vertical" size={2}>
-                      <Text>{item.message}</Text>
-                      <Button type="link" size="small" style={{ padding: 0 }} onClick={() => loadCaseDetail(item.court_case_id)}>
-                        Open case
-                      </Button>
-                    </Space>
-                  }
-                />
-              </Col>
-            ))}
-          </Row>
-        )}
-
         <Row gutter={[16, 16]}>
           {metrics.map((metric) => (
-            <Col xs={24} sm={12} xl={8} key={metric.title}>
-              <Card variant="none" className="standard-metric-card">
+            <Col xs={24} sm={12} lg={8} xl={4} key={metric.title}>
+              <Card variant="none" className={`standard-metric-card court-metric court-metric-${metric.tone}`}>
                 <div className="standard-metric-icon">{metric.icon}</div>
                 <Statistic title={metric.title} value={metric.value} loading={loading} />
+                <Text type="secondary">{metric.note}</Text>
               </Card>
             </Col>
           ))}
         </Row>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={8}>
-            <Card variant="none" className="standard-panel" title="Cases by status">
-              {(dashboard?.byStatus || []).length ? (
-                <Space orientation="vertical" style={{ width: '100%' }}>
-                  {dashboard.byStatus.map((row) => (
-                    <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                      <Text>{statusMeta[row.label]?.label || String(row.label).replaceAll('_', ' ')}</Text>
-                      <Tag className="status-tag status-tag--neutral">{row.value}</Tag>
-                    </div>
-                  ))}
-                </Space>
-              ) : (
-                <Empty description="No status data yet" />
-              )}
+        <Row gutter={[16,16]}>
+          <Col xs={24} xl={16}>
+            <Card variant="none" className="standard-panel court-chart-card" title="Dhaqdhaqaaqa Kiisaska Maxkamadda" extra={<Select size="small" defaultValue="7" options={[{value:'7',label:'7 Bilood'}]} />}>
+              {(dashboard?.monthlyActivity || []).length ? <CourtTrendChart rows={dashboard.monthlyActivity.slice(-7)} cases={dashboard?.recentCases || []} /> : <Empty description="Xog bille ah lama helin" />}
             </Card>
           </Col>
+          <Col xs={24} xl={8}>
+            <Card variant="none" className="standard-panel court-chart-card" title="Xaaladda Kiisaska"><CourtStatusDonut stats={stats} /></Card>
+          </Col>
+        </Row>
 
-          <Col xs={24} lg={16}>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} lg={8} className="court-side-column">
+            <Space orientation="vertical" size={12} style={{width:'100%'}}>
+              <Card variant="none" className="standard-panel court-side-card" title="Waxqabadka Garsoorayaasha"><div className="cid-officer-list">{judgeRows.length?judgeRows.map(row=>{const percent=row.total?Math.round((row.completed/row.total)*100):0;return <div className="cid-officer" key={row.name}><div className="cid-officer-avatar">{row.name.split(' ').map(part=>part[0]).slice(0,2).join('')}</div><div><strong>{row.name}</strong><span>Dhageysiyo {row.total} · {row.completed} Dhammaystiray</span><div className="cid-progress"><i style={{width:`${percent}%`}}/></div></div><b>{percent}%</b></div>;}):<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Xog garsoore lama helin"/>}</div></Card>
+              <Card variant="none" className="standard-panel court-side-card" title="Dhageysiyada Soo Socda"><div className="court-upcoming">{calendarItems.slice(0,3).map((item,index)=><button type="button" key={item.id||index} onClick={()=>loadCaseDetail(item.court_case_id)}><WarningOutlined/><span><strong>{item.court_case_number} · {item.case_title}</strong><small>{item.hearing_date} · {item.hearing_time} · {item.court_room}</small></span><b>Soo socda</b></button>)}{!calendarItems.length&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Dhageysi soo socda ma jiro"/>}</div></Card>
+            </Space>
+          </Col>
+
+          <Col xs={24} lg={16} className="court-table-column">
             <Card
               variant="none"
               className="standard-panel"
-              title="Hearings list"
-              extra={<Text type="secondary" style={{ fontSize: 12 }}>{calendarItems.length} scheduled</Text>}
+              title="Jadwalka Dhageysiyada"
+              extra={<Text type="secondary" style={{ fontSize: 12 }}>{calendarItems.length} dhageysi</Text>}
             >
               <Form
                 form={calendarForm}
@@ -656,7 +681,7 @@ export default function CourtDashboard() {
           })()}
           </Form>
         </Modal>
-      </Space>
+      </div>
     </ProtectedRoute>
   );
 }

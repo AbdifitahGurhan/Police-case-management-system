@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, [pathname, router]);
 
-  const login = async (identifier, password) => {
+  const login = async (identifier, password, options = {}) => {
     try {
       const response = await api.post('/auth/login', { username: identifier, email: identifier, password });
       const { token, user: userData } = response.data;
@@ -105,8 +105,9 @@ export const AuthProvider = ({ children }) => {
         staff: '/cases'
       };
       
-      router.push(roleRedirects[normalizedUser.role] || '/police-officers');
-      return { success: true };
+      const redirectTo = roleRedirects[normalizedUser.role] || '/police-officers';
+      if (!options.deferNavigation) router.push(redirectTo);
+      return { success: true, user: normalizedUser, redirectTo };
     } catch (error) {
       return { 
         success: false, 

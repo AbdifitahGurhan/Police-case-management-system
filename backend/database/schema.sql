@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS ob_entries (
   description TEXT,
   reported_by VARCHAR(150) NOT NULL,
   reporter_phone VARCHAR(30),
+  reporter_gender VARCHAR(30),
   reporter_id_type ENUM('National ID','Passport'),
   reporter_id_number VARCHAR(100),
   reporter_email VARCHAR(150),

@@ -5,6 +5,19 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../src/config/database');
 
+async function runMigrations() {
+  const runObRegistrationMigration = require('./ob_registration_migration');
+  await runObRegistrationMigration();
+  const runAssignmentCategoryMigration = require('./add_assignment_category_migration');
+  await runAssignmentCategoryMigration();
+  const runCaseInvestigationMigration = require('./case_investigation_migration');
+  await runCaseInvestigationMigration();
+  const { migrate: runCourtRemandMigration } = require('./court_workflow_remand_migration');
+  await runCourtRemandMigration();
+  const { migrate: runCourtArraignmentMigration } = require('./court_arraignment_workflow_migration');
+  await runCourtArraignmentMigration();
+}
+
 async function autoInitializeDb() {
   try {
     // 1. Check if tables already exist (e.g. regions table)
@@ -14,11 +27,8 @@ async function autoInitializeDb() {
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'regions'`
     );
 
-    // Always run schema migrations (e.g. assignment_category column)
-    const runAssignmentCategoryMigration = require('./add_assignment_category_migration');
-    await runAssignmentCategoryMigration();
-
     if (rows[0] && rows[0].count > 0) {
+      await runMigrations();
       return;
     }
 
@@ -54,6 +64,8 @@ async function autoInitializeDb() {
       }
     }
     console.log('✅ Schema tables created successfully.');
+
+    await runMigrations();
 
     // 3. Run migrations and seed initial data
     console.log('🌱 Seeding initial data (States, Regions, Ranks, Users, Permissions)...');

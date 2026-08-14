@@ -2,19 +2,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, Typography, Space } from 'antd';
+import { Tag, Typography } from 'antd';
 import {
   AuditOutlined,
   BookOutlined,
   CheckSquareOutlined,
   ContainerOutlined
 } from '@ant-design/icons';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 import dayjs from 'dayjs';
 import Link from 'next/link';
-
-const { Title } = Typography;
+import StandardDashboard from '@/components/dashboard/StandardDashboard';
 
 export default function ProsecutorDashboard() {
   const [data, setData] = useState(null);
@@ -70,66 +68,23 @@ export default function ProsecutorDashboard() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['prosecutor', 'admin']}>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <div>
-          <Title level={2}>Public Prosecutor Dashboard</Title>
-          <Typography.Text type="secondary">Review case files, evidence, and decide on legal proceedings.</Typography.Text>
-        </div>
-
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none">
-              <Statistic
-                title="Pending Review"
-                value={data?.referred_prosecutor || 0}
-                prefix={<AuditOutlined style={{ color: '#faad14' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none">
-              <Statistic
-                title="Total Referred"
-                value={data?.total || 0}
-                prefix={<BookOutlined style={{ color: '#1677ff' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none">
-              <Statistic
-                title="Processed Cases"
-                value={data?.closed_cases || 0}
-                prefix={<CheckSquareOutlined style={{ color: '#52c41a' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card variant="none">
-              <Statistic
-                title="Report Files"
-                value={(data?.total || 0) + (data?.closed_cases || 0)}
-                prefix={<ContainerOutlined style={{ color: '#d48d08' }} />}
-                loading={loading}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        <Card title="Prosecution Queue - Case Files for Review" variant="none">
-          <Table
-            columns={columns}
-            dataSource={data?.recentCases || []}
-            loading={loading}
-            rowKey="id"
-            pagination={false}
-          />
-        </Card>
-      </Space>
-    </ProtectedRoute>
+    <StandardDashboard
+      allowedRoles={['prosecutor', 'admin']}
+      eyebrow="Public prosecution"
+      title="Public Prosecutor Dashboard"
+      subtitle="Review case files, evidence, and decide on legal proceedings."
+      loading={loading}
+      metrics={[
+        { title: 'Pending Review', value: data?.referred_prosecutor || 0, icon: <AuditOutlined />, tone: 'amber' },
+        { title: 'Total Referred', value: data?.total || 0, icon: <BookOutlined />, tone: 'blue' },
+        { title: 'Processed Cases', value: data?.closed_cases || 0, icon: <CheckSquareOutlined />, tone: 'green' },
+        { title: 'Report Files', value: (data?.total || 0) + (data?.closed_cases || 0), icon: <ContainerOutlined />, tone: 'purple' },
+      ]}
+      tableTitle="Prosecution Queue - Case Files for Review"
+      tableColumns={columns}
+      tableData={data?.recentCases || []}
+      rowKey="id"
+      pagination={false}
+    />
   );
 }

@@ -29,6 +29,8 @@ import {
   CheckCircleOutlined,
   FileProtectOutlined,
   FileSearchOutlined,
+  EyeOutlined,
+  PlusOutlined,
   SendOutlined,
   TeamOutlined,
   UserSwitchOutlined,
@@ -108,6 +110,35 @@ const statusTag = (value) => (
   </Tag>
 );
 
+function InvestigationTrend({ rows = [], cases: caseRows = [] }) {
+  const labels = rows.length ? rows.map((row) => dayjs(`${row.label}-01`).format('MMM YYYY')) : [];
+  const series = rows.map((row) => {
+    const monthlyCases = caseRows.filter((item) => dayjs(item.assigned_date).format('YYYY-MM') === row.label);
+    return {
+      active: monthlyCases.filter((item) => ['open','under_investigation','evidence_collection','witness_interviews','suspect_tracking','arrest_made'].includes(item.investigation_status)).length,
+      completed: monthlyCases.filter((item) => ['investigation_completed','approved','sent_to_prosecutor','sent_to_court'].includes(item.investigation_status)).length,
+      pending: monthlyCases.filter((item) => ['open','supervisor_review'].includes(item.investigation_status)).length,
+    };
+  });
+  const values = series.map((item) => item.active);
+  const width = 760; const height = 190; const left = 34; const right = 16; const top = 18; const bottom = 32;
+  const max = Math.max(5, ...series.flatMap((item) => [item.active,item.completed,item.pending])); const plotW = width - left - right; const plotH = height - top - bottom;
+  const points = values.map((value, index) => ({ x: left + (plotW * index) / Math.max(1, values.length - 1), y: top + plotH - (value / max) * plotH, value }));
+  const activePath = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+  const completed = points.map((point,index) => ({ ...point, y: top + plotH - (series[index].completed / max) * plotH, value: series[index].completed }));
+  const pending = points.map((point,index) => ({ ...point, y: top + plotH - (series[index].pending / max) * plotH, value: series[index].pending }));
+  const pathOf = (series) => series.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+  return <div className="cid-trend"><div className="cid-chart-legend"><span className="blue">Baaritaanno Socda</span><span className="green">Baaritaanno Dhammaystiran</span><span className="amber">Baaritaanno Sugaya</span></div><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Dhaqdhaqaaqa baaritaannada">{[0,.25,.5,.75,1].map((ratio) => <line key={ratio} x1={left} x2={width-right} y1={top+plotH*ratio} y2={top+plotH*ratio} className="cid-grid-line" />)}<path d={activePath} className="cid-line cid-line-blue"/><path d={pathOf(completed)} className="cid-line cid-line-green"/><path d={pathOf(pending)} className="cid-line cid-line-amber"/>{points.map((point,index)=><g key={labels[index]}><circle cx={point.x} cy={point.y} r="3.5" className="cid-dot-blue"/><text x={point.x} y={point.y-9} textAnchor="middle" className="cid-chart-value">{point.value}</text><text x={point.x} y={height-8} textAnchor="middle" className="cid-chart-label">{labels[index]}</text></g>)}</svg></div>;
+}
+
+function StatusDonut({ rows = [], total = 0 }) {
+  const palette = ['#2878f0','#f5b313','#42ad72','#8b5cf6','#ef6b62'];
+  const normalized = rows.slice(0, 5).map((row,index)=>({ ...row, value:Number(row.value||0), color:palette[index] }));
+  const sum = normalized.reduce((acc,row)=>acc+row.value,0) || Number(total) || 1;
+  const segments = normalized.map((row,index)=>({ ...row, length:(row.value/sum)*358, offset:normalized.slice(0,index).reduce((acc,item)=>acc+(item.value/sum)*358,0) }));
+  return <div className="cid-donut-wrap"><svg viewBox="0 0 180 180" className="cid-donut" aria-label="Xaaladda baaritaannada"><circle cx="90" cy="90" r="57" className="cid-donut-track"/>{segments.map((row)=><circle key={row.label} cx="90" cy="90" r="57" fill="none" stroke={row.color} strokeWidth="34" strokeDasharray={`${row.length} ${358-row.length}`} strokeDashoffset={-row.offset} transform="rotate(-90 90 90)"/>)}<text x="90" y="86" textAnchor="middle" className="cid-donut-total">{total}</text><text x="90" y="105" textAnchor="middle" className="cid-donut-caption">Kiisas</text></svg><div className="cid-donut-legend">{normalized.map(row=><div key={row.label}><i style={{background:row.color}}/><span>{statusMeta[row.label]?.label || row.label}</span><strong>{row.value}</strong></div>)}</div></div>;
+}
+
 export default function CIDDashboard() {
   const { message } = App.useApp();
   const { user } = useAuth();
@@ -120,6 +151,8 @@ export default function CIDDashboard() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [filters, setFilters] = useState({});
+  const [chartPeriod, setChartPeriod] = useState(7);
+  const [loadError, setLoadError] = useState('');
   const [modalType, setModalType] = useState(null);
   const [form] = Form.useForm();
   const [filterForm] = Form.useForm();
@@ -128,6 +161,7 @@ export default function CIDDashboard() {
 
   const loadDashboard = useCallback(async (nextFilters = {}) => {
     setLoading(true);
+    setLoadError('');
     try {
       const [dashboardRes, casesRes] = await Promise.all([
         api.get('/cid/dashboard'),
@@ -136,7 +170,9 @@ export default function CIDDashboard() {
       setDashboard(dashboardRes.data.data);
       setCases(casesRes.data.data || []);
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to load CID dashboard.');
+      const errorMessage = error.response?.data?.message || 'Dashboard-ka CID lama soo qaadi karin.';
+      setLoadError(errorMessage);
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -268,22 +304,22 @@ export default function CIDDashboard() {
   ].slice(0, 5);
 
   const columns = [
-    { title: 'Case #', dataIndex: 'case_number', render: (value, row) => <Button type="link" onClick={() => openCaseView(row)}>{value}</Button> },
-    { title: 'OB #', dataIndex: 'ob_number' },
-    { title: 'Title', dataIndex: 'case_title', ellipsis: true },
-    { title: 'Crime', dataIndex: 'crime_category' },
+    { title: 'Kiiska', dataIndex: 'case_number', sorter: (a,b) => String(a.case_number || '').localeCompare(String(b.case_number || '')), render: (value, row) => <Button type="link" onClick={() => openCaseView(row)}>{value}</Button> },
+    { title: 'OB', dataIndex: 'ob_number', render: (value, row) => <Button type="link" onClick={() => openCaseView(row)}>{value}</Button> },
+    { title: 'Cinwaanka', dataIndex: 'case_title', ellipsis: true },
+    { title: 'Nooca Dambiga', dataIndex: 'crime_category' },
     {
-      title: 'Priority',
+      title: 'Mudnaanta',
       dataIndex: 'priority',
       render: (v) => (
         <Tag className={`status-tag status-tag--${v === 'critical' ? 'critical' : v === 'high' ? 'warning' : 'neutral'}`}>
-          {safe(v)}
+          {{ critical: 'Degdeg', high: 'Sare', medium: 'Dhexe', low: 'Hoose' }[v] || safe(v)}
         </Tag>
       ),
     },
-    { title: 'Officer', dataIndex: 'assigned_officer', render: safe },
+    { title: 'Sarkaalka', dataIndex: 'assigned_officer', render: safe },
     {
-      title: 'Assignment',
+      title: 'Xil-saaridda',
       dataIndex: 'assignment_status',
       render: (v) => (
         <Tag className={`status-tag status-tag--${v === 'assigned' ? 'pending' : 'open'}`}>
@@ -291,14 +327,14 @@ export default function CIDDashboard() {
         </Tag>
       ),
     },
-    { title: 'Investigation', dataIndex: 'investigation_status', render: statusTag },
+    { title: 'Marxaladda', dataIndex: 'investigation_status', render: statusTag },
     { title: 'Assigned', dataIndex: 'assigned_date', render: (v) => (v ? dayjs(v).format('YYYY-MM-DD') : '—') },
     {
       title: 'Ficilka',
       key: 'action',
       render: (_, row) => (
         <Space>
-          <Button size="small" onClick={() => openCaseView(row)}>View</Button>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => openCaseView(row)}>Eeg</Button>
           {row.assignment_status === 'assigned' && (
             <Button
               size="small"
@@ -313,7 +349,7 @@ export default function CIDDashboard() {
                 }
               }}
             >
-              Acknowledge
+              Aqbal
             </Button>
           )}
         </Space>
@@ -338,10 +374,10 @@ export default function CIDDashboard() {
 
   return (
     <ProtectedRoute allowedRoles={cidRoles}>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+      <div className="standard-dashboard cid-dashboard">
         <div className="standard-dashboard-hero">
           <div>
-            <Text className="dashboard-eyebrow">Waaxda Baarista Dambiyada</Text>
+            <Text className="dashboard-eyebrow">Bogga Hore&nbsp;&nbsp; / &nbsp;&nbsp;Hawlaha Baaritaanka</Text>
             <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
               Hawlaha Baaritaanka
             </Title>
@@ -349,12 +385,14 @@ export default function CIDDashboard() {
               La soco kiisaska ay maxkamaddu u dirtay CID, baaritaannada socda, caddeymaha iyo hawlaha saraakiisha.
             </Text>
           </div>
-          <Button type="primary" onClick={() => loadDashboard(filters)}>Cusboonaysii</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => router.push('/cases/new')}>Qaado Kiis Cusub</Button>
         </div>
+
+        {loadError && <Alert showIcon type="error" title="Xogta lama soo qaadi karin" description={loadError} action={<Button onClick={() => loadDashboard(filters)}>Mar kale isku day</Button>} />}
 
         <Row gutter={[16, 16]}>
           {metrics.map((metric) => (
-            <Col xs={24} sm={12} xl={6} key={metric.title}>
+            <Col xs={24} sm={12} lg={8} xl={4} key={metric.title}>
               <Card variant="none" className="standard-metric-card">
                 <div className="standard-metric-icon">{metric.icon}</div>
                 <Statistic title={metric.title} value={metric.value || 0} loading={loading} />
@@ -364,45 +402,15 @@ export default function CIDDashboard() {
           ))}
         </Row>
 
-        <Card variant="none" className="standard-panel" title="CID search & filters">
-          <Form form={filterForm} layout="vertical" onFinish={applyFilters}>
-            <Row gutter={12}>
-              <Col xs={24} md={6}><Form.Item name="search" label="Case / OB / complainant"><Input /></Form.Item></Col>
-              <Col xs={24} md={6}><Form.Item name="officer" label="Assigned officer"><Input /></Form.Item></Col>
-              <Col xs={24} md={6}><Form.Item name="priority" label="Priority"><Select allowClear options={['low','medium','high','critical'].map((value) => ({ value, label: value }))} /></Form.Item></Col>
-              <Col xs={24} md={6}><Form.Item name="status" label="Investigation status"><Select allowClear options={CID_STATUS_OPTIONS.map((value) => ({ value, label: statusMeta[value].label }))} /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item name="date_range" label="Assigned date range"><RangePicker style={{ width: '100%' }} /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label=" "><Space><Button type="primary" htmlType="submit">Search</Button><Button onClick={() => { filterForm.resetFields(); setFilters({}); loadDashboard({}); }}>Reset</Button></Space></Form.Item></Col>
-            </Row>
-          </Form>
-        </Card>
-
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={16}>
-            <Card variant="none" className="standard-panel" title="Dhaqdhaqaaqa Baaritaannada">
-              <Space orientation="vertical" style={{ width: '100%' }}>
-                {trendRows.length ? trendRows.map((row) => (
-                  <div key={`trend-${row.label}`} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 46px', alignItems: 'center', gap: 12 }}>
-                    <Text type="secondary">{row.label}</Text>
-                    <div style={{ height: 8, borderRadius: 99, background: '#eef4ff', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(100, Math.max(8, Number(row.value || 0) * 8))}%`, height: '100%', background: '#2563eb' }} />
-                    </div>
-                    <Text strong>{row.value}</Text>
-                  </div>
-                )) : <Text type="secondary">Wali dhaqdhaqaaq CID oo maxkamad laga soo diray ma jiro.</Text>}
-              </Space>
+            <Card variant="none" className="standard-panel cid-chart-card" title="Dhaqdhaqaaqa Baaritaannada" extra={<Select aria-label="Dooro muddada jaantuska" size="small" value={chartPeriod} onChange={setChartPeriod} options={[{value:6,label:'6 Bilood'},{value:7,label:'7 Bilood'},{value:12,label:'12 Bilood'}]}/>}>
+              {trendRows.length ? <InvestigationTrend rows={trendRows.slice(-chartPeriod)} cases={cases} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Xog bille ah lama helin" />}
             </Card>
           </Col>
           <Col xs={24} xl={8}>
-            <Card variant="none" className="standard-panel" title="Xaaladda Baaritaannada">
-              <Space orientation="vertical" style={{ width: '100%' }}>
-                {statusRows.length ? statusRows.map((row) => (
-                  <div key={`status-${row.label}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <Text>{statusMeta[row.label]?.label || row.label || 'Unknown'}</Text>
-                    <Tag color="blue">{row.value}</Tag>
-                  </div>
-                )) : <Text type="secondary">Wali status lama hayo.</Text>}
-              </Space>
+            <Card variant="none" className="standard-panel cid-chart-card" title="Xaaladda Baaritaannada">
+              <StatusDonut rows={statusRows} total={Number(stats.total_cid_cases || 0)} />
             </Card>
           </Col>
         </Row>
@@ -410,20 +418,30 @@ export default function CIDDashboard() {
         <Row gutter={[16, 16]} align="top">
           <Col xs={24} xl={17}>
             <Card variant="none" className="standard-panel" title="Safka Kiisaska CID">
+              <Form form={filterForm} className="cid-table-filters" onFinish={applyFilters}>
+                <Row gutter={8} align="bottom">
+                  <Col xs={24} md={7}><Form.Item name="search"><Input prefix={<FileSearchOutlined />} placeholder="Raadi CASE, OB ama dacwo..." /></Form.Item></Col>
+                  <Col xs={12} md={4}><Form.Item name="officer"><Input placeholder="Sarkaalka" /></Form.Item></Col>
+                  <Col xs={12} md={4}><Form.Item name="priority"><Select allowClear placeholder="Mudnaanta" options={['low','medium','high','critical'].map((value) => ({ value, label: value }))} /></Form.Item></Col>
+                  <Col xs={12} md={5}><Form.Item name="status"><Select allowClear placeholder="Xaaladda" options={CID_STATUS_OPTIONS.map((value) => ({ value, label: statusMeta[value].label }))} /></Form.Item></Col>
+                  <Col xs={12} md={4}><Form.Item><Button block type="primary" htmlType="submit">Sifee</Button></Form.Item></Col>
+                  <Col xs={24} md={9}><Form.Item name="date_range"><RangePicker style={{ width: '100%' }} /></Form.Item></Col>
+                </Row>
+              </Form>
               <Table columns={columns} dataSource={cases} rowKey="id" loading={loading || detailLoading} scroll={{ x: 1300 }} />
             </Card>
           </Col>
           <Col xs={24} xl={7}>
             <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-              <Card variant="none" className="standard-panel" title="Waxqabadka Saraakiisha">
-                <Space orientation="vertical" style={{ width: '100%' }}>
-                  {officerRows.length ? officerRows.map((row) => (
-                    <div key={`officer-${row.label}`} style={{ display: 'grid', gridTemplateColumns: '1fr 46px', gap: 12 }}>
-                      <Text>{row.label || 'Unassigned'}</Text>
-                      <Tag color="blue">{row.value}</Tag>
-                    </div>
-                  )) : <Text type="secondary">Wali waxqabad sarkaal lama hayo.</Text>}
-                </Space>
+              <Card variant="none" className="standard-panel" title="Waxqabadka Saraakiisha" extra={<Select size="small" defaultValue="all" options={[{value:'all',label:'Dhammaan'}]}/>}>
+                <div className="cid-officer-list">
+                  {officerRows.length ? officerRows.slice(0,4).map((row) => {
+                    const assigned = cases.filter((item) => item.assigned_officer === row.label);
+                    const completedCount = assigned.filter((item) => ['investigation_completed','approved','sent_to_prosecutor','sent_to_court'].includes(item.investigation_status)).length;
+                    const percent = assigned.length ? Math.round((completedCount / assigned.length) * 100) : 0;
+                    return <div className="cid-officer" key={`officer-${row.label}`}><div className="cid-officer-avatar">{String(row.label || 'U').split(' ').map(part=>part[0]).slice(0,2).join('')}</div><div><strong>{row.label || 'Lama xilsaarin'}</strong><span>{row.value} Kiis La Qaaday · {completedCount} Dhammaystiray</span><div className="cid-progress"><i style={{width:`${percent}%`}}/></div></div><b>{percent}%</b></div>;
+                  }) : <Text type="secondary">Wali waxqabad sarkaal lama hayo.</Text>}
+                </div>
               </Card>
               <Card variant="none" className="standard-panel" title="Hawlaha Degdegga ah">
                 <Space orientation="vertical" style={{ width: '100%' }}>
@@ -837,7 +855,7 @@ export default function CIDDashboard() {
             {modalType === 'prosecutor' && <Form.Item name="notes" label="Forwarding notes"><TextArea rows={4} /></Form.Item>}
           </Form>
         </Modal>
-      </Space>
+      </div>
     </ProtectedRoute>
   );
 }

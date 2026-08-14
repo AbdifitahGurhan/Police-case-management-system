@@ -32,7 +32,25 @@ const options = async (req, res, next) => {
       [type]
     );
 
-    res.json({ success: true, data: lpRows });
+    const roleFilter = type === 'judge' ? ['judge'] : ['prosecutor', 'prosecutor_liaison'];
+    const [userRows] = await db.query(
+      `SELECT u.id AS value, u.full_name AS label, 'Court / Legal System' AS court_or_office 
+       FROM users u 
+       JOIN roles r ON u.role_id = r.id 
+       WHERE LOWER(r.name) IN (?) AND u.is_active = 1 
+       ORDER BY u.full_name`,
+      [roleFilter]
+    );
+
+    const combinedMap = new Map();
+    for (const item of lpRows) combinedMap.set(item.label.toLowerCase(), item);
+    for (const item of userRows) {
+      if (!combinedMap.has(item.label.toLowerCase())) {
+        combinedMap.set(item.label.toLowerCase(), item);
+      }
+    }
+
+    res.json({ success: true, data: Array.from(combinedMap.values()) });
   } catch (error) { next(error); }
 };
 

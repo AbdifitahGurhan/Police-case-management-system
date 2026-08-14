@@ -1,7 +1,7 @@
 // src/components/layout/AppLayout.jsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Layout, ConfigProvider, App } from 'antd';
 import Sidebar from './Sidebar';
 import TopNavbar from './TopNavbar';
@@ -17,6 +17,16 @@ const AppLayout = ({ children }) => {
   const { user, loading } = useAuth();
   const { theme } = useTheme();
   const pathname = usePathname();
+  const [dashboardEntering, setDashboardEntering] = useState(false);
+
+  useEffect(() => {
+    if (pathname !== '/login' && sessionStorage.getItem('spf-dashboard-enter') === '1') {
+      sessionStorage.removeItem('spf-dashboard-enter');
+      setDashboardEntering(true);
+      const timer = window.setTimeout(() => setDashboardEntering(false), 750);
+      return () => window.clearTimeout(timer);
+    }
+  }, [pathname]);
 
   // Pages that don't use the sidebar layout (like login)
   const isAuthPage = pathname === '/login' || pathname === '/';
@@ -36,7 +46,7 @@ const AppLayout = ({ children }) => {
   return (
     <ConfigProvider theme={currentTheme}>
       <App>
-        <Layout className="app-shell">
+        <Layout className={`app-shell ${dashboardEntering ? 'dashboard-entering' : ''}`}>
           <Sidebar collapsed={collapsed} />
           <Layout className={`app-main ${collapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>
             <TopNavbar collapsed={collapsed} setCollapsed={setCollapsed} />

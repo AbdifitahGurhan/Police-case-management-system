@@ -101,8 +101,23 @@ async function validateReferences(data, station) {
     if (station && Number(record.district_id) !== Number(station)) return 'You are not authorized to access records from another police station.';
   }
   if (data.issued_by_judge_id) {
-    const [[judge]] = await db.query("SELECT id FROM legal_personnel WHERE id=? AND personnel_type='judge' AND status='active'", [data.issued_by_judge_id]);
-    if (!judge) return 'Issued By Judge must be selected from the active judges list.';
+    const judgeId = Number(data.issued_by_judge_id);
+    const [[judgeRecord]] = await db.query(
+      "SELECT id FROM legal_personnel WHERE id=? AND personnel_type='judge' AND status='active'",
+      [judgeId]
+    );
+    if (judgeRecord) return null;
+
+    const [[userJudge]] = await db.query(
+      `SELECT u.id
+       FROM users u
+       JOIN roles r ON u.role_id = r.id
+       WHERE u.id = ?
+         AND u.is_active = 1
+         AND LOWER(r.name) IN ('judge', 'court', 'court_admin', 'court_clerk')`,
+      [judgeId]
+    );
+    if (!userJudge) return 'Issued By Judge must be selected from the active judges list.';
   }
   return null;
 }

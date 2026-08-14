@@ -3,7 +3,7 @@
 
 import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
-import { Input, Layout, Menu, Tag, Tooltip } from 'antd';
+import { Avatar, Input, Layout, Menu, Tooltip } from 'antd';
 import {
   DashboardOutlined,
   FileSearchOutlined,
@@ -319,13 +319,6 @@ const Sidebar = ({ collapsed }) => {
           )}
         </div>
 
-        {!collapsed && (
-          <div className="police-sidebar-role">
-            <span>Signed in as</span>
-            <Tag className="status-tag status-tag--open">{roleLabel}</Tag>
-          </div>
-        )}
-
         <div className="police-sidebar-search">
           {collapsed ? (
             <Tooltip title="Search menu" placement="right">
@@ -362,6 +355,17 @@ const Sidebar = ({ collapsed }) => {
         </div>
 
         <div className="police-sidebar-footer">
+          <div className="police-sidebar-user">
+            <Avatar className="police-sidebar-avatar">
+              {(user?.full_name || user?.username || 'U').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}
+            </Avatar>
+            {!collapsed && (
+              <div className="police-sidebar-user-copy">
+                <strong>{user?.full_name || user?.username || 'Isticmaale'}</strong>
+                <span>{roleLabel}</span>
+              </div>
+            )}
+          </div>
           <Tooltip title={collapsed ? 'Logout' : ''} placement="right">
             <button type="button" className="police-sidebar-logout" onClick={logout}>
               <LogoutOutlined />

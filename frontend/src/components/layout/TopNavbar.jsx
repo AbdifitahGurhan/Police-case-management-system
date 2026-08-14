@@ -338,7 +338,6 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
 
       <div className="topbar-search">
         <Input prefix={<SearchOutlined />} placeholder="Raadi kiis ama OB..." variant="borderless" />
-        <span>Ctrl + K</span>
       </div>
 
       <Space size="large">
@@ -383,15 +382,15 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
         {/* ── User menu ── */}
         <Dropdown menu={{ items: menuItems }} placement="bottomRight">
           <Space className="topbar-user">
+            <Avatar className="topbar-avatar" src={profileImageUrl} icon={!profileImageUrl && <UserOutlined />}>
+              {!profileImageUrl && initials}
+            </Avatar>
             <div className="topbar-user-copy">
               <Text strong>{displayName}</Text>
               <Tag className="status-tag status-tag--open">
                 {roleLabels[user.role] || user.role || 'User'}
               </Tag>
             </div>
-            <Avatar className="topbar-avatar" src={profileImageUrl} icon={!profileImageUrl && <UserOutlined />}>
-              {!profileImageUrl && initials}
-            </Avatar>
           </Space>
         </Dropdown>
       </Space>

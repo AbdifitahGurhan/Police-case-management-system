@@ -189,7 +189,7 @@ export default function OperationsCommandDashboard({ user }) {
 
         <Row gutter={[16, 16]}>
           {metricDefs.map(([key, title, icon, tone]) => (
-            <Col xs={24} sm={12} md={8} xl={6} xxl={4} key={key}>
+            <Col xs={24} sm={12} md={8} xl={4} key={key}>
               <Card variant="none" className={`standard-metric-card ${toneClass[tone] || ''}`}>
                 <div className="standard-metric-icon">{icon}</div>
                 <Text type="secondary">{title}</Text>

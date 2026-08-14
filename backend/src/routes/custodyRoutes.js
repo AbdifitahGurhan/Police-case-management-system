@@ -34,6 +34,7 @@ const {
   getPrisonCells,
   savePrisonCell,
   bulkRollCall,
+  releaseStationPrisoner,
 } = require('../controllers/custodyController');
 
 const uploadDir = path.join(__dirname, '../../uploads/prisoner-documents');
@@ -65,6 +66,7 @@ router.get('/central/admissions', requireAnyPermission('jail.view'), getCentralA
 router.patch('/central/transfers/:id/receive', requireAnyPermission('jail.receive_transfer'), receiveCentralTransfer);
 router.get('/transfers/:id/document', requirePermission('station_jail.view'), getTransferDocument);
 router.get('/admissions', requirePermission('station_jail.view'), getPrisonAdmissions);
+router.patch('/admissions/:id/release', allowRoles('district_admin', 'admin'), releaseStationPrisoner);
 router.post('/admissions', requirePermission('station_jail.intake'), upload.fields([
   { name: 'photo', maxCount: 1 },
   { name: 'commitment_warrant', maxCount: 1 },

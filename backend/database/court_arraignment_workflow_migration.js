@@ -52,15 +52,17 @@ async function migrate() {
     throw error;
   } finally {
     connection.release();
-    await pool.end();
   }
 }
 
 if (require.main === module) {
-  migrate().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+  migrate()
+    .then(() => pool.end())
+    .catch(async (error) => {
+      console.error(error);
+      await pool.end();
+      process.exitCode = 1;
+    });
 }
 
 module.exports = { migrate };

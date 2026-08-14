@@ -27,6 +27,7 @@ function UserManagementContent() {
   const [regions, setRegions] = useState([]);
   const [districts, setDistricts] = useState([]);
   const [allOfficers, setAllOfficers] = useState([]);
+  const [assignableDistrictOfficers, setAssignableDistrictOfficers] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -59,7 +60,8 @@ function UserManagementContent() {
   }, [allOfficers, editingUser]);
 
   const districtOfficers = useMemo(() => {
-    return (allOfficers || []).filter((o) => {
+    const source = user?.role === 'district_admin' ? assignableDistrictOfficers : allOfficers;
+    return (source || []).filter((o) => {
       if (editingUser && (Number(o.id) === Number(editingUser.police_officer_id) || Number(o.id) === Number(editingUser.officer_id))) {
         return true;
       }
@@ -67,7 +69,19 @@ function UserManagementContent() {
       const isActive = String(o.employment_status || '').toLowerCase() === 'active';
       return isApproved && isActive;
     });
-  }, [allOfficers, editingUser]);
+  }, [allOfficers, assignableDistrictOfficers, editingUser, user?.role]);
+
+  const assignmentRoleLabel = (role) => ({
+    investigator: 'Baare', ob_staff: 'OB Staff', station_jail: 'Jail-ka Degmada',
+    personnel_registry: 'Diiwaanka Ciidanka', sub_admin: 'Sub Admin',
+  }[String(role || '').toLowerCase()] || role);
+
+  const handleDistrictOfficerSelect = (officerId) => {
+    const officer = districtOfficers.find((item) => Number(item.id) === Number(officerId));
+    if (!officer?.assigned_user_id) return;
+    Modal.warning({title:'Askarigan shaqo kale ayuu hayaa',content:`${officer.full_name} hadda wuxuu ku qoran yahay shaqada ${assignmentRoleLabel(officer.assigned_role)}. Lama siin karo role kale inta shaqadaas ay firfircoon tahay.`,okText:'Waan fahmay'});
+    window.setTimeout(() => form.setFieldValue('police_officer_id', undefined), 0);
+  };
 
   const operationalRoleLabel = (role) => ({
     investigator: 'Baare',
@@ -88,13 +102,14 @@ function UserManagementContent() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [uRes, rRes, stateRes, regionRes, districtRes, officerRes] = await Promise.allSettled([
+      const [uRes, rRes, stateRes, regionRes, districtRes, officerRes, assignableRes] = await Promise.allSettled([
         api.get('/users'),
         api.get('/users/roles'),
         api.get('/state-administrations'),
         api.get('/regions'),
         api.get('/districts'),
         api.get('/police-officers'),
+        api.get('/users/assignable-officers'),
       ]);
       if (uRes.status === 'rejected' || rRes.status === 'rejected') {
         throw uRes.reason || rRes.reason;
@@ -105,6 +120,7 @@ function UserManagementContent() {
       setRegions(regionRes.status === 'fulfilled' ? regionRes.value.data.data : []);
       setDistricts(districtRes.status === 'fulfilled' ? districtRes.value.data.data : []);
       setAllOfficers(officerRes.status === 'fulfilled' ? officerRes.value.data.data : []);
+      setAssignableDistrictOfficers(assignableRes.status === 'fulfilled' ? assignableRes.value.data.data : []);
     } catch (err) {
       console.error(err);
       message.error("Failed to load user data.");
@@ -384,8 +400,12 @@ function UserManagementContent() {
                   showSearch
                   optionFilterProp="label"
                   placeholder="Dooro sarkaalka (ikhtiyaari)"
+                  onSelect={handleDistrictOfficerSelect}
+                  optionRender={(option) => <span>{option.label}{option.data.assigned_user_id ? <Tag color="warning" style={{marginLeft:8}}>Hadda: {assignmentRoleLabel(option.data.assigned_role)}</Tag> : null}</span>}
                   options={districtOfficers.map((o) => ({
                     value: o.id,
+                    assigned_user_id: o.assigned_user_id,
+                    assigned_role: o.assigned_role,
                     label: `${o.full_name} · ${o.rank_name || 'Darajo la’aan'} (${o.force_number})`,
                   }))}
                 />

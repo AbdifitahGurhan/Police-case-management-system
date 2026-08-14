@@ -165,11 +165,20 @@ const createUser = async (req, res, next) => {
       const roleName=normalizeRole(role?.name);
       if(!DISTRICT_OPERATIONAL_ROLES.has(roleName))return res.status(403).json({success:false,message:'Degmadu waxay abuuri kartaa oo keliya Diiwaanka Ciidanka, OB Register, Baare ama Station Jail.'});
       if (police_officer_id) {
+        const [[existingAssignment]]=await db.query(
+          `SELECT r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id
+           WHERE u.police_officer_id=? AND u.is_active=1 AND UPPER(COALESCE(u.status,'ACTIVE'))='ACTIVE' LIMIT 1`,
+          [police_officer_id]
+        );
+        if(existingAssignment){
+          const labels={investigator:'Baare',ob_staff:'OB Staff',station_jail:'Jail-ka Degmada',personnel_registry:'Diiwaanka Ciidanka',sub_admin:'Sub Admin'};
+          const occupiedRole=normalizeRole(existingAssignment.role_name);
+          return res.status(409).json({success:false,code:'OFFICER_ALREADY_ASSIGNED',currentRole:occupiedRole,message:`Askarigan hadda wuxuu ku qoran yahay shaqada ${labels[occupiedRole]||existingAssignment.role_name}. Lama siin karo shaqo kale.`});
+        }
         const [[officer]]=await db.query(
           `SELECT po.*, r.rank_name
            FROM police_officers po
            LEFT JOIN ranks r ON r.id = po.rank_id
-           LEFT JOIN users u ON u.police_officer_id = po.id
            LEFT JOIN officer_assignments oa ON oa.officer_id = po.id
             AND oa.is_current = 1
             AND oa.assignment_type IN ('District', 'District Station')
@@ -180,8 +189,7 @@ const createUser = async (req, res, next) => {
               OR oa.assignment_id = ?
             )
             AND po.approval_status = 'APPROVED'
-            AND LOWER(po.employment_status) = 'active'
-            AND u.id IS NULL`,
+            AND LOWER(po.employment_status) = 'active'`,
           [police_officer_id, district_id, district_id, district_id]
         );
         if(!officer)return res.status(409).json({success:false,message:'Sarkaalka lama heli karo, lama ansixin, ama user kale ayaa loo qoondeeyey.'});
@@ -516,7 +524,7 @@ const getAssignableOfficers = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Degmo keliya ayaa saraakiil u xilsaari karta roles-kan.' });
     }
     const params = [];
-    let where = "po.approval_status='APPROVED' AND LOWER(po.employment_status)='active' AND u.id IS NULL";
+    let where = "po.approval_status='APPROVED' AND LOWER(po.employment_status)='active'";
     let assignmentJoin = '';
     if (req.user.scopeType === 'district') {
       assignmentJoin = `
@@ -527,10 +535,12 @@ const getAssignableOfficers = async (req, res, next) => {
       params.push(req.user.scopeId, req.user.scopeId, req.user.scopeId);
     }
     const [rows] = await db.query(
-      `SELECT DISTINCT po.id, po.full_name, po.force_number, r.rank_name, r.rank_code, po.district_id
+      `SELECT DISTINCT po.id, po.full_name, po.force_number, r.rank_name, r.rank_code, po.district_id,
+              u.id AS assigned_user_id, ur.name AS assigned_role
        FROM police_officers po
        LEFT JOIN ranks r ON r.id = po.rank_id
-       LEFT JOIN users u ON u.police_officer_id = po.id
+       LEFT JOIN users u ON u.police_officer_id = po.id AND u.is_active=1 AND UPPER(COALESCE(u.status,'ACTIVE'))='ACTIVE'
+       LEFT JOIN roles ur ON ur.id = u.role_id
        ${assignmentJoin}
        WHERE ${where}
        ORDER BY po.full_name`,

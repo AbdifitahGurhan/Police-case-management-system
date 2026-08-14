@@ -159,7 +159,7 @@ export default function ReportsPage() {
         params.to_date = dateRange[1].format('YYYY-MM-DD');
       }
 
-      const [summaryRes, auditRes, stationRes, stationListRes, offenderRes, custodyRes, officerRes, regionRes] = await Promise.all([
+      const requests = await Promise.allSettled([
         api.get('/reports/summary', { params }),
         api.get('/reports/audit-logs', { params: { ...params, limit: 8 } }),
         api.get('/reports/by-station'),
@@ -170,18 +170,28 @@ export default function ReportsPage() {
         api.get('/regions'),
       ]);
 
-      setStats(summaryRes.data.data);
-      setAuditLogs(auditRes.data.data);
-      setStationStats(stationRes.data.data);
-      setStations(stationListRes.data.data || []);
-      setOffenders(offenderRes.data.data || []);
-      setCustodyAnalytics(custodyRes.data.data);
-      setOfficers(officerRes.data.data || []);
-      setRegions(regionRes.data.data || []);
-      if (!selectedStationId) setSelectedStationId('all');
-      if (!selectedOffenderId && offenderRes.data.data?.[0]?.id) {
-        setSelectedOffenderId(offenderRes.data.data[0].id);
+      const [summaryRes, auditRes, stationRes, stationListRes, offenderRes, custodyRes, officerRes, regionRes] = requests;
+
+      if (summaryRes.status === 'fulfilled') setStats(summaryRes.value.data.data);
+      if (auditRes.status === 'fulfilled') setAuditLogs(auditRes.value.data.data || []);
+      if (stationRes.status === 'fulfilled') setStationStats(stationRes.value.data.data || []);
+      if (stationListRes.status === 'fulfilled') setStations(stationListRes.value.data.data || []);
+      if (offenderRes.status === 'fulfilled') setOffenders(offenderRes.value.data.data || []);
+      if (custodyRes.status === 'fulfilled') setCustodyAnalytics(custodyRes.value.data.data);
+      if (officerRes.status === 'fulfilled') setOfficers(officerRes.value.data.data || []);
+      if (regionRes.status === 'fulfilled') setRegions(regionRes.value.data.data || []);
+
+      if (auditRes.status === 'rejected') {
+        const status = auditRes.reason?.response?.status;
+        if (status !== 403) {
+          console.error(auditRes.reason);
+        }
       }
+
+      if (offenderRes.status === 'fulfilled' && !selectedOffenderId && offenderRes.value.data.data?.[0]?.id) {
+        setSelectedOffenderId(offenderRes.value.data.data[0].id);
+      }
+      if (!selectedStationId) setSelectedStationId('all');
     } catch (err) {
       console.error(err);
       message.error('Failed to load reports.');

@@ -1044,7 +1044,6 @@ export default function CourtCasesPage() {
     open={Boolean(modalType)}
     onCancel={closeModal}
     onOk={() => form.submit()}
-    destroyOnHidden
     forceRender
     width={720}
     zIndex={1050}
@@ -1248,7 +1247,7 @@ export default function CourtCasesPage() {
             <Alert
               showIcon
               type="info"
-              message="Haddii Saldhiggii soo gudbiyay la doorto, nidaamku wuxuu si otomaatig ah ugu celinayaa degmada/saldhigga case-ka soo gudbiyay. Haddii CID la doorto, kiisku wuxuu ka muuqanayaa dashboard-ka CID."
+              title="Haddii Saldhiggii soo gudbiyay la doorto, nidaamku wuxuu si otomaatig ah ugu celinayaa degmada/saldhigga case-ka soo gudbiyay. Haddii CID la doorto, kiisku wuxuu ka muuqanayaa dashboard-ka CID."
             />
           </Col>
           <Col span={24}>

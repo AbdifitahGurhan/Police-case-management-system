@@ -39,8 +39,8 @@ export default function StandardDashboard({
     <ProtectedRoute allowedRoles={allowedRoles}>
       <div className="standard-dashboard">
         <div className="standard-dashboard-hero">
-          <div>
-            <Text className="dashboard-eyebrow">{eyebrow}</Text>
+          <div className="dashboard-hero-copy">
+            <Text className="dashboard-eyebrow">Bogga Hore&nbsp;&nbsp; / &nbsp;&nbsp;{eyebrow}</Text>
             <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
               {title}
             </Title>
@@ -67,30 +67,36 @@ export default function StandardDashboard({
           )}
         </div>
 
-        <Row gutter={[16, 16]}>
-          {metrics.map((metric) => (
-            <Col xs={24} sm={12} xl={6} key={metric.title}>
-              <Card variant="none" className={`standard-metric-card ${toneClass[metric.tone] || toneClass.blue}`}>
-                <div className="standard-metric-icon">{metric.icon}</div>
-                <Statistic title={metric.title} value={metric.value || 0} loading={loading} />
-                {metric.note && (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {metric.note}
-                  </Text>
-                )}
-              </Card>
-            </Col>
-          ))}
-        </Row>
+        <section className="dashboard-ledger-group">
+          <div className="dashboard-group-head">
+            <span className="dashboard-group-letter">A</span>
+            <h2>Dulmarka Guud <small>— xogta muhiimka ah</small></h2>
+            <span className="dashboard-group-rule" />
+          </div>
+          <Row gutter={[14, 14]}>
+            {metrics.map((metric) => (
+              <Col xs={24} sm={12} lg={8} xl={4} key={metric.title}>
+                <Card variant="none" className={`standard-metric-card ${toneClass[metric.tone] || toneClass.blue}`}>
+                  <div className="standard-metric-icon">{metric.icon}</div>
+                  <Statistic title={metric.title} value={metric.value || 0} loading={loading} />
+                  {metric.note && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {metric.note}
+                    </Text>
+                  )}
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </section>
 
-        {showTable && <Row gutter={[16, 16]}>
-          {sidePanel && (
-            <Col xs={24} lg={8}>
-              <Card variant="none" className="standard-panel" title={sidePanel.title}>
-                {sidePanel.content}
-              </Card>
-            </Col>
-          )}
+        {showTable && <section className="dashboard-ledger-group">
+          <div className="dashboard-group-head">
+            <span className="dashboard-group-letter">B</span>
+            <h2>Faahfaahinta <small>— diiwaannada iyo waxqabadka</small></h2>
+            <span className="dashboard-group-rule" />
+          </div>
+          <Row gutter={[16, 16]}>
           <Col xs={24} lg={sidePanel ? 16 : 24}>
             <Card
               variant="none"
@@ -134,7 +140,15 @@ export default function StandardDashboard({
               )}
             </Card>
           </Col>
-        </Row>}
+          {sidePanel && (
+            <Col xs={24} lg={8}>
+              <Card variant="none" className="standard-panel" title={sidePanel.title}>
+                {sidePanel.content}
+              </Card>
+            </Col>
+          )}
+          </Row>
+        </section>}
       </div>
     </ProtectedRoute>
   );

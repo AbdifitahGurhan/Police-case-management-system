@@ -25,11 +25,16 @@ async function run() {
     )
   `);
   console.log('Case investigation migration completed.');
-  await db.pool.end();
 }
 
-run().catch(async e => {
-  console.error(e.message);
-  await db.pool.end();
-  process.exit(1);
-});
+module.exports = run;
+
+if (require.main === module) {
+  run()
+    .then(() => db.pool.end())
+    .catch(async e => {
+      console.error(e.message);
+      await db.pool.end();
+      process.exit(1);
+    });
+}

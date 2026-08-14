@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Checkbox, Col, Form, Input, Modal, Row, Space, Table, Tag, Typography } from 'antd';
-import { PlusOutlined, SaveOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Card, Checkbox, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Typography } from 'antd';
+import { HomeOutlined, PlusOutlined, SaveOutlined, SearchOutlined, TeamOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 
@@ -52,6 +52,9 @@ export default function PermissionsPage() {
   const [selected, setSelected] = useState(null);
   const [values, setValues] = useState([]);
   const [open, setOpen] = useState(false);
+  const [targetSearch, setTargetSearch] = useState('');
+  const [permissionSearch, setPermissionSearch] = useState('');
+  const [category, setCategory] = useState('all');
   const [form] = Form.useForm();
 
   const load = useCallback(async () => {
@@ -108,6 +111,10 @@ export default function PermissionsPage() {
     ...roles,
     ...accounts.map(account => ({ ...account, name: account.full_name || account.username })),
   ];
+  const visibleTargets = targets.filter(target => {
+    const label = target.targetType === 'user' ? target.name : (ROLE_LABELS[String(target.name).toLowerCase()] || target.name);
+    return String(label || '').toLowerCase().includes(targetSearch.trim().toLowerCase());
+  });
   const selectedRoleName = String(selected?.role_name || selected?.name || '').toLowerCase();
   const locked = selectedRoleName === 'admin';
   const selectedLabel = selected?.targetType === 'user'
@@ -125,6 +132,14 @@ export default function PermissionsPage() {
     const other = permissions.filter(permission => !used.has(permission.permission_key));
     return other.length ? [...groups, { key: 'other', title: 'Kale', prefixes: [], items: other }] : groups;
   }, [permissions]);
+  const visibleGroups = groupedPermissions.map(group => ({
+    ...group,
+    items: group.items.filter(item => {
+      const term = permissionSearch.trim().toLowerCase();
+      return (!term || `${item.permission_key} ${item.description || ''}`.toLowerCase().includes(term))
+        && (category === 'all' || category === group.key);
+    }),
+  })).filter(group => group.items.length);
   const selectedCount = values.length;
   const setModule = (items, checked) => {
     const keys = items.map(item => item.permission_key);
@@ -142,75 +157,42 @@ export default function PermissionsPage() {
 
   return (
     <ProtectedRoute allowedRoles={['admin']} requiredPermissions={['permissions.manage', 'roles.manage']}>
-      <Space className="permissions-admin-page" orientation="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <div><Title level={2}>Maamulka Awoodaha</Title><Text type="secondary">Roles-ka iyo user kasta awoodihiisa si gaar ah u maamul.</Text></div>
+      <div className="permissions-admin-page">
+        <header className="permissions-page-head">
+          <div><Title level={2}>Maamulka Awoodaha</Title><Text>Roles-ka iyo user kasta awoodihiisa si gaar ah u maamul.</Text></div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Abuur Role Cusub</Button>
-        </div>
-        <Row gutter={16}>
-          <Col xs={24} md={9}>
-            <Card title="Roles-ka iyo Users-ka">
-              <Table rowKey="targetKey" pagination={{ pageSize: 12 }} dataSource={targets} columns={[
-                { title: 'Magaca', render: (_, row) => <Button type="link" onClick={() => choose(row)}>{row.targetType === 'user' ? row.name : (ROLE_LABELS[String(row.name).toLowerCase()] || row.name)}</Button> },
-                { title: 'Nooca', render: (_, row) => <Tag color={row.targetType === 'user' ? 'green' : 'blue'}>{row.targetType === 'user' ? (ROLE_LABELS[String(row.role_name).toLowerCase()] || row.role_name) : 'Role'}</Tag> },
-              ]} />
-            </Card>
-          </Col>
-          <Col xs={24} md={15}>
-            <Card title={selected ? `Awoodaha: ${selectedLabel}` : 'Dooro role ama user'}>
-              {selected && <>
-                <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-                  {locked && <Alert type="warning" showIcon message="Admin role lama dhimi karo." />}
-                  <Text type="secondary">{selectedCount} / {permissions.length} awood ayaa la doortay.</Text>
-                  <Checkbox.Group style={{ width: '100%' }} value={values} onChange={onPermissionChange} disabled={locked}>
-                    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-                      {groupedPermissions.map(group => {
-                        const groupKeys = group.items.map(item => item.permission_key);
-                        const checkedCount = groupKeys.filter(key => values.includes(key)).length;
-                        return (
-                          <Card
-                            className="permission-module-card"
-                            key={group.key}
-                            size="small"
-                            title={<Space><span>{group.title}</span><Tag>{checkedCount}/{group.items.length}</Tag>{group.danger && <Tag color="red">High risk</Tag>}</Space>}
-                            extra={
-                              <Space>
-                                <Button size="small" onClick={() => setModule(group.items, true)} disabled={locked}>Dooro dhammaan</Button>
-                                <Button size="small" onClick={() => setModule(group.items, false)} disabled={locked}>Ka saar dhammaan</Button>
-                              </Space>
-                            }
-                          >
-                            <Row gutter={[12, 12]}>
-                              {group.items.map(permission => {
-                                const impliedBy = Object.entries(IMPLIED_PERMISSIONS)
-                                  .find(([parent, children]) => children.includes(permission.permission_key) && values.includes(parent))?.[0];
-                                return (
-                                  <Col xs={24} md={12} key={permission.id}>
-                                    <Checkbox value={permission.permission_key}>
-                                      <Space orientation="vertical" size={0}>
-                                        <Space wrap>
-                                          <b>{permission.permission_key}</b>
-                                          {HIGH_RISK_PERMISSIONS.has(permission.permission_key) && <Tag color="red">xasaasi</Tag>}
-                                          {impliedBy && <Tag color="blue">wuxuu ka yimaadaa {impliedBy}</Tag>}
-                                        </Space>
-                                        <Text type="secondary">{permission.description}</Text>
-                                      </Space>
-                                    </Checkbox>
-                                  </Col>
-                                );
-                              })}
-                            </Row>
-                          </Card>
-                        );
-                      })}
-                    </Space>
+        </header>
+        <div className="permissions-breadcrumb"><HomeOutlined /><span>Dashboard</span><b>›</b><strong>Maamulka Awoodaha</strong></div>
+        <div className="permissions-workspace">
+          <Card className="permissions-target-card" title="Roles-ka iyo Users-ka">
+            <Input prefix={<SearchOutlined />} placeholder="Raadi role..." value={targetSearch} onChange={e => setTargetSearch(e.target.value)} allowClear />
+            <Table rowKey="targetKey" size="small" pagination={{pageSize:12,showSizeChanger:false}} dataSource={visibleTargets}
+              onRow={row => ({onClick:()=>choose(row)})}
+              rowClassName={row => selected?.targetKey === row.targetKey ? 'permission-target-selected' : ''}
+              columns={[
+                {title:'Magaca',render:(_,row)=><span className="permission-target-name"><TeamOutlined />{row.targetType==='user'?row.name:(ROLE_LABELS[String(row.name).toLowerCase()]||row.name)}</span>},
+                {title:'Nooca',width:82,render:(_,row)=><Tag color={row.targetType==='user'?'green':'blue'}>{row.targetType==='user'?'User':'Role'}</Tag>},
+              ]}/>
+          </Card>
+          <section className="permissions-detail-card">
+            {selected ? <>
+              <div className="permissions-detail-head">
+                <div><h3>Awoodaha: {selectedLabel}</h3><Text>{selectedCount} / {permissions.length} awood ayaa la doortay</Text><div className="permissions-progress"><i style={{width:`${permissions.length ? selectedCount/permissions.length*100 : 0}%`}} /></div></div>
+                <div className="permissions-tools"><Input prefix={<SearchOutlined />} placeholder="Raadi awood..." value={permissionSearch} onChange={e=>setPermissionSearch(e.target.value)} allowClear/><Select value={category} onChange={setCategory} options={[{value:'all',label:'Dhammaan qaybaha'},...groupedPermissions.map(g=>({value:g.key,label:g.title}))]}/><Button onClick={()=>setModule(permissions,true)} disabled={locked}>Dooro dhammaan</Button><Button onClick={()=>setValues([])} disabled={locked}>Ka saar dhammaan</Button></div>
+              </div>
+              {locked&&<Alert type="warning" showIcon message="Admin role lama dhimi karo."/>}
+              <div className="permissions-groups-scroll">
+                <Checkbox.Group value={values} onChange={onPermissionChange} disabled={locked}>
+                  {visibleGroups.map(group=>{const checkedCount=group.items.filter(item=>values.includes(item.permission_key)).length;return <div className="permission-module-card" key={group.key}>
+                    <div className="permission-module-title"><strong>{group.title}</strong><span>{checkedCount}/{group.items.length}</span>{group.danger&&<Tag color="red">Xasaasi</Tag>}</div>
+                    <Row gutter={[28,12]}>{group.items.map(permission=>{const impliedBy=Object.entries(IMPLIED_PERMISSIONS).find(([parent,children])=>children.includes(permission.permission_key)&&values.includes(parent))?.[0];return <Col xs={24} md={12} key={permission.id}><Checkbox value={permission.permission_key}><span className="permission-copy"><span><b>{permission.permission_key}</b>{HIGH_RISK_PERMISSIONS.has(permission.permission_key)&&<Tag color="red">Xasaasi</Tag>}{impliedBy&&<Tag color="blue">{impliedBy}</Tag>}</span><small>{permission.description}</small></span></Checkbox></Col>})}</Row>
+                  </div>})}
                 </Checkbox.Group>
-                  <Button type="primary" icon={<SaveOutlined />} onClick={save} disabled={locked}>Kaydi Awoodaha</Button>
-                </Space>
-              </>}
-            </Card>
-          </Col>
-        </Row>
+              </div>
+              <footer className="permissions-actions"><Button>Ka noqo</Button><Button type="primary" icon={<SaveOutlined/>} onClick={save} disabled={locked}>Kaydi Isbeddelada</Button></footer>
+            </>:<div className="permissions-empty"><TeamOutlined/><h3>Dooro role ama user</h3><Text>Awoodaha aad maamulayso ka dooro liiska bidix.</Text></div>}
+          </section>
+        </div>
         <Modal title="Abuur Role Cusub" open={open} onCancel={() => setOpen(false)} footer={null}>
           <Form form={form} layout="vertical" onFinish={create}>
             <Form.Item name="name" label="Magaca Role-ka" rules={[{ required: true }]}><Input placeholder="tusaale: traffic_officer" /></Form.Item>
@@ -218,7 +200,7 @@ export default function PermissionsPage() {
             <Button type="primary" htmlType="submit">Abuur Role</Button>
           </Form>
         </Modal>
-      </Space>
+      </div>
     </ProtectedRoute>
   );
 }

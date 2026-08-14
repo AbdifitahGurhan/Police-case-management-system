@@ -995,13 +995,47 @@ const getSecurityAuditDashboard = async (req, res, next) => {
     );
 
     const [officerTransfers] = await db.query(
-      `SELECT ot.*,po.full_name,po.force_number
+      `SELECT ot.*,po.full_name,po.force_number,
+              CASE ot.from_assignment_type
+                WHEN 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id=ot.from_assignment_id)
+                WHEN 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id=ot.from_assignment_id)
+                WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=ot.from_assignment_id)
+                WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=ot.from_assignment_id)
+                WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=ot.from_assignment_id)
+                WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=ot.from_assignment_id)
+                WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=ot.from_assignment_id)
+                WHEN 'District User Link' THEN (
+                  SELECT d.district_name
+                  FROM users u
+                  LEFT JOIN districts d ON d.id = u.district_id
+                  WHERE u.id=ot.from_assignment_id
+                )
+              END AS from_assignment_name,
+              CASE ot.to_assignment_type
+                WHEN 'State Administration' THEN (SELECT state_name FROM state_administrations WHERE id=ot.to_assignment_id)
+                WHEN 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id=ot.to_assignment_id)
+                WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=ot.to_assignment_id)
+                WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=ot.to_assignment_id)
+                WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=ot.to_assignment_id)
+                WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=ot.to_assignment_id)
+                WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=ot.to_assignment_id)
+                WHEN 'District User Link' THEN (
+                  SELECT d.district_name
+                  FROM users u
+                  LEFT JOIN districts d ON d.id = u.district_id
+                  WHERE u.id=ot.to_assignment_id
+                )
+              END AS to_assignment_name
          FROM officer_transfers ot JOIN police_officers po ON po.id=ot.officer_id
         ORDER BY ot.transferred_at DESC LIMIT ?`, [safeLimit]
     );
 
     const [[summary]] = await db.query(
       `SELECT
+          (SELECT COUNT(*) FROM audit_logs) AS audit_log_total,
+          (SELECT COUNT(*) FROM permission_change_history) AS permission_change_total,
+          (SELECT COUNT(*) FROM officer_transfers) AS officer_transfer_total,
+          (SELECT COUNT(*) FROM login_logs) AS login_attempt_total,
           (SELECT COUNT(*) FROM login_logs WHERE success = 1) AS successful_logins,
           (SELECT COUNT(*) FROM login_logs WHERE success = 0) AS failed_logins,
           (SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'cases' OR action IN ('CREATE_CASE', 'UPDATE_CASE', 'ASSIGN_CASE', 'CONVERT_OB_TO_CASE')) AS case_changes,

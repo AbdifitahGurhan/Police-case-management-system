@@ -1,49 +1,339 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { App, Card, Space, Spin, Statistic, Row, Col, Table, Tabs, Tag, Typography } from 'antd';
+import { App, Button, Space, Spin, Statistic, Table, Tabs, Tag, Typography } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
-const { Title, Text } = Typography;
-const safe = value => value === undefined || value === null || value === '' ? '—' : String(value);
-const json = value => {
-  if (!value) return '—';
-  try { return JSON.stringify(typeof value === 'string' ? JSON.parse(value) : value, null, 2); }
-  catch { return String(value); }
+const { Text, Title } = Typography;
+
+const safe = (value) => (
+  value === undefined || value === null || value === '' ? '-' : String(value)
+);
+
+const json = (value) => {
+  if (!value || value === '-') return null;
+  try {
+    return JSON.stringify(typeof value === 'string' ? JSON.parse(value) : value, null, 2);
+  } catch {
+    return String(value);
+  }
 };
+
+const hasValue = (value) => value !== undefined && value !== null && value !== '';
+
+const numberOr = (value, fallback = 0) => {
+  if (!hasValue(value)) return fallback;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+};
+
 const actionLabels = {
-  LOGIN:'Soo galid', CREATE_OB_ENTRY:'OB la abuuray', ASSIGN_CASE:'Kiis la xilsaaray',
-  UPDATE_CASE:'Kiis la beddelay', CREATE_SUSPECT:'Eedaysane la abuuray', UPDATE_SUSPECT:'Eedaysane la beddelay',
-  TRANSFER_OFFICER:'Askari la wareejiyey', UPDATE_ROLE_PERMISSIONS:'Awoodaha role-ka la beddelay',
-  UPDATE_USER_PERMISSIONS:'Awoodaha user-ka la beddelay', PRISON_ADMISSION:'Maxbuus la qaabilay',
+  LOGIN: 'Soo galid',
+  CREATE_OB_ENTRY: 'OB la abuuray',
+  ASSIGN_CASE: 'Kiis la xilsaaray',
+  UPDATE_CASE: 'Kiis la beddelay',
+  CREATE_SUSPECT: 'Eedaysane la abuuray',
+  UPDATE_SUSPECT: 'Eedaysane la beddelay',
+  TRANSFER_OFFICER: 'Askari la wareejiyey',
+  UPDATE_ROLE_PERMISSIONS: 'Awoodaha role-ka la beddelay',
+  UPDATE_USER_PERMISSIONS: 'Awoodaha user-ka la beddelay',
+  PRISON_ADMISSION: 'Maxbuus la qaabilay',
+};
+
+const actionText = (value) => actionLabels[value] || String(value || '').replaceAll('_', ' ');
+
+const actionTone = (action) => {
+  if (action === 'LOGIN') return 'ok';
+  if (String(action || '').includes('PERMISSION')) return 'neutral';
+  if (String(action || '').includes('FAIL')) return 'fail';
+  return 'info';
+};
+
+const AuditActionBadge = ({ action }) => {
+  const tone = actionTone(action);
+  const seal = tone === 'ok' ? 'OK' : tone === 'fail' ? '!' : 'i';
+
+  return (
+    <span className={`audit-ledger-task audit-ledger-task--${tone}`}>
+      <span className="audit-ledger-task-seal">{seal}</span>
+      {actionText(action)}
+    </span>
+  );
+};
+
+const AuditJsonToggle = ({ value, label = 'Fiiri xogta cusub' }) => {
+  const [open, setOpen] = useState(false);
+  const formatted = json(value);
+
+  if (!formatted) return <span className="audit-ledger-dash">-</span>;
+
+  return (
+    <span className="audit-ledger-diff">
+      <button className="audit-ledger-diff-toggle" type="button" onClick={() => setOpen((current) => !current)}>
+        {open ? '▾ Qari xogta' : `▸ ${label}`}
+      </button>
+      {open && (
+        <pre className="audit-ledger-diff-panel">
+          <span className="audit-ledger-diff-stamp">Xogta - JSON</span>
+          {formatted}
+        </pre>
+      )}
+    </span>
+  );
+};
+
+const LocationCell = ({ place, ip }) => (
+  <span className="audit-ledger-location">
+    <span>{place || 'Goob lama cayimin'}</span>
+    <Text className="audit-ledger-location-ip">{ip || 'IP lama hayo'}</Text>
+  </span>
+);
+
+const ResultBadge = ({ success }) => (
+  <span className={`audit-ledger-task audit-ledger-task--${success ? 'ok' : 'fail'}`}>
+    <span className="audit-ledger-task-seal">{success ? 'OK' : '!'}</span>
+    {success ? 'Guulaystay' : 'Fashilmay'}
+  </span>
+);
+
+const AuditTabLabel = ({ title, count }) => (
+  <span className="audit-ledger-tab-button">
+    <span>{title}</span>
+    <span className="audit-ledger-tab-count">{count}</span>
+  </span>
+);
+
+const AssignmentCell = ({ name, type, id, emptyLabel = '-' }) => {
+  if (!hasValue(type) && !hasValue(id) && !hasValue(name)) {
+    return <span className="audit-ledger-dash">{emptyLabel}</span>;
+  }
+
+  if (hasValue(name)) {
+    return (
+      <span className="audit-ledger-assignment">
+        <strong>{name}</strong>
+        {hasValue(type) && <Text>{type}</Text>}
+      </span>
+    );
+  }
+
+  return <span className="audit-ledger-chip">{hasValue(type) ? `${type} #${safe(id)}` : safe(id)}</span>;
 };
 
 export default function AuditLogsPage() {
   const { message } = App.useApp();
-  const [data,setData]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const load=useCallback(async()=>{setLoading(true);try{const response=await api.get('/reports/security-audit',{params:{limit:100}});setData(response.data.data)}catch(error){message.error(error.response?.data?.message||'Diiwaanka hawlaha lama soo qaadi karin.')}finally{setLoading(false)}},[message]);
-  useEffect(()=>{load()},[load]);
-  if(loading&&!data)return <div style={{padding:60,textAlign:'center'}}><Spin size="large"/></div>;
-  const time=value=>value?dayjs(value).format('YYYY-MM-DD HH:mm:ss'):'—';
-  const activityColumns=[
-    {title:'Waqtiga',dataIndex:'created_at',render:time},{title:'Qofka Sameeyey',dataIndex:'user_id',render:safe},
-    {title:'Hawsha',dataIndex:'action',render:value=><Tag>{actionLabels[value]||String(value||'').replaceAll('_',' ')}</Tag>},
-    {title:'Qaybta',dataIndex:'entity_type',render:safe},{title:'Aqoonsiga Xogta',dataIndex:'entity_id',render:safe},
-    {title:'Goobta / IP',render:(_,row)=><>{row.location_name||'Goob lama cayimin'}<br/><Text type="secondary">{row.ip_address||'IP lama hayo'}</Text></>},
-    {title:'Xogtii Hore',dataIndex:'old_data',render:value=><pre style={{maxWidth:260,whiteSpace:'pre-wrap'}}>{json(value)}</pre>},
-    {title:'Xogta Cusub',dataIndex:'new_data',render:value=><pre style={{maxWidth:260,whiteSpace:'pre-wrap'}}>{json(value)}</pre>},
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/reports/security-audit', { params: { limit: 100 } });
+      setData(response.data.data);
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Diiwaanka hawlaha lama soo qaadi karin.');
+    } finally {
+      setLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (loading && !data) {
+    return (
+      <div className="audit-ledger-loading">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  const summary = data?.summary || {};
+  const activityLoaded = data?.activities?.length || 0;
+  const permissionLoaded = data?.permissionChanges?.length || 0;
+  const transferLoaded = data?.officerTransfers?.length || 0;
+  const loginLoaded = data?.logins?.length || 0;
+  const successfulLogins = numberOr(summary.successful_logins);
+  const failedLogins = numberOr(summary.failed_logins);
+  const auditTotal = numberOr(summary.audit_log_total, activityLoaded);
+  const permissionTotal = numberOr(summary.permission_change_total, permissionLoaded);
+  const transferTotal = numberOr(summary.officer_transfer_total, transferLoaded);
+  const loginTotal = numberOr(summary.login_attempt_total, successfulLogins + failedLogins || loginLoaded);
+  const loadedText = (loaded, total, showTotal = true) => (
+    `Muujinaya ${loaded || 0} ee ugu dambeeyay${showTotal ? ` / guud ahaan ${total}` : ''}`
+  );
+  const time = (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-');
+
+  const activityColumns = [
+    { title: 'Waqtiga', dataIndex: 'created_at', render: time, className: 'audit-ledger-time' },
+    { title: 'Qofka Sameeyey', render: (_, row) => row.user_email || safe(row.user_id), className: 'audit-ledger-actor' },
+    { title: 'Hawsha', dataIndex: 'action', render: (value) => <AuditActionBadge action={value} /> },
+    { title: 'Qaybta', dataIndex: 'entity_type', render: (value) => <span className="audit-ledger-chip">{safe(value)}</span> },
+    { title: 'Aqoonsiga Xogta', dataIndex: 'entity_id', render: safe, className: 'audit-ledger-record-id' },
+    { title: 'Goobta / IP', render: (_, row) => <LocationCell place={row.location_name} ip={row.ip_address} /> },
+    { title: 'Xogtii Hore', dataIndex: 'old_data', render: (value) => <AuditJsonToggle value={value} label="Fiiri xogtii hore" /> },
+    { title: 'Xogta Cusub', dataIndex: 'new_data', render: (value) => <AuditJsonToggle value={value} /> },
   ];
-  const permissionColumns=[{title:'Waqtiga',dataIndex:'created_at',render:time},{title:'Maamulaha',dataIndex:'actor'},{title:'Nooca',dataIndex:'target_type',render:value=><Tag>{value==='ROLE'?'Role':'User'}</Tag>},{title:'Role-ka / User-ka',dataIndex:'target_name',render:(v,r)=>v||`#${r.target_id}`},{title:'Permission-ka',dataIndex:'permission_key'},{title:'Isbeddelka',dataIndex:'new_effect',render:value=><pre style={{whiteSpace:'pre-wrap'}}>{safe(value)}</pre>}];
-  const transferColumns=[{title:'Waqtiga',dataIndex:'transferred_at',render:time},{title:'Askariga',render:(_,r)=><>{r.full_name}<br/><Text type="secondary">{r.force_number}</Text></>},{title:'Laga Wareejiyey',render:(_,r)=>`${safe(r.from_assignment_type)} #${safe(r.from_assignment_id)}`},{title:'Loo Wareejiyey',render:(_,r)=>`${safe(r.to_assignment_type)} #${safe(r.to_assignment_id)}`},{title:'Sababta',dataIndex:'transfer_reason'},{title:'Qofka Wareejiyey',dataIndex:'transferred_by'}];
-  const loginColumns=[{title:'Waqtiga',dataIndex:'created_at',render:time},{title:'Username',dataIndex:'username'},{title:'Natiijada',dataIndex:'success',render:value=><Tag color={value?'green':'red'}>{value?'Guulaystay':'Fashilmay'}</Tag>},{title:'Sababta Fashilka',dataIndex:'failure_reason',render:safe},{title:'Goobta / IP',dataIndex:'ip_address',render:safe},{title:'Qalabka',dataIndex:'user_agent',ellipsis:true}];
-  const tabs=[
-    {key:'activities',label:`Dhammaan Hawlaha (${data?.activities?.length||0})`,children:<Table rowKey="id" columns={activityColumns} dataSource={data?.activities||[]} scroll={{x:1500}}/>},
-    {key:'permissions',label:`Isbeddellada Awoodaha (${data?.permissionChanges?.length||0})`,children:<Table rowKey="id" columns={permissionColumns} dataSource={data?.permissionChanges||[]} scroll={{x:900}}/>},
-    {key:'transfers',label:`Wareejinta Askarta (${data?.officerTransfers?.length||0})`,children:<Table rowKey="id" columns={transferColumns} dataSource={data?.officerTransfers||[]} scroll={{x:1000}}/>},
-    {key:'logins',label:`Isku-dayada Login-ka (${data?.logins?.length||0})`,children:<Table rowKey="id" columns={loginColumns} dataSource={data?.logins||[]} scroll={{x:1000}}/>},
+
+  const permissionColumns = [
+    { title: 'Waqtiga', dataIndex: 'created_at', render: time, className: 'audit-ledger-time' },
+    { title: 'Maamulaha', dataIndex: 'actor', render: safe, className: 'audit-ledger-actor' },
+    { title: 'Nooca', dataIndex: 'target_type', render: (value) => <Tag>{value === 'ROLE' ? 'Role' : 'User'}</Tag> },
+    { title: 'Role-ka / User-ka', dataIndex: 'target_name', render: (value, row) => value || `#${row.target_id}` },
+    { title: 'Permission-ka', dataIndex: 'permission_key', render: (value) => <span className="audit-ledger-chip">{safe(value)}</span> },
+    { title: 'Isbeddelka', dataIndex: 'new_effect', render: (value) => <AuditJsonToggle value={value} /> },
   ];
-  return <ProtectedRoute allowedRoles={['admin','sub_admin']} requiredPermissions={['audit_logs.view']}><Space orientation="vertical" size="large" style={{width:'100%'}}><div><Title level={2}>Diiwaanka Hawlaha Nidaamka</Title><Text type="secondary">La soco qofka hawsha qabtay, wixii la beddelay, awoodaha, wareejinta askarta, login-ka, waqtiga iyo goobta.</Text></div><Row gutter={[16,16]}><Col xs={12} md={6}><Card><Statistic title="Login Guulaystay" value={data?.summary?.successful_logins||0}/></Card></Col><Col xs={12} md={6}><Card><Statistic title="Login Fashilmay" value={data?.summary?.failed_logins||0}/></Card></Col><Col xs={12} md={6}><Card><Statistic title="Isbeddellada Kiisaska" value={data?.summary?.case_changes||0}/></Card></Col><Col xs={12} md={6}><Card><Statistic title="Isbeddellada Caddeymaha" value={data?.summary?.evidence_changes||0}/></Card></Col></Row><Card><Tabs items={tabs}/></Card></Space></ProtectedRoute>;
+
+  const transferColumns = [
+    { title: 'Waqtiga', dataIndex: 'transferred_at', render: time, className: 'audit-ledger-time' },
+    {
+      title: 'Askariga',
+      render: (_, row) => (
+        <span className="audit-ledger-person">
+          <strong>{safe(row.full_name)}</strong>
+          <Text>{safe(row.force_number)}</Text>
+        </span>
+      ),
+    },
+    {
+      title: 'Laga Wareejiyey',
+      render: (_, row) => (
+        <AssignmentCell
+          name={row.from_assignment_name}
+          type={row.from_assignment_type}
+          id={row.from_assignment_id}
+          emptyLabel="Diiwaan cusub"
+        />
+      ),
+    },
+    {
+      title: 'Loo Wareejiyey',
+      render: (_, row) => (
+        <AssignmentCell
+          name={row.to_assignment_name}
+          type={row.to_assignment_type}
+          id={row.to_assignment_id}
+        />
+      ),
+    },
+    { title: 'Sababta', dataIndex: 'transfer_reason', render: safe },
+    { title: 'Qofka Wareejiyey', dataIndex: 'transferred_by', render: safe },
+  ];
+
+  const loginColumns = [
+    { title: 'Waqtiga', dataIndex: 'created_at', render: time, className: 'audit-ledger-time' },
+    { title: 'Username', dataIndex: 'username', render: safe, className: 'audit-ledger-actor' },
+    { title: 'Natiijada', dataIndex: 'success', render: (value) => <ResultBadge success={Boolean(value)} /> },
+    { title: 'Sababta Fashilka', dataIndex: 'failure_reason', render: safe },
+    { title: 'Goobta / IP', dataIndex: 'ip_address', render: safe, className: 'audit-ledger-record-id' },
+    { title: 'Qalabka', dataIndex: 'user_agent', render: safe, ellipsis: true },
+  ];
+
+  const tableProps = {
+    className: 'audit-ledger-table',
+    pagination: { pageSize: 10, showSizeChanger: false },
+  };
+
+  const tabs = [
+    {
+      key: 'activities',
+      label: <AuditTabLabel title="Hawlaha Audit-ka" count={activityLoaded} />,
+      children: (
+        <Space orientation="vertical" size="small" style={{ width: '100%' }}>
+          <Text className="audit-ledger-loaded">{loadedText(activityLoaded, auditTotal, hasValue(summary.audit_log_total))}</Text>
+          <Table {...tableProps} rowKey="id" columns={activityColumns} dataSource={data?.activities || []} scroll={{ x: 1500 }} />
+        </Space>
+      ),
+    },
+    {
+      key: 'permissions',
+      label: <AuditTabLabel title="Isbeddellada Awoodaha" count={permissionLoaded} />,
+      children: (
+        <Space orientation="vertical" size="small" style={{ width: '100%' }}>
+          <Text className="audit-ledger-loaded">{loadedText(permissionLoaded, permissionTotal, hasValue(summary.permission_change_total))}</Text>
+          <Table {...tableProps} rowKey="id" columns={permissionColumns} dataSource={data?.permissionChanges || []} scroll={{ x: 900 }} />
+        </Space>
+      ),
+    },
+    {
+      key: 'transfers',
+      label: <AuditTabLabel title="Wareejinta Askarta" count={transferLoaded} />,
+      children: (
+        <Space orientation="vertical" size="small" style={{ width: '100%' }}>
+          <Text className="audit-ledger-loaded">{loadedText(transferLoaded, transferTotal, hasValue(summary.officer_transfer_total))}</Text>
+          <Table {...tableProps} rowKey="id" columns={transferColumns} dataSource={data?.officerTransfers || []} scroll={{ x: 1000 }} />
+        </Space>
+      ),
+    },
+    {
+      key: 'logins',
+      label: <AuditTabLabel title="Isku-dayada Login-ka" count={loginLoaded} />,
+      children: (
+        <Space orientation="vertical" size="small" style={{ width: '100%' }}>
+          <Text className="audit-ledger-loaded">{loadedText(loginLoaded, loginTotal, hasValue(summary.login_attempt_total))}</Text>
+          <Table {...tableProps} rowKey="id" columns={loginColumns} dataSource={data?.logins || []} scroll={{ x: 1000 }} />
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <ProtectedRoute allowedRoles={['admin', 'sub_admin']} requiredPermissions={['audit_logs.view']}>
+      <section className="audit-ledger-page">
+        <div className="audit-ledger-wrap">
+          <header className="audit-ledger-masthead">
+            <div>
+              <Text className="audit-ledger-eyebrow">
+                <span className="audit-ledger-seal">S</span>
+                Diiwaanka la xayirin karo
+              </Text>
+              <Title className="audit-ledger-title" level={1}>Diiwaanka Hawlaha Nidaamka</Title>
+              <Text className="audit-ledger-subtitle">
+                La soco qofka hawsha qabtay, wixii la beddelay, awoodaha, wareejinta askarta, login-ka, waqtiga iyo goobta.
+              </Text>
+            </div>
+            <Space wrap>
+              <div className="audit-ledger-live">
+                <span className="audit-ledger-live-dot" />
+                DIB U CUSBOONEYSIIN - TOOS
+              </div>
+              <Button icon={<ReloadOutlined />} loading={loading} onClick={load}>Cusbooneysii</Button>
+            </Space>
+          </header>
+
+          <div className="audit-ledger-tally">
+            <div className="audit-ledger-tally-item audit-ledger-tally-item--ok">
+              <Statistic title="Audit Logs" value={auditTotal} />
+              <Text>{loadedText(activityLoaded, auditTotal, hasValue(summary.audit_log_total))}</Text>
+            </div>
+            <div className="audit-ledger-tally-item audit-ledger-tally-item--fail">
+              <Statistic title="Isku-dayada Login-ka" value={loginTotal} />
+              <Text>{successfulLogins} guulaystay, {failedLogins} fashilmay</Text>
+            </div>
+            <div className="audit-ledger-tally-item audit-ledger-tally-item--case">
+              <Statistic title="Isbeddellada Awoodaha" value={permissionTotal} />
+              <Text>{loadedText(permissionLoaded, permissionTotal, hasValue(summary.permission_change_total))}</Text>
+            </div>
+            <div className="audit-ledger-tally-item audit-ledger-tally-item--evidence">
+              <Statistic title="Wareejinta Askarta" value={transferTotal} />
+              <Text>{loadedText(transferLoaded, transferTotal, hasValue(summary.officer_transfer_total))}</Text>
+            </div>
+          </div>
+
+          <div className="audit-ledger-panel">
+            <Tabs className="audit-ledger-tabs" items={tabs} />
+          </div>
+
+          <footer className="audit-ledger-footer">
+            <span>Xog walba waxay ku egtahay 100 record ee ugu dambeeyay.</span>
+            <span className="audit-ledger-page-size">10 / bogga</span>
+          </footer>
+        </div>
+      </section>
+    </ProtectedRoute>
+  );
 }

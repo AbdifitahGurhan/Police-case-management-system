@@ -7,6 +7,7 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "seed": "node database/seed.js",
+    "migrate:local-to-railway": "node database/migrateLocalToRailway.js",
     "test": "node --test test/*.test.js",
     "migrate:workflow": "node database/workflow_integrity_migration.js",
     "migrate:legal-warrants": "node database/legal_warrants_usd_migration.js",

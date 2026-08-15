@@ -87,7 +87,6 @@ const buildInvestigatorScope = (user) => {
 
   const source = user.location || user;
   const districtId = source.districtId || source.district_id || (user.scopeType === 'district' ? user.scopeId : null);
-  const cityId = source.cityId || source.city_id || (user.scopeType === 'city' ? user.scopeId : null);
   const regionId = source.regionId || source.region_id || (user.scopeType === 'region' ? user.scopeId : null);
   const stateId = source.stateId || source.state_administration_id || (user.scopeType === 'state_administration' ? user.scopeId : null);
 
@@ -95,13 +94,9 @@ const buildInvestigatorScope = (user) => {
     params.push(districtId);
     return { clause: 'u.district_id = ?', params };
   }
-  if (cityId) {
-    params.push(cityId);
-    return { clause: 'd.city_id = ?', params };
-  }
   if (regionId) {
     params.push(regionId, regionId);
-    return { clause: '(u.region_id = ? OR ci.region_id = ?)', params };
+    return { clause: '(u.region_id = ? OR d.region_id = ?)', params };
   }
   if (stateId) {
     params.push(stateId, stateId);
@@ -119,8 +114,7 @@ const getAssignableInvestigatorQuery = (extraWhere = '') => `
   JOIN police_officers po ON po.id = u.police_officer_id
   LEFT JOIN ranks rnk ON rnk.id = po.rank_id
   LEFT JOIN districts d ON d.id = u.district_id
-  LEFT JOIN cities ci ON ci.id = d.city_id
-  LEFT JOIN regions rg ON rg.id = ci.region_id
+  LEFT JOIN regions rg ON rg.id = d.region_id
   WHERE LOWER(REPLACE(ur.name, '-', '_')) = 'investigator'
     AND u.is_active = 1
     AND UPPER(COALESCE(u.status, 'ACTIVE')) = 'ACTIVE'
@@ -149,10 +143,6 @@ const buildLinkedObScopeExists = (user) => {
   if (source.districtId || source.district_id || user.scopeType === 'district') {
     params.push(source.districtId || source.district_id || user.scopeId);
     return { clause: 'scoped_ob.district_id = ?', params };
-  }
-  if (source.cityId || source.city_id || user.scopeType === 'city') {
-    params.push(source.cityId || source.city_id || user.scopeId);
-    return { clause: 'od.city_id = ?', params };
   }
   if (source.regionId || source.region_id || user.scopeType === 'region') {
     params.push(source.regionId || source.region_id || user.scopeId);
@@ -249,7 +239,6 @@ const getCaseById = async (req, res, next) => {
               COALESCE(c.complainant_phone, ob.reporter_phone) AS complainant_phone,
               sa.state_name,
               r.region_name,
-              ci.city_name,
               d.district_name,
               d.district_name AS station_name,
               COALESCE(
@@ -283,7 +272,6 @@ const getCaseById = async (req, res, next) => {
        LEFT JOIN ob_entries ob ON c.ob_entry_id = ob.id
        LEFT JOIN state_administrations sa ON c.state_administration_id = sa.id
        LEFT JOIN regions r ON c.region_id = r.id
-       LEFT JOIN cities ci ON c.city_id = ci.id
        LEFT JOIN districts d ON c.district_id = d.id
        LEFT JOIN police_officers dc ON d.commander_officer_id = dc.id
        WHERE c.id = ?
@@ -371,7 +359,7 @@ const createCase = async (req, res, next) => {
   try {
     let {
       title, description, incident_date, incident_location, priority,
-      state_administration_id, region_id, city_id, district_id, ob_entry_id,
+      state_administration_id, region_id, district_id, ob_entry_id,
       case_type, case_level, incident_type, complainant_name, complainant_phone, victim_name,
       complainant_id_type, complainant_id_number, complainant_email, complainant_address, claim_value,
       ob_number: requestedObNumber
@@ -429,7 +417,6 @@ const createCase = async (req, res, next) => {
     
     state_administration_id = ob?.state_administration_id || location.state_administration_id || state_administration_id || null;
     region_id = ob?.region_id || location.region_id || region_id || null;
-    city_id = location.city_id || city_id || null;
     district_id = ob?.district_id || location.district_id || district_id || null;
     incident_type = incident_type || ob?.incident_type || title;
     incident_location = incident_location || ob?.incident_location || null;
@@ -449,15 +436,15 @@ const createCase = async (req, res, next) => {
                           complainant_name, complainant_phone, complainant_id_type, complainant_id_number,
                           complainant_email, complainant_address, victim_name,
                           description, incident_date, incident_location, priority, claim_value,
-                          state_administration_id, region_id, city_id, district_id, 
+                          state_administration_id, region_id, district_id, 
                           assigned_officer_id, created_by, status, ob_entry_id,
                           original_ob_staff_id, original_ob_staff_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       [caseNumber, obNumber, title, title, case_type || null, case_level || 'normal', incident_type || null,
       complainant_name || null, complainant_phone || null, complainant_id_type || null, complainant_id_number || null,
       complainant_email || null, complainant_address || null, victim_name || null,
       description || null, incident_date || null, incident_location || null, priority || 'medium', claim_value || null,
-      state_administration_id || null, region_id || null, city_id || null, district_id || null,
+      state_administration_id || null, region_id || null, district_id || null,
       initialAssignedOfficerId, req.user.username, initialStatus, ob_entry_id || null,
       ob?.registered_by_user_id || (req.user.role === 'ob_staff' ? req.user.id : null),
       ob?.registered_by_name || (req.user.role === 'ob_staff' ? (req.user.fullName || req.user.username) : null)]

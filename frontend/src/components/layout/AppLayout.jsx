@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Layout, ConfigProvider, App } from 'antd';
 import Sidebar from './Sidebar';
 import TopNavbar from './TopNavbar';
+import NotificationBridge from '@/components/shared/NotificationBridge';
 import { lightTheme, darkTheme } from '@/theme/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -22,9 +23,12 @@ const AppLayout = ({ children }) => {
   useEffect(() => {
     if (pathname !== '/login' && sessionStorage.getItem('spf-dashboard-enter') === '1') {
       sessionStorage.removeItem('spf-dashboard-enter');
-      setDashboardEntering(true);
+      const frame = window.requestAnimationFrame(() => setDashboardEntering(true));
       const timer = window.setTimeout(() => setDashboardEntering(false), 750);
-      return () => window.clearTimeout(timer);
+      return () => {
+        window.cancelAnimationFrame(frame);
+        window.clearTimeout(timer);
+      };
     }
   }, [pathname]);
 
@@ -37,6 +41,7 @@ const AppLayout = ({ children }) => {
     return (
       <ConfigProvider theme={currentTheme}>
         <App>
+          <NotificationBridge />
           {children}
         </App>
       </ConfigProvider>
@@ -46,6 +51,7 @@ const AppLayout = ({ children }) => {
   return (
     <ConfigProvider theme={currentTheme}>
       <App>
+        <NotificationBridge />
         <Layout className={`app-shell ${dashboardEntering ? 'dashboard-entering' : ''}`}>
           <Sidebar collapsed={collapsed} />
           <Layout className={`app-main ${collapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>

@@ -73,10 +73,10 @@ const safeRows = async (sql, params) => {
   }
 };
 
-const districtFilter = (scope, alias = 'd', cityAlias = 'ci', regionAlias = 'r') => {
+const districtFilter = (scope, alias = 'd', regionAlias = 'r') => {
   if (scope.type === 'admin') return { clause: '1=1', params: [] };
   if (scope.type === 'state') return { clause: `${regionAlias}.state_administration_id = ?`, params: [scope.id] };
-  if (scope.type === 'region') return { clause: `${cityAlias}.region_id = ?`, params: [scope.id] };
+  if (scope.type === 'region') return { clause: `${alias}.region_id = ?`, params: [scope.id] };
   if (scope.type === 'district') return { clause: `${alias}.id = ?`, params: [scope.id] };
   return { clause: '1=0', params: [] };
 };
@@ -84,7 +84,7 @@ const districtFilter = (scope, alias = 'd', cityAlias = 'ci', regionAlias = 'r')
 const getMetrics = async (scope, range) => {
   const caseScope = scopeWhere(scope, 'c');
   const obScope = scopeWhere(scope, 'ob');
-  const complaintScope = districtFilter(scope, 'd', 'ci', 'r');
+  const complaintScope = districtFilter(scope, 'd', 'r');
   const terminals = terminalList();
 
   const [[caseMetrics]] = await db.query(
@@ -105,8 +105,7 @@ const getMetrics = async (scope, range) => {
     `SELECT COUNT(DISTINCT oa.officer_id) AS total
        FROM officer_assignments oa
        LEFT JOIN districts d ON oa.assignment_type IN ('District','District Station') AND oa.assignment_id = d.id
-       LEFT JOIN cities ci ON d.city_id = ci.id
-       LEFT JOIN regions r ON ci.region_id = r.id
+       LEFT JOIN regions r ON d.region_id = r.id
       WHERE oa.is_current = 1 AND ${complaintScope.clause}`,
     complaintScope.params,
     'total'
@@ -154,8 +153,7 @@ const getMetrics = async (scope, range) => {
     `SELECT COUNT(DISTINCT dc.id) AS total
        FROM district_complaints dc
        JOIN districts d ON d.id = dc.district_id
-       JOIN cities ci ON ci.id = d.city_id
-       JOIN regions r ON r.id = ci.region_id
+       JOIN regions r ON r.id = d.region_id
       WHERE ${complaintScope.clause} AND ${dateWhere('dc')}`,
     [...complaintScope.params, range.from, range.to],
     'total'
@@ -254,13 +252,12 @@ const hierarchyMetricsSelect = (whereClause) => `
 `;
 
 const getDistrictRows = async (scope, range, extraWhere = '1=1', extraParams = []) => {
-  const filter = districtFilter(scope, 'd', 'ci', 'r');
+  const filter = districtFilter(scope, 'd', 'r');
   return safeRows(
     `SELECT d.id, r.id AS region_id, d.district_name AS name, d.district_code AS code,
             ${hierarchyMetricsSelect()}
        FROM districts d
-       JOIN cities ci ON ci.id = d.city_id
-       JOIN regions r ON r.id = ci.region_id
+       JOIN regions r ON r.id = d.region_id
        LEFT JOIN cases c ON c.district_id = d.id AND ${dateWhere('c')}
        LEFT JOIN ob_entries ob ON ob.district_id = d.id AND ${dateWhere('ob')}
        LEFT JOIN arrests a ON a.case_id = c.id
@@ -284,8 +281,7 @@ const getHierarchy = async (scope, range) => {
       `SELECT r.id, r.region_name AS name, r.region_code AS code,
               ${hierarchyMetricsSelect()}
          FROM regions r
-         LEFT JOIN cities ci ON ci.region_id = r.id
-         LEFT JOIN districts d ON d.city_id = ci.id
+         LEFT JOIN districts d ON d.region_id = r.id
          LEFT JOIN cases c ON c.region_id = r.id AND ${dateWhere('c')}
          LEFT JOIN ob_entries ob ON ob.region_id = r.id AND ${dateWhere('ob')}
          LEFT JOIN arrests a ON a.case_id = c.id
@@ -307,8 +303,7 @@ const getHierarchy = async (scope, range) => {
             ${hierarchyMetricsSelect()}
        FROM state_administrations sa
        LEFT JOIN regions r ON r.state_administration_id = sa.id
-       LEFT JOIN cities ci ON ci.region_id = r.id
-       LEFT JOIN districts d ON d.city_id = ci.id
+       LEFT JOIN districts d ON d.region_id = r.id
        LEFT JOIN cases c ON c.state_administration_id = sa.id AND ${dateWhere('c')}
        LEFT JOIN ob_entries ob ON ob.state_administration_id = sa.id AND ${dateWhere('ob')}
        LEFT JOIN arrests a ON a.case_id = c.id
@@ -321,8 +316,7 @@ const getHierarchy = async (scope, range) => {
     `SELECT r.id, r.state_administration_id, r.region_name AS name, r.region_code AS code,
             ${hierarchyMetricsSelect()}
        FROM regions r
-       LEFT JOIN cities ci ON ci.region_id = r.id
-       LEFT JOIN districts d ON d.city_id = ci.id
+       LEFT JOIN districts d ON d.region_id = r.id
        LEFT JOIN cases c ON c.region_id = r.id AND ${dateWhere('c')}
        LEFT JOIN ob_entries ob ON ob.region_id = r.id AND ${dateWhere('ob')}
        LEFT JOIN arrests a ON a.case_id = c.id
@@ -335,8 +329,7 @@ const getHierarchy = async (scope, range) => {
     `SELECT d.id, r.id AS region_id, d.district_name AS name, d.district_code AS code,
             ${hierarchyMetricsSelect()}
        FROM districts d
-       JOIN cities ci ON ci.id = d.city_id
-       JOIN regions r ON r.id = ci.region_id
+       JOIN regions r ON r.id = d.region_id
        LEFT JOIN cases c ON c.district_id = d.id AND ${dateWhere('c')}
        LEFT JOIN ob_entries ob ON ob.district_id = d.id AND ${dateWhere('ob')}
        LEFT JOIN arrests a ON a.case_id = c.id
@@ -360,7 +353,7 @@ const getHierarchy = async (scope, range) => {
 const getDistrictOperationsSnapshot = async (scope, range) => {
   if (scope.type !== 'district') return {};
   const districtScope = scopeWhere(scope, 'c');
-  const officersFilter = districtFilter(scope, 'd', 'ci', 'r');
+  const officersFilter = districtFilter(scope, 'd', 'r');
 
   const activeCases = await safeRows(
     `SELECT c.id, c.case_number, c.ob_number, COALESCE(c.title, c.case_title) AS title,
@@ -381,8 +374,7 @@ const getDistrictOperationsSnapshot = async (scope, range) => {
        JOIN police_officers po ON po.id = oa.officer_id
        LEFT JOIN ranks rk ON rk.id = po.rank_id
        LEFT JOIN districts d ON oa.assignment_type IN ('District','District Station') AND oa.assignment_id = d.id
-       LEFT JOIN cities ci ON ci.id = d.city_id
-       LEFT JOIN regions r ON r.id = ci.region_id
+       LEFT JOIN regions r ON r.id = d.region_id
        LEFT JOIN cases c ON c.assigned_officer_id = po.id
       WHERE oa.is_current = 1 AND ${officersFilter.clause}
       GROUP BY po.id

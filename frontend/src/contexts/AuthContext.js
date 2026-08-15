@@ -83,7 +83,6 @@ export const AuthProvider = ({ children }) => {
         station_jail: '/dashboard/jail',
         state_admin: '/dashboard/operations',
         region_admin: '/dashboard/operations',
-        city_admin: '/districts',
         district_admin: '/dashboard/operations',
         officer: '/dashboard/officer',
         cid: '/dashboard/cid',

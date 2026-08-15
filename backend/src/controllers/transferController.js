@@ -16,7 +16,6 @@ const transferCase = async (req, res, next) => {
       transfer_type,
       to_state_administration_id,
       to_region_id,
-      to_city_id,
       to_district_id,
       to_officer_id,
       reason,
@@ -38,7 +37,6 @@ const transferCase = async (req, res, next) => {
     if (transfer_type === 'location' || transfer_type === 'both') {
       updateFields.state_administration_id = to_state_administration_id || caseRow.state_administration_id;
       updateFields.region_id = to_region_id || caseRow.region_id;
-      updateFields.city_id = to_city_id || caseRow.city_id;
       updateFields.district_id = to_district_id || caseRow.district_id;
       updateFields.status = 'TRANSFERRED';
     }
@@ -60,17 +58,16 @@ const transferCase = async (req, res, next) => {
     const [transferResult] = await connection.query(
       `INSERT INTO case_transfers (
          case_id,
-         from_state_administration_id, from_region_id, from_city_id, from_district_id,
-         to_state_administration_id, to_region_id, to_city_id, to_district_id,
+         from_state_administration_id, from_region_id, from_district_id,
+         to_state_administration_id, to_region_id, to_district_id,
          from_officer_id, to_officer_id,
          transferred_by, transfer_reason, transfer_type
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         case_id,
-        caseRow.state_administration_id, caseRow.region_id, caseRow.city_id, caseRow.district_id,
+        caseRow.state_administration_id, caseRow.region_id, caseRow.district_id,
         updateFields.state_administration_id || caseRow.state_administration_id,
         updateFields.region_id || caseRow.region_id,
-        updateFields.city_id || caseRow.city_id,
         updateFields.district_id || caseRow.district_id,
         caseRow.assigned_officer_id,
         updateFields.assigned_officer_id || caseRow.assigned_officer_id,

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Checkbox, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Typography } from 'antd';
-import { HomeOutlined, PlusOutlined, SaveOutlined, SearchOutlined, TeamOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Card, Checkbox, Col, Form, Input, Modal, Row, Segmented, Select, Table, Tag, Typography } from 'antd';
+import { HomeOutlined, PlusOutlined, RollbackOutlined, SaveOutlined, SearchOutlined, TeamOutlined } from '@ant-design/icons';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import api from '@/services/api';
 
@@ -55,9 +55,13 @@ export default function PermissionsPage() {
   const [targetSearch, setTargetSearch] = useState('');
   const [permissionSearch, setPermissionSearch] = useState('');
   const [category, setCategory] = useState('all');
+  const [targetType, setTargetType] = useState('all');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const { data } = await api.get('/permissions');
       setPermissions(data.data.permissions || []);
@@ -73,6 +77,8 @@ export default function PermissionsPage() {
       setAccounts((data.data.users || []).map(user => ({ ...user, targetType: 'user', targetKey: `user-${user.id}` })));
     } catch (error) {
       message.error(error.response?.data?.message || 'Awoodaha lama soo qaadi karin.');
+    } finally {
+      setLoading(false);
     }
   }, [message]);
 
@@ -84,15 +90,25 @@ export default function PermissionsPage() {
   const choose = target => {
     setSelected(target);
     setValues((target.permissions || []).filter(Boolean));
+    setPermissionSearch('');
+    setCategory('all');
   };
 
   const save = async () => {
+    setSaving(true);
+    try {
     const endpoint = selected.targetType === 'user'
       ? `/permissions/users/${selected.id}`
       : `/permissions/roles/${selected.id}`;
     await api.put(endpoint, { permissions: values });
+    setSelected(current => current ? { ...current, permissions: values } : current);
     message.success('Awoodaha waa la kaydiyey. User-ku waa inuu dib u login sameeyaa.');
     load();
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Awoodaha lama kaydin karin.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const create = async valuesToCreate => {
@@ -112,6 +128,7 @@ export default function PermissionsPage() {
     ...accounts.map(account => ({ ...account, name: account.full_name || account.username })),
   ];
   const visibleTargets = targets.filter(target => {
+    if (targetType !== 'all' && target.targetType !== targetType) return false;
     const label = target.targetType === 'user' ? target.name : (ROLE_LABELS[String(target.name).toLowerCase()] || target.name);
     return String(label || '').toLowerCase().includes(targetSearch.trim().toLowerCase());
   });
@@ -120,6 +137,15 @@ export default function PermissionsPage() {
   const selectedLabel = selected?.targetType === 'user'
     ? `${selected.full_name || selected.username} (${ROLE_LABELS[String(selected.role_name).toLowerCase()] || selected.role_name})`
     : ROLE_LABELS[String(selected?.name).toLowerCase()] || selected?.name;
+  const originalValues = useMemo(() => (selected?.permissions || []).filter(Boolean).sort(), [selected]);
+  const currentValues = useMemo(() => [...values].filter(Boolean).sort(), [values]);
+  const hasChanges = JSON.stringify(originalValues) !== JSON.stringify(currentValues);
+  const changeCount = useMemo(() => {
+    const original = new Set(originalValues);
+    const current = new Set(currentValues);
+    return [...new Set([...original, ...current])].filter(key => original.has(key) !== current.has(key)).length;
+  }, [currentValues, originalValues]);
+  const highRiskCount = values.filter(key => HIGH_RISK_PERMISSIONS.has(key)).length;
   const groupedPermissions = useMemo(() => {
     const used = new Set();
     const groups = PERMISSION_GROUPS.map(group => {
@@ -164,9 +190,21 @@ export default function PermissionsPage() {
         </header>
         <div className="permissions-breadcrumb"><HomeOutlined /><span>Dashboard</span><b>›</b><strong>Maamulka Awoodaha</strong></div>
         <div className="permissions-workspace">
-          <Card className="permissions-target-card" title="Roles-ka iyo Users-ka">
-            <Input prefix={<SearchOutlined />} placeholder="Raadi role..." value={targetSearch} onChange={e => setTargetSearch(e.target.value)} allowClear />
+          <Card className="permissions-target-card" title={<div className="permissions-target-title"><span>Roles-ka iyo Users-ka</span><small>{roles.length} roles / {accounts.length} users</small></div>}>
+            <div className="permissions-target-tools">
+              <Segmented
+                value={targetType}
+                onChange={setTargetType}
+                options={[
+                  { label: 'Dhammaan', value: 'all' },
+                  { label: 'Roles', value: 'role' },
+                  { label: 'Users', value: 'user' },
+                ]}
+              />
+              <Input prefix={<SearchOutlined />} placeholder="Raadi role ama user..." value={targetSearch} onChange={e => setTargetSearch(e.target.value)} allowClear />
+            </div>
             <Table rowKey="targetKey" size="small" pagination={{pageSize:12,showSizeChanger:false}} dataSource={visibleTargets}
+              loading={loading}
               onRow={row => ({onClick:()=>choose(row)})}
               rowClassName={row => selected?.targetKey === row.targetKey ? 'permission-target-selected' : ''}
               columns={[
@@ -177,7 +215,16 @@ export default function PermissionsPage() {
           <section className="permissions-detail-card">
             {selected ? <>
               <div className="permissions-detail-head">
-                <div><h3>Awoodaha: {selectedLabel}</h3><Text>{selectedCount} / {permissions.length} awood ayaa la doortay</Text><div className="permissions-progress"><i style={{width:`${permissions.length ? selectedCount/permissions.length*100 : 0}%`}} /></div></div>
+                <div className="permissions-selected-summary">
+                  <div className="permissions-selected-kicker">{selected.targetType === 'user' ? 'User gaar ah' : 'Role guud'}</div>
+                  <h3>Awoodaha: {selectedLabel}</h3>
+                  <div className="permissions-selected-meta">
+                    <Tag color="blue">{selectedCount} / {permissions.length} awood</Tag>
+                    {highRiskCount > 0 && <Tag color="red">{highRiskCount} xasaasi</Tag>}
+                    {hasChanges && <Tag color="gold">Isbeddel lama kaydin</Tag>}
+                  </div>
+                  <div className="permissions-progress"><i style={{width:`${permissions.length ? selectedCount/permissions.length*100 : 0}%`}} /></div>
+                </div>
                 <div className="permissions-tools"><Input prefix={<SearchOutlined />} placeholder="Raadi awood..." value={permissionSearch} onChange={e=>setPermissionSearch(e.target.value)} allowClear/><Select value={category} onChange={setCategory} options={[{value:'all',label:'Dhammaan qaybaha'},...groupedPermissions.map(g=>({value:g.key,label:g.title}))]}/><Button onClick={()=>setModule(permissions,true)} disabled={locked}>Dooro dhammaan</Button><Button onClick={()=>setValues([])} disabled={locked}>Ka saar dhammaan</Button></div>
               </div>
               {locked&&<Alert type="warning" showIcon message="Admin role lama dhimi karo."/>}
@@ -189,7 +236,11 @@ export default function PermissionsPage() {
                   </div>})}
                 </Checkbox.Group>
               </div>
-              <footer className="permissions-actions"><Button>Ka noqo</Button><Button type="primary" icon={<SaveOutlined/>} onClick={save} disabled={locked}>Kaydi Isbeddelada</Button></footer>
+              <footer className="permissions-actions">
+                <Text>{hasChanges ? `${changeCount} isbeddel ayaa sugaya kaydin` : 'Wax isbeddel ah lama hayo'}</Text>
+                <Button icon={<RollbackOutlined />} onClick={() => setValues(originalValues)} disabled={locked || !hasChanges}>Ka noqo</Button>
+                <Button type="primary" icon={<SaveOutlined/>} onClick={save} loading={saving} disabled={locked || !hasChanges}>Kaydi Isbeddelada</Button>
+              </footer>
             </>:<div className="permissions-empty"><TeamOutlined/><h3>Dooro role ama user</h3><Text>Awoodaha aad maamulayso ka dooro liiska bidix.</Text></div>}
           </section>
         </div>

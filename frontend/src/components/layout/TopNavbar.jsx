@@ -201,6 +201,8 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
   const apiOrigin = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
   const profileImageUrl = user.profileImage ? `${apiOrigin}${user.profileImage}` : null;
   const displayName = user.fullName || user.username || 'User';
+  const isDarkMode = theme === 'dark';
+  const themeToggleLabel = isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode';
   const initials = displayName
     .split(' ')
     .filter(Boolean)
@@ -226,7 +228,6 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     jail: 'Maamulka Xabsiga Dhexe',
     state_admin: 'Maamulaha Dawlad Goboleedka',
     region_admin: 'Maamulaha Gobolka',
-    city_admin: 'Maamulaha Magaalada',
     district_admin: 'Maamulaha Degmada',
     state_commander: 'Taliyaha Dawlad Goboleedka',
     region_commander: 'Taliyaha Gobolka',
@@ -346,11 +347,13 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
           <span>{dayjs().format('dddd, D MMMM YYYY')}</span>
         </div>
         {/* ── Theme toggle ── */}
-        <Tooltip title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+        <Tooltip title={themeToggleLabel}>
           <Button
+            aria-label={themeToggleLabel}
             className="topbar-icon-button"
             type="text"
-            icon={theme === 'dark' ? <SunOutlined style={{ color: '#A8FF4D' }} /> : <MoonOutlined />}
+            title={themeToggleLabel}
+            icon={isDarkMode ? <SunOutlined style={{ color: '#A8FF4D' }} /> : <MoonOutlined />}
             onClick={toggleTheme}
           />
         </Tooltip>

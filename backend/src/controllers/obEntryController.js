@@ -338,13 +338,12 @@ const createObEntry = async (req, res, next) => {
     }
     await connection.query('INSERT INTO ob_status_history (ob_entry_id,previous_status,new_status,reason,performed_by) VALUES (?,NULL,?,?,?)', [result.insertId,'REGISTERED','OB registered',req.user.username]);
     caseNumber = await generateCaseNumber();
-    const [[districtLocation]] = await connection.query('SELECT city_id FROM districts WHERE id=?',[location.district_id || null]);
     [caseResult] = await connection.query(`INSERT INTO cases
-      (case_number,case_title,title,case_type,case_level,ob_number,ob_entry_id,original_ob_staff_id,original_ob_staff_name,incident_type,incident_date,claim_value,description,incident_location,status,priority,state_administration_id,region_id,city_id,district_id,created_by,complainant_name,complainant_phone,complainant_id_type,complainant_id_number,complainant_address)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[
+      (case_number,case_title,title,case_type,case_level,ob_number,ob_entry_id,original_ob_staff_id,original_ob_staff_name,incident_type,incident_date,claim_value,description,incident_location,status,priority,state_administration_id,region_id,district_id,created_by,complainant_name,complainant_phone,complainant_id_type,complainant_id_number,complainant_address)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[
       caseNumber,case_title,case_title,case_type,case_level||'normal',obNumber,result.insertId,req.user.id,
       registered_by_name||req.user.fullName||req.user.username,incident_type,incident_datetime,claim_value||null,description,incident_location,
-      'under_investigation','medium',location.state_administration_id||null,location.region_id||null,districtLocation?.city_id||null,location.district_id||null,
+      'under_investigation','medium',location.state_administration_id||null,location.region_id||null,location.district_id||null,
       req.user.username,reported_by,reporter_phone,reporter_id_type==='Aqoonsiga Qaranka'?'National ID':reporter_id_type==='Baasaboor'?'Passport':(['National ID','Passport'].includes(reporter_id_type)?reporter_id_type:null),reporter_id_number||null,reporter_address||null]);
     for(const victim of victims){
       const [vr]=await connection.query('INSERT INTO victims(full_name,phone,address,injury_description) VALUES(?,?,?,?)',[victim.full_name,victim.phone||null,victim.address||null,victim.details]);
@@ -384,7 +383,7 @@ const convertObToCase = async (req, res, next) => {
   let attemptedObNumber = null;
   try {
     const [[ob]] = await db.query(
-      `SELECT ob.*, d.city_id
+      `SELECT ob.*
        FROM ob_entries ob
        LEFT JOIN districts d ON d.id = ob.district_id
        WHERE ob.id = ?`,
@@ -415,7 +414,6 @@ const convertObToCase = async (req, res, next) => {
          SET ob_entry_id = COALESCE(ob_entry_id, ?),
              state_administration_id = COALESCE(?, state_administration_id),
              region_id = COALESCE(?, region_id),
-             city_id = COALESCE(?, city_id),
              district_id = COALESCE(?, district_id),
              complainant_name = COALESCE(complainant_name, ?),
              complainant_phone = COALESCE(complainant_phone, ?),
@@ -428,7 +426,6 @@ const convertObToCase = async (req, res, next) => {
           ob.id,
           ob.state_administration_id || null,
           ob.region_id || null,
-          ob.city_id || null,
           ob.district_id || null,
           ob.reported_by || null,
           ob.reporter_phone || null,
@@ -455,10 +452,10 @@ const convertObToCase = async (req, res, next) => {
     const [result] = await db.query(
       `INSERT INTO cases
         (case_number, case_title, title, case_type, case_level, ob_number, ob_entry_id, original_ob_staff_id, original_ob_staff_name,
-         incident_type, incident_date, claim_value, description, incident_location, status, priority, state_administration_id, region_id, city_id,
+         incident_type, incident_date, claim_value, description, incident_location, status, priority, state_administration_id, region_id,
          district_id, assigned_officer_id, created_by, complainant_name, complainant_phone,
          complainant_id_type, complainant_id_number, complainant_email, complainant_address)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         caseNumber,
         ob.case_title || ob.incident_type || 'General',
@@ -478,7 +475,6 @@ const convertObToCase = async (req, res, next) => {
         priority || 'medium',
         ob.state_administration_id,
         ob.region_id,
-        ob.city_id || null,
         ob.district_id,
         assigned_staff_id || null,
         req.user.username,

@@ -11,7 +11,7 @@ export default function UnitDashboardRedirect() {
 
   useEffect(() => {
     if (loading) return;
-    router.replace(user?.role === 'city_admin' ? '/districts' : '/dashboard/operations');
+    router.replace('/dashboard/operations');
   }, [loading, router, user]);
 
   return (

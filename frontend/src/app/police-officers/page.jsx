@@ -125,14 +125,12 @@ export default function PoliceOfficersPage() {
   const [states, setStates] = useState([]);
   const [subAdmins, setSubAdmins] = useState([]);
   const [regions, setRegions] = useState([]);
-  const [cities, setCities] = useState([]);
   const [districts, setDistricts] = useState([]);
   const [allDistricts, setAllDistricts] = useState([]);
 
   const assignmentType = Form.useWatch('to_assignment_type', transferForm);
   const selectedState = Form.useWatch('state_id', transferForm);
   const selectedRegion = Form.useWatch('region_id', transferForm);
-  const selectedCity = Form.useWatch('city_id', transferForm);
   const selectedDistrict = Form.useWatch('district_id', transferForm);
   const officerDob = Form.useWatch('date_of_birth', form);
   const calculatedAge = officerDob ? dayjs().diff(officerDob, 'year') : '';
@@ -248,7 +246,7 @@ export default function PoliceOfficersPage() {
   useEffect(() => {
     if (canViewLocations && selectedState) {
        api.get(`/regions?state_administration_id=${selectedState}`).then(res => setRegions(res.data.data)).catch(console.error);
-       transferForm.setFieldsValue({ region_id: undefined, city_id: undefined, district_id: undefined });
+       transferForm.setFieldsValue({ region_id: undefined, district_id: undefined });
     }
   }, [selectedState, transferForm, canViewLocations]);
 
@@ -508,7 +506,7 @@ export default function PoliceOfficersPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'state_admin', 'personnel_registry', 'region_admin', 'region_commander', 'city_admin']} requiredPermissions={['officers.view', 'officers.create', 'officers.approve']}>
+    <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'state_admin', 'personnel_registry', 'region_admin', 'region_commander']} requiredPermissions={['officers.view', 'officers.create', 'officers.approve']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>

@@ -74,14 +74,13 @@ const getCaseStationId = async (caseId) => {
 const applyCaseScope = (user, sql, params) => {
   if (user.scopeType === 'state_administration') { sql += ' AND c.state_administration_id = ?'; params.push(user.scopeId); }
   if (user.scopeType === 'region') { sql += ' AND c.region_id = ?'; params.push(user.scopeId); }
-  if (user.scopeType === 'city') { sql += ' AND c.city_id = ?'; params.push(user.scopeId); }
   if (user.scopeType === 'district') { sql += ' AND c.district_id = ?'; params.push(user.scopeId); }
   return sql;
 };
 
 const canAccessCase = async (user, caseId) => {
   const [[caseRow]] = await db.query(
-    `SELECT state_administration_id, region_id, city_id, district_id
+    `SELECT state_administration_id, region_id, district_id
      FROM cases
      WHERE id = ?`,
     [caseId]
@@ -93,7 +92,6 @@ const canAccessCase = async (user, caseId) => {
   const columnMap = {
     state_administration: 'state_administration_id',
     region: 'region_id',
-    city: 'city_id',
     district: 'district_id',
   };
   return Number(caseRow[columnMap[user.scopeType]]) === Number(user.scopeId);

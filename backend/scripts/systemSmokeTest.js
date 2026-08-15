@@ -17,7 +17,6 @@ const credentials = {
   jail: { username: 'jail_user', password: 'Special@123' },
   state_admin: { username: 'banadir_admin', password: 'Unit@123' },
   region_admin: { username: 'mogadishu_region', password: 'Unit@123' },
-  city_admin: { username: 'mogadishu_city', password: 'Unit@123' },
   district_admin: { username: 'hodan_district', password: 'Unit@123' },
 };
 

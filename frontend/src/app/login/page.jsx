@@ -22,7 +22,7 @@ export default function LoginPage() {
     if (user && !submittingRef.current) {
       const roleRedirects = {
         admin: '/dashboard/operations', sub_admin: '/police-officers', ob_staff: '/ob-register',
-        state_admin: '/dashboard/operations', region_admin: '/dashboard/operations', city_admin: '/districts',
+        state_admin: '/dashboard/operations', region_admin: '/dashboard/operations',
         district_admin: '/dashboard/operations', personnel_registry: '/police-officers',
         investigator: '/dashboard/investigator', station_jail: '/dashboard/jail', officer: '/dashboard/officer',
         cid: '/dashboard/cid', cid_director: '/dashboard/cid', cid_supervisor: '/dashboard/cid',
@@ -100,7 +100,6 @@ export default function LoginPage() {
               </Form.Item>
               <div className="login-new-options">
                 <Checkbox>I xasuuso</Checkbox>
-                <button type="button">Ma illowday furaha?</button>
               </div>
               <Form.Item>
                 <Button type="primary" htmlType="submit" disabled={loading} block className="login-art-button">

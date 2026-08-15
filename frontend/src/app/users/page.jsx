@@ -13,6 +13,8 @@ import { useSearchParams } from 'next/navigation';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+const roleLabel=role=>String(role?.name).toLowerCase()==='jail'?'Jail-ka Sare':String(role?.name).toLowerCase()==='district_admin'?'District Administration':'Diiwaanka Ciidanka';
+
 
 
 function UserManagementContent() {
@@ -38,7 +40,21 @@ function UserManagementContent() {
   const [regionalForm] = Form.useForm();
   const [regionalOpen, setRegionalOpen] = useState(false);
   const regionalRoleId = Form.useWatch('role_id', regionalForm);
+  const regionalRegionId = Form.useWatch('region_id', regionalForm);
   const selectedRegionalRole = roles.find((role) => role.id === regionalRoleId);
+  const canCreateRegionalAccount = ['region_admin', 'state_admin'].includes(user?.role);
+  const regionalRoleOptions = useMemo(() => {
+    const allowed = new Set(['personnel_registry', 'jail', 'district_admin']);
+    return roles
+      .filter((role) => allowed.has(String(role?.name || '').toLowerCase()))
+      .map((role) => ({ value: role.id, label: roleLabel(role) }));
+  }, [roles]);
+  const regionalDistrictOptions = useMemo(() => {
+    const regionId = user?.role === 'state_admin' ? regionalRegionId : user?.location?.regionId;
+    return districts
+      .filter((district) => !regionId || Number(district.region_id) === Number(regionId))
+      .map((district) => ({ value: district.id, label: district.district_name }));
+  }, [districts, regionalRegionId, user?.location?.regionId, user?.role]);
   const isDistrictCreate = user?.role === 'district_admin' && !editingUser;
 
   const selectedRoleId = Form.useWatch('role_id', form);
@@ -188,7 +204,6 @@ function UserManagementContent() {
     setIsModalOpen(true);
   };
 
-  const roleLabel=role=>String(role?.name).toLowerCase()==='jail'?'Jail-ka Sare':String(role?.name).toLowerCase()==='district_admin'?'District Administration':'Diiwaanka Ciidanka';
   const saveRegionalAccount=async values=>{try{const role=roles.find(r=>r.id===values.role_id);await api.post('/users',values);message.success(`${roleLabel(role)} waa la abuuray.`);setRegionalOpen(false);regionalForm.resetFields();fetchData()}catch(error){message.error(error.response?.data?.message||'Account-ka lama abuuri karin.')}};
 
   const handleSave = async (values) => {
@@ -284,14 +299,17 @@ function UserManagementContent() {
   ];
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'region_admin', 'district_admin']}>
+    <ProtectedRoute
+      allowedRoles={['admin', 'sub_admin', 'region_admin', 'district_admin']}
+      requiredPermissions={['users.manage']}
+    >
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', marginBottom: '8px' }}>
           <div style={{ minWidth: '280px', flex: '1 1 auto' }}>
             <Title level={2} style={{ margin: 0 }}>Access Control Center</Title>
             <Typography.Text type="secondary">Manage police staff, assigned ranks, and system access levels.</Typography.Text>
           </div>
-          {user?.role==='region_admin'?<Button type="primary" icon={<UserAddOutlined/>} onClick={()=>{regionalForm.resetFields();setRegionalOpen(true)}}>Abuur User Gobol</Button>:<Button 
+          {canCreateRegionalAccount?<Button type="primary" icon={<UserAddOutlined/>} onClick={()=>{regionalForm.resetFields();setRegionalOpen(true)}}>Abuur User Gobol</Button>:<Button 
             type="primary" 
             icon={<UserAddOutlined />} 
             onClick={handleOpenAdd}
@@ -368,8 +386,9 @@ function UserManagementContent() {
         </Modal>
         <Modal title="Abuur User-ka Gobolka" open={regionalOpen} onCancel={()=>setRegionalOpen(false)} footer={null}>
           <Form form={regionalForm} layout="vertical" onFinish={saveRegionalAccount}>
-            <Form.Item name="role_id" label="Role-ka" rules={[{required:true,message:'Dooro role-ka.'}]}><Select options={roles.map(role=>({value:role.id,label:roleLabel(role)}))}/></Form.Item>
-            {String(selectedRegionalRole?.name).toLowerCase()==='district_admin'&&<Form.Item name="district_id" label="Degmada uu Maamulayo" rules={[{required:true,message:'Dooro degmada.'}]}><Select showSearch optionFilterProp="label" options={districts.filter(d=>!d.region_id||Number(d.region_id)===Number(user?.location?.regionId)).map(d=>({value:d.id,label:d.district_name}))}/></Form.Item>}
+            {user?.role==='state_admin'&&<Form.Item name="region_id" label="Gobolka" rules={[{required:true,message:'Dooro gobolka.'}]}><Select showSearch optionFilterProp="label" options={regions.map(region=>({value:region.id,label:region.region_name}))} onChange={()=>regionalForm.setFieldValue('district_id', undefined)}/></Form.Item>}
+            <Form.Item name="role_id" label="Role-ka" rules={[{required:true,message:'Dooro role-ka.'}]}><Select options={regionalRoleOptions}/></Form.Item>
+            {String(selectedRegionalRole?.name).toLowerCase()==='district_admin'&&<Form.Item name="district_id" label="Degmada uu Maamulayo" rules={[{required:true,message:'Dooro degmada.'}]}><Select showSearch optionFilterProp="label" options={regionalDistrictOptions}/></Form.Item>}
             <Form.Item name="username" label="Username" rules={usernameRules}><Input/></Form.Item>
             <Form.Item name="password" label="Password" rules={passwordRules}><Input.Password/></Form.Item>
             <Typography.Text type="secondary">Magaca iyo gobolka system-ka ayaa si otomaatig ah u gelinaya.</Typography.Text>

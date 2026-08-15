@@ -1,7 +1,7 @@
 -- ============================================================
 -- Web-Based Criminal Case Management System
 -- MySQL Database Schema
--- Somalia Police Station Management - 5 Tier Hierarchy
+-- Somalia Police Station Management - 4 Tier Hierarchy
 -- ============================================================
 
 DROP DATABASE IF EXISTS police_cms;
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS police_officers (
 );
 
 -- ============================================================
--- 4. 5-TIER HIERARCHY
+-- 4. 4-TIER HIERARCHY
 -- ============================================================
 CREATE TABLE IF NOT EXISTS state_administrations (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -133,26 +133,9 @@ CREATE TABLE IF NOT EXISTS regions (
   CONSTRAINT fk_region_commander FOREIGN KEY (commander_officer_id) REFERENCES police_officers(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS cities (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  region_id INT NOT NULL,
-  city_name VARCHAR(150) NOT NULL,
-  city_code VARCHAR(50) NOT NULL UNIQUE,
-  username VARCHAR(150) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
-  profile_name VARCHAR(150),
-  profile_image VARCHAR(500),
-  commander_officer_id INT,
-  created_by VARCHAR(100),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_city_region FOREIGN KEY (region_id) REFERENCES regions(id) ON DELETE CASCADE,
-  CONSTRAINT fk_city_commander FOREIGN KEY (commander_officer_id) REFERENCES police_officers(id) ON DELETE SET NULL
-);
-
 CREATE TABLE IF NOT EXISTS districts (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  city_id INT NOT NULL,
+  region_id INT NOT NULL,
   district_name VARCHAR(150) NOT NULL,
   district_code VARCHAR(50) NOT NULL UNIQUE,
   username VARCHAR(150) NOT NULL UNIQUE,
@@ -163,7 +146,7 @@ CREATE TABLE IF NOT EXISTS districts (
   created_by VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_district_city FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE CASCADE,
+  CONSTRAINT fk_district_region FOREIGN KEY (region_id) REFERENCES regions(id) ON DELETE CASCADE,
   CONSTRAINT fk_district_commander FOREIGN KEY (commander_officer_id) REFERENCES police_officers(id) ON DELETE SET NULL
 );
 
@@ -223,7 +206,6 @@ CREATE TABLE IF NOT EXISTS cases (
   priority ENUM('low','medium','high','critical') DEFAULT 'medium',
   state_administration_id INT,
   region_id INT,
-  city_id INT,
   district_id INT,
   assigned_officer_id INT,
   created_by VARCHAR(100),
@@ -231,7 +213,6 @@ CREATE TABLE IF NOT EXISTS cases (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_case_state FOREIGN KEY (state_administration_id) REFERENCES state_administrations(id),
   CONSTRAINT fk_case_region FOREIGN KEY (region_id) REFERENCES regions(id),
-  CONSTRAINT fk_case_city FOREIGN KEY (city_id) REFERENCES cities(id),
   CONSTRAINT fk_case_district FOREIGN KEY (district_id) REFERENCES districts(id),
   CONSTRAINT fk_case_officer FOREIGN KEY (assigned_officer_id) REFERENCES police_officers(id),
   INDEX idx_case_ob_entry (ob_entry_id),
@@ -380,11 +361,9 @@ CREATE TABLE IF NOT EXISTS case_transfers (
   case_id INT NOT NULL,
   from_state_administration_id INT,
   from_region_id INT,
-  from_city_id INT,
   from_district_id INT,
   to_state_administration_id INT,
   to_region_id INT,
-  to_city_id INT,
   to_district_id INT,
   from_officer_id INT,
   to_officer_id INT,

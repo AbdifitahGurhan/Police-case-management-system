@@ -27,8 +27,7 @@ const getHierarchy = async (req, res, next) => {
        LEFT JOIN police_officers sc ON sa.commander_officer_id = sc.id
        LEFT JOIN regions r ON r.state_administration_id = sa.id
        LEFT JOIN police_officers rc ON r.commander_officer_id = rc.id
-       LEFT JOIN cities c ON c.region_id = r.id
-       LEFT JOIN districts d ON d.city_id = c.id
+       LEFT JOIN districts d ON d.region_id = r.id
        LEFT JOIN police_officers dc ON d.commander_officer_id = dc.id
        ${filter.where}
        ORDER BY sa.state_name, r.region_name, d.district_name`
@@ -134,8 +133,7 @@ const getLocationProfiles = async (req, res, next) => {
               (SELECT COUNT(*) FROM cases c WHERE c.district_id = d.id AND c.status NOT IN ('closed','CLOSED')),
               'ACTIVE'
        FROM districts d
-       LEFT JOIN cities ci ON d.city_id = ci.id
-       LEFT JOIN regions r ON ci.region_id = r.id
+       LEFT JOIN regions r ON d.region_id = r.id
        LEFT JOIN police_officers p ON d.commander_officer_id = p.id
        ${locationWhere('d')}`,
       params

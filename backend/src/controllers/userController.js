@@ -19,7 +19,6 @@ const DISTRICT_DEPLOY_TARGET_ROLES = new Set(['sub_admin', 'personnel_registry',
 const HIERARCHY_PROFILE_TARGETS = {
   state_administration: { table: 'state_administrations', nameColumn: 'profile_name' },
   region: { table: 'regions', nameColumn: 'profile_name' },
-  city: { table: 'cities', nameColumn: 'profile_name' },
   district: { table: 'districts', nameColumn: 'profile_name' },
 };
 
@@ -33,11 +32,24 @@ const selfProfileUser = (req, values = {}) => ({
 const ensureRegionAssignableRole = async (roleId) => {
   const [[role]] = await db.query('SELECT id, name FROM roles WHERE id = ?', [roleId]);
   if (!role || !REGION_ASSIGNABLE_ROLES.has(String(role.name).toLowerCase())) {
-    const error = new Error('Region admins can only assign regional operational roles.');
+    const error = new Error('Regional accounts can only use regional operational roles.');
     error.statusCode = 403;
     throw error;
   }
   return role;
+};
+
+const ensureRegionInState = async (regionId, stateId) => {
+  const [[region]] = await db.query(
+    'SELECT id, state_administration_id FROM regions WHERE id = ? AND state_administration_id = ?',
+    [regionId, stateId]
+  );
+  if (!region) {
+    const error = new Error('Gobolka la doortay kama tirsana state-kaaga.');
+    error.statusCode = 403;
+    throw error;
+  }
+  return region;
 };
 
 const ensureCommanderAssignment = async ({ role_id, user_type, is_commander, district_id, state_administration_id }) => {
@@ -74,7 +86,10 @@ const getUsers = async (req, res, next) => {
   try {
     const params = [];
     let where = '1=1';
-    if (req.user.scopeType === 'region') {
+    if (req.user.scopeType === 'state_administration') {
+      where += ' AND u.state_administration_id = ? AND u.id != ? AND u.username != ?';
+      params.push(req.user.scopeId, req.user.id, req.user.username);
+    } else if (req.user.scopeType === 'region') {
       where += ' AND u.region_id = ? AND u.id != ? AND u.username != ?';
       params.push(req.user.scopeId, req.user.id, req.user.username);
     } else if (req.user.scopeType === 'district') {
@@ -131,6 +146,9 @@ const getUserById = async (req, res, next) => {
     if (req.user.scopeType === 'region' && Number(rows[0].region_id) !== Number(req.user.scopeId)) {
       return res.status(403).json({ success: false, message: 'You can only view users within your assigned region.' });
     }
+    if (req.user.scopeType === 'state_administration' && Number(rows[0].state_administration_id) !== Number(req.user.scopeId)) {
+      return res.status(403).json({ success: false, message: 'You can only view users within your assigned state.' });
+    }
     res.json({ success: true, data: rows[0] });
   } catch (err) { next(err); }
 };
@@ -146,13 +164,21 @@ const createUser = async (req, res, next) => {
     if (!password || !role_id) {
       return res.status(400).json({ success: false, message: 'password and role_id are required.' });
     }
-    if (req.user.scopeType === 'region') {
-      region_id = req.user.scopeId;
+    if (req.user.scopeType === 'region' || req.user.scopeType === 'state_administration') {
+      if (req.user.scopeType === 'region') {
+        region_id = req.user.scopeId;
+        state_administration_id = req.user.location?.stateId || state_administration_id || null;
+      } else {
+        state_administration_id = req.user.scopeId;
+        if (!region_id) {
+          return res.status(400).json({ success: false, message: 'Dooro gobolka account-kan lagu xirayo.' });
+        }
+        await ensureRegionInState(region_id, req.user.scopeId);
+      }
       const selectedRole=await ensureRegionAssignableRole(role_id); const roleName=normalizeRole(selectedRole.name);
-      state_administration_id=req.user.location?.stateId||state_administration_id||null;
       if(roleName==='district_admin'){
         if(!district_id)return res.status(400).json({success:false,message:'Dooro degmada District Administration-ku maamulayo.'});
-        const [[district]]=await db.query(`SELECT d.id,d.district_name FROM districts d JOIN cities c ON c.id=d.city_id WHERE d.id=? AND c.region_id=?`,[district_id,req.user.scopeId]);
+        const [[district]]=await db.query('SELECT id, district_name FROM districts WHERE id = ? AND region_id = ?', [district_id, region_id]);
         if(!district)return res.status(403).json({success:false,message:'Degmada la doortay kama tirsana gobolkaaga.'});
         full_name=`${district.district_name} Administration`;assigned_level='DISTRICT_POLICE_STATION';user_type='COMMANDER';is_commander=1;
       }else{
@@ -277,8 +303,23 @@ const updateUser = async (req, res, next) => {
     } = req.body;
     const [existing] = await db.query('SELECT * FROM users WHERE id = ?', [req.params.id]);
     if (!existing.length) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (req.user.scopeType === 'state_administration' && Number(existing[0].state_administration_id) !== Number(req.user.scopeId)) {
+      return res.status(403).json({ success: false, message: 'You can only manage users within your assigned state.' });
+    }
     if (req.user.scopeType === 'region' && Number(existing[0].region_id) !== Number(req.user.scopeId)) {
       return res.status(403).json({ success: false, message: 'You can only manage users within your assigned region.' });
+    }
+    if (req.user.scopeType === 'state_administration') {
+      state_administration_id = req.user.scopeId;
+      if (region_id !== undefined && region_id !== null) {
+        await ensureRegionInState(region_id, req.user.scopeId);
+      }
+      if (user_type && !REGION_ASSIGNABLE_USER_TYPES.has(user_type)) {
+        return res.status(403).json({ success: false, message: 'State admins can only manage state regional staff accounts.' });
+      }
+      if (role_id) {
+        await ensureRegionAssignableRole(role_id);
+      }
     }
     if (req.user.scopeType === 'region') {
       region_id = req.user.scopeId;
@@ -487,7 +528,12 @@ const updateMyProfile = async (req, res, next) => {
 /** DELETE /api/users/:id — Deactivate user (soft delete) */
 const deleteUser = async (req, res, next) => {
   try {
-    if (req.user.scopeType === 'region') {
+    if (req.user.scopeType === 'state_administration') {
+      const [[existing]] = await db.query('SELECT state_administration_id FROM users WHERE id = ?', [req.params.id]);
+      if (!existing || Number(existing.state_administration_id) !== Number(req.user.scopeId)) {
+        return res.status(403).json({ success: false, message: 'You can only manage users within your assigned state.' });
+      }
+    } else if (req.user.scopeType === 'region') {
       const [[existing]] = await db.query('SELECT region_id FROM users WHERE id = ?', [req.params.id]);
       if (!existing || Number(existing.region_id) !== Number(req.user.scopeId)) {
         return res.status(403).json({ success: false, message: 'You can only manage users within your assigned region.' });

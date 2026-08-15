@@ -20,6 +20,29 @@
   --ui-shadow-soft: 0 8px 22px rgba(15, 36, 69, 0.05);
 }
 
+html[data-theme='dark'] {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 14, 14, 14;
+  --background-end-rgb: 23, 23, 23;
+  --ui-bg: #0e0e0e;
+  --ui-bg-soft: #171717;
+  --ui-card: #1c1c1c;
+  --ui-text: #ffffff;
+  --ui-muted: #a5a5a5;
+  --ui-line: #2b2b2b;
+  --ui-primary: #a8ff4d;
+  --ui-primary-2: #55a7ff;
+  --ui-navy: #171717;
+  --ui-navy-2: #0e0e0e;
+  --ui-shadow: none;
+  --ui-shadow-soft: none;
+  color-scheme: dark;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
 body {
   color: rgb(var(--foreground-rgb));
   background:
@@ -86,6 +109,16 @@ body {
   --command-line: #e2e8f2;
   --command-text: #07152f;
   --command-muted: #64748b;
+}
+
+html[data-theme='dark'] {
+  --command-blue: #a8ff4d;
+  --command-navy: #171717;
+  --command-navy-deep: #0e0e0e;
+  --command-canvas: #0e0e0e;
+  --command-line: #2b2b2b;
+  --command-text: #ffffff;
+  --command-muted: #a5a5a5;
 }
 
 body {
@@ -4384,8 +4417,7 @@ body,
   box-shadow: none !important;
 }
 
-.app-topbar,
-[data-theme='dark'] .app-topbar {
+.app-topbar {
   height: 62px !important;
   padding: 0 24px !important;
   background: #ffffff !important;
@@ -4428,23 +4460,19 @@ body,
   white-space: nowrap;
 }
 
-.topbar-user,
-[data-theme='dark'] .topbar-user {
+.topbar-user {
   border: 1px solid #e7edf6 !important;
   border-radius: 10px !important;
   background: #ffffff !important;
   box-shadow: none !important;
 }
 
-.topbar-user-copy .ant-typography,
-[data-theme='dark'] .topbar-user-copy .ant-typography {
+.topbar-user-copy .ant-typography {
   color: #0f1f3d !important;
 }
 
 .topbar-toggle,
-.topbar-icon-button,
-[data-theme='dark'] .topbar-toggle,
-[data-theme='dark'] .topbar-icon-button {
+.topbar-icon-button {
   border-color: #e7edf6 !important;
   border-radius: 8px !important;
   background: #ffffff !important;
@@ -4454,6 +4482,38 @@ body,
 
 .topbar-avatar {
   background: var(--ob-blue) !important;
+}
+
+[data-theme='dark'] .app-topbar {
+  background: #171717 !important;
+  border-bottom-color: #2b2b2b !important;
+}
+
+[data-theme='dark'] .topbar-search {
+  border-color: #2b2b2b !important;
+  background: #1c1c1c !important;
+  color: #a5a5a5 !important;
+}
+
+[data-theme='dark'] .topbar-search span,
+[data-theme='dark'] .topbar-date {
+  color: #a5a5a5 !important;
+}
+
+[data-theme='dark'] .topbar-user {
+  border-color: #2b2b2b !important;
+  background: #1c1c1c !important;
+}
+
+[data-theme='dark'] .topbar-user-copy .ant-typography {
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] .topbar-toggle,
+[data-theme='dark'] .topbar-icon-button {
+  border-color: #2b2b2b !important;
+  background: #1c1c1c !important;
+  color: #ffffff !important;
 }
 
 .police-sidebar,

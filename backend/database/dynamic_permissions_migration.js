@@ -19,7 +19,7 @@ const permissions=[
 const warrantPermissions=['warrants.view','warrants.create','warrants.update','warrants.execute','warrants.cancel','warrants.print'];
 const grants={
  admin:['*'], sub_admin:['users.manage','officers.view','officers.create','reports.view'],
- state_admin:['officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ranks.assign','ranks.manage','reports.view','locations.view','locations.manage','ob.view','cases.view'],
+ state_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ranks.assign','ranks.manage','reports.view','locations.view','locations.manage','ob.view','cases.view'],
  region_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','officers.approve','officers.activate','ob.view','cases.view','reports.view','locations.view','locations.manage','stations.view'],
  district_admin:['users.manage','officers.view','officers.create','officers.update','officers.delete','officers.transfer','ob.view','cases.view','cases.investigate','station_jail.view','reports.view','locations.view',...warrantPermissions],
  personnel_registry:['officers.view','officers.create'], ob_staff:['ob.view','ob.create','ob.update','ob.print'],

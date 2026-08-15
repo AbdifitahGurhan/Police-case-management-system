@@ -25,7 +25,7 @@ export default function StationManagementPage() {
   const hasPermission = (key) => user?.role === 'admin' || permissions.includes('*') || permissions.includes(key);
   const canEditStations = hasPermission('stations.manage');
   const [stations, setStations] = useState([]);
-  const [cities, setCities] = useState([]);
+  const [regions, setRegions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,10 +54,10 @@ export default function StationManagementPage() {
   const fetchGeography = useCallback(async () => {
     try {
       const res = await api.get('/stations/geography');
-      setCities(res.data.data.cities || []);
+      setRegions(res.data.data.regions || []);
     } catch (err) {
       if (canEditStations) {
-        message.error(err.response?.data?.message || 'Magaalooyinka lama soo qaadi karin.');
+        message.error(err.response?.data?.message || 'Gobollada lama soo qaadi karin.');
       }
     }
   }, [canEditStations, message]);
@@ -479,9 +479,9 @@ export default function StationManagementPage() {
             </Form.Item>
             <Row gutter={16}>
               <Col xs={24} sm={12}>
-                <Form.Item name="city_id" label="City" rules={[requiredRule('City')]}>
-                  <Select placeholder="Select city" showSearch optionFilterProp="children">
-                    {cities.map((city) => <Select.Option key={city.id} value={city.id}>{city.name}</Select.Option>)}
+                <Form.Item name="region_id" label="Region" rules={[requiredRule('Region')]}>
+                  <Select placeholder="Select region" showSearch optionFilterProp="children">
+                    {regions.map((region) => <Select.Option key={region.id} value={region.id}>{region.name}</Select.Option>)}
                   </Select>
                 </Form.Item>
               </Col>

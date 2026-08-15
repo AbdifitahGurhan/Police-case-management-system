@@ -3,8 +3,16 @@
 
 const mysql = require('mysql2/promise');
 require('dotenv').config();
+const { getDatabaseUrl, isProduction } = require('./env');
 
-const dbUrl = process.env.MYSQL_PRIVATE_URL || process.env.MYSQL_URL || process.env.DATABASE_URL;
+const dbUrl = getDatabaseUrl();
+
+if (isProduction && !dbUrl) {
+  const missing = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'].filter((name) => !process.env[name]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required MySQL environment variables: ${missing.join(', ')}`);
+  }
+}
 
 const poolConfig = dbUrl
   ? {
@@ -22,7 +30,7 @@ const poolConfig = dbUrl
       host: process.env.DB_HOST || '127.0.0.1',
       port: parseInt(process.env.DB_PORT) || 3306,
       user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'Mansour2003#',
+      password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'police_cms',
       waitForConnections: true,
       connectionLimit: 15,

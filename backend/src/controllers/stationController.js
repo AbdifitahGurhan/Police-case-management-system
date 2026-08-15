@@ -10,8 +10,6 @@ const ensureStationInScope = async (req, stationId) => {
     `SELECT d.id,
             d.district_name AS name,
             d.district_code AS code,
-            d.city_id,
-            c.city_name,
             r.id AS region_id,
             r.state_administration_id,
             r.region_name,
@@ -22,8 +20,7 @@ const ensureStationInScope = async (req, stationId) => {
             d.updated_at,
             1 AS is_active
        FROM districts d
-       LEFT JOIN cities c ON d.city_id = c.id
-       LEFT JOIN regions r ON c.region_id = r.id
+       LEFT JOIN regions r ON d.region_id = r.id
        LEFT JOIN police_officers p ON d.commander_officer_id = p.id
       WHERE d.id = ?`,
     [stationId]
@@ -66,8 +63,7 @@ const getStations = async (req, res, next) => {
       SELECT d.id,
              d.district_name AS name,
              d.district_code AS code,
-             d.city_id,
-             c.city_name,
+             d.region_id,
              r.state_administration_id,
              r.region_name,
              d.username,
@@ -120,8 +116,7 @@ const getStations = async (req, res, next) => {
                WHERE c_closed.district_id = d.id
                  AND c_closed.status IN ('closed','CLOSED','dismissed','rejected','archived','REJECTED')) AS xiray_cases
       FROM districts d
-      LEFT JOIN cities c ON d.city_id = c.id
-      LEFT JOIN regions r ON c.region_id = r.id
+      LEFT JOIN regions r ON d.region_id = r.id
       LEFT JOIN police_officers p ON d.commander_officer_id = p.id
       WHERE ${where}
       ORDER BY d.district_name ASC
@@ -281,8 +276,7 @@ const getStationById = async (req, res, next) => {
       `SELECT d.id,
               d.district_name AS name,
               d.district_code AS code,
-              d.city_id,
-              c.city_name,
+              d.region_id,
               r.state_administration_id,
               r.id AS region_id,
               r.region_name,
@@ -293,8 +287,7 @@ const getStationById = async (req, res, next) => {
               d.updated_at,
               1 AS is_active
        FROM districts d
-       LEFT JOIN cities c ON d.city_id = c.id
-       LEFT JOIN regions r ON c.region_id = r.id
+       LEFT JOIN regions r ON d.region_id = r.id
        LEFT JOIN police_officers p ON d.commander_officer_id = p.id
        WHERE d.id = ?`,
       [req.params.id]
@@ -308,8 +301,7 @@ const getStationById = async (req, res, next) => {
       const [[allowed]] = await db.query(
         `SELECT d.id
          FROM districts d
-         JOIN cities c ON d.city_id = c.id
-         WHERE d.id = ? AND c.region_id = ?`,
+         WHERE d.id = ? AND d.region_id = ?`,
         [req.params.id, req.user.scopeId]
       );
       if (!allowed) return res.status(403).json({ success: false, message: 'Forbidden' });
@@ -336,9 +328,9 @@ const getStationById = async (req, res, next) => {
 
 const createStation = async (req, res, next) => {
   try {
-    const { name, code, city_id, username, password, commander_officer_id } = req.body;
-    if (!name || !code || !city_id) {
-      return res.status(400).json({ success: false, message: 'name, code, and city_id are required.' });
+    const { name, code, region_id, username, password, commander_officer_id } = req.body;
+    if (!name || !code || !region_id) {
+      return res.status(400).json({ success: false, message: 'name, code, and region_id are required.' });
     }
     if (!password) {
       return res.status(400).json({ success: false, message: 'password is required for station login.' });
@@ -346,9 +338,9 @@ const createStation = async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const [result] = await db.query(
-      `INSERT INTO districts (city_id, district_name, district_code, username, password_hash, commander_officer_id, created_by)
+      `INSERT INTO districts (region_id, district_name, district_code, username, password_hash, commander_officer_id, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [city_id, name, code, username || code.toLowerCase(), passwordHash, commander_officer_id || null, req.user.username || req.user.id]
+      [region_id, name, code, username || code.toLowerCase(), passwordHash, commander_officer_id || null, req.user.username || req.user.id]
     );
 
     await writeAuditLog({
@@ -357,7 +349,7 @@ const createStation = async (req, res, next) => {
       action: 'CREATE_STATION',
       entityType: 'stations',
       entityId: result.insertId,
-      newData: { name, code, city_id, username, commander_officer_id },
+      newData: { name, code, region_id, username, commander_officer_id },
     });
     res.status(201).json({ success: true, message: 'Station created.', stationId: result.insertId });
   } catch (err) {
@@ -370,16 +362,16 @@ const createStation = async (req, res, next) => {
 
 const updateStation = async (req, res, next) => {
   try {
-    const { name, code, city_id, username, commander_officer_id } = req.body;
+    const { name, code, region_id, username, commander_officer_id } = req.body;
     await db.query(
       `UPDATE districts
        SET district_name = COALESCE(?, district_name),
            district_code = COALESCE(?, district_code),
-           city_id = COALESCE(?, city_id),
+           region_id = COALESCE(?, region_id),
            username = COALESCE(?, username),
            commander_officer_id = ?
        WHERE id = ?`,
-      [name || null, code || null, city_id || null, username || null, commander_officer_id || null, req.params.id]
+      [name || null, code || null, region_id || null, username || null, commander_officer_id || null, req.params.id]
     );
     await writeAuditLog({
       userId: req.user.id,
@@ -429,24 +421,18 @@ const getGeography = async (req, res, next) => {
   try {
     let regionWhere = '1=1';
     let regionParams = [];
-    let cityWhere = '1=1';
-    let cityParams = [];
     let districtWhere = '1=1';
     let districtParams = [];
 
     if (req.user.scopeType === 'state_administration') {
       regionWhere = 'state_administration_id = ?';
       regionParams = [req.user.scopeId];
-      cityWhere = 'region_id IN (SELECT id FROM regions WHERE state_administration_id = ?)';
-      cityParams = [req.user.scopeId];
-      districtWhere = 'city_id IN (SELECT c.id FROM cities c JOIN regions r ON r.id = c.region_id WHERE r.state_administration_id = ?)';
+      districtWhere = 'region_id IN (SELECT id FROM regions WHERE state_administration_id = ?)';
       districtParams = [req.user.scopeId];
     } else if (req.user.scopeType === 'region') {
       regionWhere = 'id = ?';
       regionParams = [req.user.scopeId];
-      cityWhere = 'region_id = ?';
-      cityParams = [req.user.scopeId];
-      districtWhere = 'city_id IN (SELECT id FROM cities WHERE region_id = ?)';
+      districtWhere = 'region_id = ?';
       districtParams = [req.user.scopeId];
     } else if (req.user.scopeType === 'district') {
       districtWhere = 'id = ?';
@@ -454,9 +440,8 @@ const getGeography = async (req, res, next) => {
     }
 
     const [regions] = await db.query(`SELECT id, region_name AS name FROM regions WHERE ${regionWhere} ORDER BY region_name ASC`, regionParams);
-    const [cities] = await db.query(`SELECT id, city_name AS name, region_id FROM cities WHERE ${cityWhere} ORDER BY city_name ASC`, cityParams);
-    const [districts] = await db.query(`SELECT id, district_name AS name, city_id FROM districts WHERE ${districtWhere} ORDER BY district_name ASC`, districtParams);
-    res.json({ success: true, data: { regions, cities, districts } });
+    const [districts] = await db.query(`SELECT id, district_name AS name, region_id FROM districts WHERE ${districtWhere} ORDER BY district_name ASC`, districtParams);
+    res.json({ success: true, data: { regions, districts } });
   } catch (err) { next(err); }
 };
 

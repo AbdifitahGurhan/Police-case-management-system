@@ -34,9 +34,6 @@ const buildScopeWhere = (user, alias = 'c') => {
   if (source.district_id || source.districtId || user.scopeType === 'district') {
     clause += ` AND ${alias}.district_id = ?`;
     params.push(source.district_id || source.districtId || user.scopeId);
-  } else if (source.city_id || source.cityId || user.scopeType === 'city') {
-    clause += ` AND ${alias}.city_id = ?`;
-    params.push(source.city_id || source.cityId || user.scopeId);
   } else if (source.region_id || source.regionId || user.scopeType === 'region') {
     clause += ` AND ${alias}.region_id = ?`;
     params.push(source.region_id || source.regionId || user.scopeId);
@@ -50,29 +47,25 @@ const buildScopeWhere = (user, alias = 'c') => {
 const getUserLocation = async (user) => {
   if (!user) return {};
 
-  const needsCityLookup = ['city', 'district'].includes(user.scopeType) && !user.location?.cityId;
-  if (user.location && !needsCityLookup) {
+  if (user.location) {
     return {
       state_administration_id: user.location.stateId || null,
       region_id: user.location.regionId || null,
-      city_id: user.location.cityId || null,
       district_id: user.location.districtId || null,
       state_name: user.location.stateName || null,
       region_name: user.location.regionName || null,
-      city_name: user.location.cityName || null,
       district_name: user.location.districtName || null,
     };
   }
 
   if (!user.scopeType) {
     const [[row]] = await db.query(
-      `SELECT u.state_administration_id, u.region_id, ci.id AS city_id, u.district_id,
-              sa.state_name, r.region_name, ci.city_name, d.district_name
+      `SELECT u.state_administration_id, COALESCE(u.region_id, d.region_id) AS region_id, u.district_id,
+              sa.state_name, r.region_name, d.district_name
        FROM users u
        LEFT JOIN state_administrations sa ON u.state_administration_id = sa.id
-       LEFT JOIN regions r ON u.region_id = r.id
        LEFT JOIN districts d ON u.district_id = d.id
-       LEFT JOIN cities ci ON d.city_id = ci.id
+       LEFT JOIN regions r ON COALESCE(u.region_id, d.region_id) = r.id
        WHERE u.id = ?`,
       [user.id]
     );
@@ -80,10 +73,9 @@ const getUserLocation = async (user) => {
       return row;
     }
     const [[defaultDistrict]] = await db.query(
-      `SELECT d.id AS district_id, d.district_name, c.id AS city_id, c.city_name, r.id AS region_id, r.region_name, sa.id AS state_administration_id, sa.state_name
+      `SELECT d.id AS district_id, d.district_name, r.id AS region_id, r.region_name, sa.id AS state_administration_id, sa.state_name
        FROM districts d
-       LEFT JOIN cities c ON d.city_id = c.id
-       LEFT JOIN regions r ON c.region_id = r.id
+       LEFT JOIN regions r ON d.region_id = r.id
        LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id
        ORDER BY d.id ASC LIMIT 1`
     );
@@ -109,26 +101,12 @@ const getUserLocation = async (user) => {
     return row || {};
   }
 
-  if (user.scopeType === 'city') {
-    const [[row]] = await db.query(
-      `SELECT sa.id AS state_administration_id, r.id AS region_id, c.id AS city_id,
-              sa.state_name, r.region_name, c.city_name
-       FROM cities c
-       LEFT JOIN regions r ON c.region_id = r.id
-       LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id
-       WHERE c.id = ?`,
-      [user.scopeId]
-    );
-    return row || {};
-  }
-
   if (user.scopeType === 'district') {
     const [[row]] = await db.query(
-      `SELECT sa.id AS state_administration_id, r.id AS region_id, c.id AS city_id, d.id AS district_id,
-              sa.state_name, r.region_name, c.city_name, d.district_name
+      `SELECT sa.id AS state_administration_id, r.id AS region_id, d.id AS district_id,
+              sa.state_name, r.region_name, d.district_name
        FROM districts d
-       LEFT JOIN cities c ON d.city_id = c.id
-       LEFT JOIN regions r ON c.region_id = r.id
+       LEFT JOIN regions r ON d.region_id = r.id
        LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id
        WHERE d.id = ?`,
       [user.scopeId]

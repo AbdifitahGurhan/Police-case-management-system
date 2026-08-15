@@ -22,7 +22,6 @@ exports.getAll = async (req, res, next) => {
               WHEN a.assignment_type = 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'Region Unit' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
-              WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District Station' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District User Link' THEN (
@@ -97,7 +96,6 @@ exports.getById = async (req, res, next) => {
           WHEN 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id=t.from_assignment_id)
           WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=t.from_assignment_id)
           WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=t.from_assignment_id)
-          WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=t.from_assignment_id)
           WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=t.from_assignment_id)
           WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=t.from_assignment_id)
           WHEN 'District User Link' THEN (
@@ -112,7 +110,6 @@ exports.getById = async (req, res, next) => {
           WHEN 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id=t.to_assignment_id)
           WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=t.to_assignment_id)
           WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=t.to_assignment_id)
-          WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=t.to_assignment_id)
           WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=t.to_assignment_id)
           WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=t.to_assignment_id)
           WHEN 'District User Link' THEN (
@@ -133,7 +130,6 @@ exports.getById = async (req, res, next) => {
           WHEN a.assignment_type = 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'Region' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'Region Unit' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
-          WHEN a.assignment_type = 'City' THEN (SELECT city_name FROM cities WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District Station' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District User Link' THEN (

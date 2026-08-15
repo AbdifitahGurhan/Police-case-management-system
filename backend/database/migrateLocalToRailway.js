@@ -5,7 +5,7 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 async function migrateLocalToRailway() {
-  const localPassword = process.env.LOCAL_DB_PASSWORD || 'Mansour2003#';
+  const localPassword = process.env.LOCAL_DB_PASSWORD || '';
   const localDatabase = process.env.LOCAL_DB_NAME || 'police_cms';
 
   console.log('🔄 Connecting to Local MySQL pool...');

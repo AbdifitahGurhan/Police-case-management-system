@@ -87,7 +87,6 @@ const buildScopedCaseJoinWhere = (user, params, alias = 'c') => {
   let where = '1=1';
   if (user.scopeType === 'state_administration') { where += ` AND ${alias}.state_administration_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'region') { where += ` AND ${alias}.region_id = ?`; params.push(user.scopeId); }
-  if (user.scopeType === 'city') { where += ` AND ${alias}.city_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'district') { where += ` AND ${alias}.district_id = ?`; params.push(user.scopeId); }
   return where;
 };
@@ -212,14 +211,13 @@ const hydrateArrests = (rows) => rows.map((row) => ({ ...row, ...sentenceMetrics
 const applyCaseScope = (user, sql, params, alias = 'c_scope') => {
   if (user.scopeType === 'state_administration') { sql += ` AND ${alias}.state_administration_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'region') { sql += ` AND ${alias}.region_id = ?`; params.push(user.scopeId); }
-  if (user.scopeType === 'city') { sql += ` AND ${alias}.city_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'district') { sql += ` AND ${alias}.district_id = ?`; params.push(user.scopeId); }
   return sql;
 };
 
 const canAccessCase = async (user, caseId) => {
   const [[row]] = await db.query(
-    'SELECT state_administration_id, region_id, city_id, district_id FROM cases WHERE id = ?',
+    'SELECT state_administration_id, region_id, district_id FROM cases WHERE id = ?',
     [caseId]
   );
   if (!row) return false;
@@ -227,7 +225,6 @@ const canAccessCase = async (user, caseId) => {
   const columnMap = {
     state_administration: 'state_administration_id',
     region: 'region_id',
-    city: 'city_id',
     district: 'district_id',
   };
   return Number(row[columnMap[user.scopeType]]) === Number(user.scopeId);
@@ -820,14 +817,12 @@ const loadSuspectHistory = async (suspectId) => {
            c.incident_location,
            c.description AS case_description,
            d.district_name AS police_station_name,
-           ci.city_name,
            r.region_name,
            sa.state_name,
            COALESCE(u.full_name, a.arrested_by) AS arrested_by_name
     FROM arrests a
     JOIN cases c ON c.id = a.case_id
     LEFT JOIN districts d ON COALESCE(a.police_station_id, c.district_id) = d.id
-    LEFT JOIN cities ci ON c.city_id = ci.id
     LEFT JOIN regions r ON c.region_id = r.id
     LEFT JOIN state_administrations sa ON c.state_administration_id = sa.id
     LEFT JOIN users u ON a.arrested_by = CAST(u.id AS CHAR) OR a.arrested_by = u.username

@@ -16,6 +16,10 @@ async function runMigrations() {
   await runCourtRemandMigration();
   const { migrate: runCourtArraignmentMigration } = require('./court_arraignment_workflow_migration');
   await runCourtArraignmentMigration();
+  const runRemoveCitiesMigration = require('./remove_cities_migration');
+  await runRemoveCitiesMigration();
+  const runStateAdminUsersManageMigration = require('./state_admin_users_manage_migration');
+  await runStateAdminUsersManageMigration();
 }
 
 async function autoInitializeDb() {
@@ -76,7 +80,8 @@ async function autoInitializeDb() {
     }
     console.log('✅ Railway MySQL Database auto-initialization and seeding completed successfully!');
   } catch (err) {
-    console.error('❌ Auto DB initialization notice:', err.message);
+    console.error('Auto DB initialization failed:', err.message);
+    throw err;
   }
 }
 

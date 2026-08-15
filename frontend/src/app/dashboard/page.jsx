@@ -24,7 +24,6 @@ export default function DashboardIndexPage() {
       officer: '/dashboard/officer',
       state_admin: '/dashboard/operations',
       region_admin: '/dashboard/operations',
-      city_admin: '/districts',
       district_admin: '/dashboard/operations',
       personnel_registry: '/police-officers',
       investigator: '/dashboard/investigator',

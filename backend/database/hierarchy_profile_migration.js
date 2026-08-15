@@ -3,7 +3,7 @@
 require('dotenv').config();
 const db = require('../src/config/database');
 
-const tables = ['state_administrations', 'regions', 'cities', 'districts'];
+const tables = ['state_administrations', 'regions', 'districts'];
 
 async function run() {
   for (const table of tables) {

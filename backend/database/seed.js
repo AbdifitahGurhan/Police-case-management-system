@@ -287,7 +287,6 @@ async function seedCourtData() {
 
   const stateId = await getId('SELECT id FROM state_administrations LIMIT 1');
   const regionId = await getId('SELECT id FROM regions LIMIT 1');
-  const cityId = await getId('SELECT id FROM cities LIMIT 1');
   const hodanDistrictId = await getId('SELECT id FROM districts WHERE district_code = ?', ['hodan_district']);
   const waaberiDistrictId = await getId('SELECT id FROM districts WHERE district_code = ?', ['waaberi_district']);
 
@@ -366,11 +365,11 @@ async function seedCourtData() {
     const [caseResult] = await db.query(`
       INSERT INTO cases (
         case_number, ob_number, ob_entry_id, case_title, title, description, incident_date, incident_location,
-        case_type, status, priority, state_administration_id, region_id, city_id, district_id,
+        case_type, status, priority, state_administration_id, region_id, district_id,
         assigned_officer_id, created_by
       ) VALUES (
         ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL 2 HOUR), 'Mogadishu Road, Hodan',
-        ?, 'forwarded_to_court', 'medium', ?, ?, ?, ?, ?, 'system'
+        ?, 'forwarded_to_court', 'medium', ?, ?, ?, ?, 'system'
       )
     `, [
       caseNumber,
@@ -382,7 +381,6 @@ async function seedCourtData() {
       data.crime,
       stateId,
       regionId,
-      cityId,
       districts[data.district],
       officers[data.officer]
     ]);
@@ -672,32 +670,18 @@ async function seed() {
     const regionId = await getId('SELECT id FROM regions WHERE region_code = ?', ['MGD']);
 
     await db.query(`
-      INSERT INTO cities
-        (region_id, city_name, city_code, username, password_hash, commander_officer_id, created_by)
-      VALUES
-        (?, 'Mogadishu City', 'MOG', 'mogadishu_city', ?, ?, 'admin')
-      ON DUPLICATE KEY UPDATE
-        region_id = VALUES(region_id),
-        city_name = VALUES(city_name),
-        username = VALUES(username),
-        password_hash = VALUES(password_hash),
-        commander_officer_id = VALUES(commander_officer_id)
-    `, [regionId, unitHash, inspectorOfficerId]);
-    const cityId = await getId('SELECT id FROM cities WHERE city_code = ?', ['MOG']);
-
-    await db.query(`
       INSERT INTO districts
-        (city_id, district_name, district_code, username, password_hash, commander_officer_id, created_by)
+        (region_id, district_name, district_code, username, password_hash, commander_officer_id, created_by)
       VALUES
         (?, 'Hodan District', 'HDN', 'hodan_district', ?, ?, 'admin'),
         (?, 'Wadajir District', 'WDJ', 'wadajir_district', ?, ?, 'admin')
       ON DUPLICATE KEY UPDATE
-        city_id = VALUES(city_id),
+        region_id = VALUES(region_id),
         district_name = VALUES(district_name),
         username = VALUES(username),
         password_hash = VALUES(password_hash),
         commander_officer_id = VALUES(commander_officer_id)
-    `, [cityId, unitHash, sergeantOfficerId, cityId, unitHash, constableOfficerId]);
+    `, [regionId, unitHash, sergeantOfficerId, regionId, unitHash, constableOfficerId]);
     const hodanDistrictId = await getId('SELECT id FROM districts WHERE district_code = ?', ['HDN']);
     const wadajirDistrictId = await getId('SELECT id FROM districts WHERE district_code = ?', ['WDJ']);
 
@@ -763,17 +747,17 @@ async function seed() {
     await db.query(`
       INSERT INTO cases
         (case_title, title, ob_number, description, incident_date, incident_location, case_type, status, priority,
-         state_administration_id, region_id, city_id, district_id, assigned_officer_id, created_by)
+         state_administration_id, region_id, district_id, assigned_officer_id, created_by)
       VALUES
         ('Armed Robbery at Bakaro Market', 'Armed Robbery at Bakaro Market', 'OB-2026-00001',
          'Complainant reports an armed robbery involving two criminals at a market stall.', '2026-05-01',
-         'Bakaro Market, Hodan District', 'Robbery', 'DRAFT', 'high', ?, ?, ?, ?, ?, 'officer'),
+         'Bakaro Market, Hodan District', 'Robbery', 'DRAFT', 'high', ?, ?, ?, ?, 'officer'),
         ('Vehicle Theft near Airport Road', 'Vehicle Theft near Airport Road', 'OB-2026-00002',
          'White Toyota Land Cruiser reported stolen from a residential compound.', '2026-05-03',
-         'Airport Road, Wadajir District', 'Theft', 'PENDING_COMMANDER_REVIEW', 'medium', ?, ?, ?, ?, ?, 'officer'),
+         'Airport Road, Wadajir District', 'Theft', 'PENDING_COMMANDER_REVIEW', 'medium', ?, ?, ?, ?, 'officer'),
         ('Assault Outside Cafe', 'Assault Outside Cafe', 'OB-2026-00003',
          'Victim reports assault outside a cafe; medical report pending.', '2026-05-05',
-         'Hodan District, Mogadishu', 'Assault', 'CONFIRMED_BY_COMMANDER', 'critical', ?, ?, ?, ?, ?, 'cid')
+         'Hodan District, Mogadishu', 'Assault', 'CONFIRMED_BY_COMMANDER', 'critical', ?, ?, ?, ?, 'cid')
       ON DUPLICATE KEY UPDATE
         case_title = VALUES(case_title),
         title = VALUES(title),
@@ -785,9 +769,9 @@ async function seed() {
         priority = VALUES(priority),
         assigned_officer_id = VALUES(assigned_officer_id)
     `, [
-      stateId, regionId, cityId, hodanDistrictId, sergeantOfficerId,
-      stateId, regionId, cityId, wadajirDistrictId, constableOfficerId,
-      stateId, regionId, cityId, hodanDistrictId, inspectorOfficerId,
+      stateId, regionId, hodanDistrictId, sergeantOfficerId,
+      stateId, regionId, wadajirDistrictId, constableOfficerId,
+      stateId, regionId, hodanDistrictId, inspectorOfficerId,
     ]);
 
     const robberyCaseId = await getId('SELECT id FROM cases WHERE ob_number = ?', ['OB-2026-00001']);
@@ -902,15 +886,15 @@ async function seed() {
     );
     await db.query(`
       INSERT INTO case_transfers
-        (case_id, from_state_administration_id, from_region_id, from_city_id, from_district_id,
-         to_state_administration_id, to_region_id, to_city_id, to_district_id,
+        (case_id, from_state_administration_id, from_region_id, from_district_id,
+         to_state_administration_id, to_region_id, to_district_id,
          from_officer_id, to_officer_id, transferred_by, transfer_reason, transfer_type, blockchain_record_id)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'officer', 'Escalated to CID investigator for follow-up.', 'investigation', ?
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'officer', 'Escalated to CID investigator for follow-up.', 'investigation', ?
       WHERE NOT EXISTS (SELECT 1 FROM case_transfers WHERE case_id = ? AND transfer_type = 'investigation')
     `, [
       robberyCaseId,
-      stateId, regionId, cityId, hodanDistrictId,
-      stateId, regionId, cityId, hodanDistrictId,
+      stateId, regionId, hodanDistrictId,
+      stateId, regionId, hodanDistrictId,
       sergeantOfficerId, inspectorOfficerId, blockchainId, robberyCaseId,
     ]);
 
@@ -944,20 +928,20 @@ async function seed() {
     await db.query(`
       INSERT INTO cases
         (case_title, title, ob_number, description, incident_date, incident_location, case_type, status, priority,
-         state_administration_id, region_id, city_id, district_id, assigned_officer_id, created_by)
+         state_administration_id, region_id, district_id, assigned_officer_id, created_by)
       VALUES
         ('Hodan Station Mobile Phone Robbery', 'Hodan Station Mobile Phone Robbery', 'OB-HDN-2026-001',
          'Complainant reported that two criminals robbed a mobile phone and cash near Taleex junction. Patrol recovered CCTV footage and identified one repeat offender.',
          '2026-05-10 20:15:00', 'Taleex Junction, Hodan District', 'Robbery', 'under_investigation', 'high',
-         ?, ?, ?, ?, ?, 'hodan_district'),
+         ?, ?, ?, ?, 'hodan_district'),
         ('Hodan Station Narcotics Patrol Arrest', 'Hodan Station Narcotics Patrol Arrest', 'OB-HDN-2026-002',
          'Night patrol stopped a motorcycle near Bakaro entrance and recovered suspected narcotics prepared for street sale.',
          '2026-05-12 22:40:00', 'Bakaro South Gate, Hodan District', 'Narcotics', 'approved_for_court', 'critical',
-         ?, ?, ?, ?, ?, 'hodan_district'),
+         ?, ?, ?, ?, 'hodan_district'),
         ('Hodan Station Shop Assault Complaint', 'Hodan Station Shop Assault Complaint', 'OB-HDN-2026-003',
          'Shop owner reported assault and property damage after a dispute. Parties were interviewed and the suspect was released after court dismissal.',
          '2026-05-14 16:20:00', 'Suuqa Bakaro, Hodan District', 'Assault', 'closed', 'medium',
-         ?, ?, ?, ?, ?, 'hodan_district')
+         ?, ?, ?, ?, 'hodan_district')
       ON DUPLICATE KEY UPDATE
         case_title = VALUES(case_title),
         title = VALUES(title),
@@ -971,9 +955,9 @@ async function seed() {
         assigned_officer_id = VALUES(assigned_officer_id),
         created_by = VALUES(created_by)
     `, [
-      stateId, regionId, cityId, hodanDistrictId, sergeantOfficerId,
-      stateId, regionId, cityId, hodanDistrictId, inspectorOfficerId,
-      stateId, regionId, cityId, hodanDistrictId, sergeantOfficerId,
+      stateId, regionId, hodanDistrictId, sergeantOfficerId,
+      stateId, regionId, hodanDistrictId, inspectorOfficerId,
+      stateId, regionId, hodanDistrictId, sergeantOfficerId,
     ]);
 
     const hodanRobberyCaseId = await getId('SELECT id FROM cases WHERE ob_number = ?', ['OB-HDN-2026-001']);
@@ -1181,15 +1165,15 @@ async function seed() {
 
     await db.query(`
       INSERT INTO case_transfers
-        (case_id, from_state_administration_id, from_region_id, from_city_id, from_district_id,
-         to_state_administration_id, to_region_id, to_city_id, to_district_id,
+        (case_id, from_state_administration_id, from_region_id, from_district_id,
+         to_state_administration_id, to_region_id, to_district_id,
          from_officer_id, to_officer_id, transferred_by, transfer_reason, transfer_type, blockchain_record_id)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'hodan_district', 'Forwarded CCTV evidence to CID while station retains district ownership.', 'technical_review', ?
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'hodan_district', 'Forwarded CCTV evidence to CID while station retains district ownership.', 'technical_review', ?
       WHERE NOT EXISTS (SELECT 1 FROM case_transfers WHERE case_id = ? AND transfer_type = 'technical_review')
     `, [
       hodanRobberyCaseId,
-      stateId, regionId, cityId, hodanDistrictId,
-      stateId, regionId, cityId, hodanDistrictId,
+      stateId, regionId, hodanDistrictId,
+      stateId, regionId, hodanDistrictId,
       sergeantOfficerId, inspectorOfficerId, hodanBlockchainId, hodanRobberyCaseId,
     ]);
 
@@ -1239,7 +1223,6 @@ async function seed() {
     console.log('  CID:          cid@police.so         / Cid@123');
     console.log('  State admin:  banadir_admin         / Unit@123');
     console.log('  Region admin: mogadishu_region      / Unit@123');
-    console.log('  City admin:   mogadishu_city        / Unit@123');
     console.log('  District:     hodan_district        / Unit@123');
     console.log('  Station:      bakaro_station        / Unit@123');
     if (require.main === module) {

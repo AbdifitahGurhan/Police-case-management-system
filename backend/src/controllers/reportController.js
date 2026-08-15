@@ -15,7 +15,6 @@ const applyCaseScope = (user, where, params, alias = '') => {
   const prefix = alias ? `${alias}.` : '';
   if (user.scopeType === 'state_administration') { where += ` AND ${prefix}state_administration_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'region') { where += ` AND ${prefix}region_id = ?`; params.push(user.scopeId); }
-  if (user.scopeType === 'city') { where += ` AND ${prefix}city_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'district') { where += ` AND ${prefix}district_id = ?`; params.push(user.scopeId); }
   return where;
 };
@@ -23,7 +22,6 @@ const applyCaseScope = (user, where, params, alias = '') => {
 const applyArrestCaseScope = (user, where, params, caseAlias = 'c') => {
   if (user.scopeType === 'state_administration') { where += ` AND ${caseAlias}.state_administration_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'region') { where += ` AND ${caseAlias}.region_id = ?`; params.push(user.scopeId); }
-  if (user.scopeType === 'city') { where += ` AND ${caseAlias}.city_id = ?`; params.push(user.scopeId); }
   if (user.scopeType === 'district') { where += ` AND ${caseAlias}.district_id = ?`; params.push(user.scopeId); }
   return where;
 };
@@ -116,13 +114,9 @@ const getUnitDashboardStats = async (req, res, next) => {
       officerColumn = 'state_administration_id';
       caseColumn = 'state_administration_id';
     } else if (scopeType === 'region') {
-      childrenQuery = 'SELECT COUNT(*) as c FROM cities WHERE region_id = ?';
+      childrenQuery = 'SELECT COUNT(*) as c FROM districts WHERE region_id = ?';
       officerColumn = 'region_id';
       caseColumn = 'region_id';
-    } else if (scopeType === 'city') {
-      childrenQuery = 'SELECT COUNT(*) as c FROM districts WHERE city_id = ?';
-      officerColumn = 'city_id';
-      caseColumn = 'city_id';
     } else if (scopeType === 'district') {
       childrenQuery = null; // District is the lowest level now
       officerColumn = 'district_id';
@@ -160,7 +154,6 @@ const getUnitDashboardStats = async (req, res, next) => {
     const tableMap = {
       'state_administration': 'state_administrations',
       'region': 'regions',
-      'city': 'cities',
       'district': 'districts'
     };
     const tableName = tableMap[scopeType];
@@ -206,14 +199,13 @@ const getRegionDashboardStats = async (req, res, next) => {
          (SELECT COUNT(*) FROM cases WHERE region_id = ? AND status NOT IN ('closed','CLOSED','dismissed','rejected','archived')) AS open_cases,
          (SELECT COUNT(*) FROM cases WHERE region_id = ? AND status IN ('closed','CLOSED')) AS closed_cases,
          (SELECT COUNT(*) FROM cases WHERE region_id = ? AND status IN ('pending_commander_review','pending','CASE_REGISTERED')) AS pending_cases,
-         (SELECT COUNT(DISTINCT d.id) FROM districts d JOIN cities ci ON d.city_id = ci.id WHERE ci.region_id = ?) AS district_police_stations,
+         (SELECT COUNT(DISTINCT d.id) FROM districts d WHERE d.region_id = ?) AS district_police_stations,
          (SELECT COUNT(DISTINCT oa.officer_id)
-            FROM officer_assignments oa
+             FROM officer_assignments oa
              LEFT JOIN districts d ON oa.assignment_type IN ('District', 'District Station') AND oa.assignment_id = d.id
-             LEFT JOIN cities dci ON d.city_id = dci.id
             WHERE oa.is_current = 1
               AND ((oa.assignment_type = 'Region' AND oa.assignment_id = ?)
-                OR dci.region_id = ?)) AS officers_registered,
+                OR d.region_id = ?)) AS officers_registered,
          (SELECT COUNT(DISTINCT cs.criminal_id) FROM case_criminals cs JOIN cases c ON c.id = cs.case_id WHERE c.region_id = ?) AS criminals_registered,
          (SELECT COUNT(DISTINCT cv.victim_id) FROM case_victims cv JOIN cases c ON c.id = cv.case_id WHERE c.region_id = ?) AS victims_registered,
          (SELECT COUNT(DISTINCT s.id)
@@ -266,11 +258,10 @@ const getRegionDashboardStats = async (req, res, next) => {
               COUNT(DISTINCT oa.officer_id) AS officers_count,
               MAX(c.created_at) AS last_activity
        FROM districts d
-       JOIN cities ci ON d.city_id = ci.id
        LEFT JOIN cases c ON c.district_id = d.id
        LEFT JOIN arrests a ON a.case_id = c.id
        LEFT JOIN officer_assignments oa ON oa.assignment_type IN ('District', 'District Station') AND oa.assignment_id = d.id AND oa.is_current = 1
-       WHERE ci.region_id = ?
+       WHERE d.region_id = ?
        GROUP BY d.id
        ORDER BY cases_count DESC, d.district_name ASC`,
       params
@@ -320,14 +311,13 @@ const getRegionDashboardStats = async (req, res, next) => {
 
     const [userActivity] = await db.query(
       `SELECT u.id, u.full_name, u.username, u.user_type, r.name AS role, u.last_login, u.status,
-              u.is_active, u.email, d.district_name, ci.city_name, rg.region_name, sa.state_name
+              u.is_active, u.email, d.district_name, rg.region_name, sa.state_name
        FROM users u
        LEFT JOIN roles r ON u.role_id = r.id
        LEFT JOIN districts d ON d.id = u.district_id
-       LEFT JOIN cities ci ON ci.id = COALESCE(u.city_id, d.city_id)
-       LEFT JOIN regions rg ON rg.id = COALESCE(u.region_id, ci.region_id)
+       LEFT JOIN regions rg ON rg.id = COALESCE(u.region_id, d.region_id)
        LEFT JOIN state_administrations sa ON sa.id = COALESCE(u.state_administration_id, rg.state_administration_id)
-       WHERE COALESCE(u.region_id, ci.region_id) = ?
+       WHERE COALESCE(u.region_id, d.region_id) = ?
        ORDER BY COALESCE(u.last_login, u.created_at) DESC
        LIMIT 25`,
       params
@@ -358,7 +348,6 @@ const getCasesByStation = async (req, res, next) => {
     let stationWhere = '1=1';
     if (req.user.scopeType === 'state_administration') { stationWhere += ' AND r.state_administration_id = ?'; params.push(req.user.scopeId); }
     if (req.user.scopeType === 'region') { stationWhere += ' AND r.id = ?'; params.push(req.user.scopeId); }
-    if (req.user.scopeType === 'city') { stationWhere += ' AND city.id = ?'; params.push(req.user.scopeId); }
     if (req.user.scopeType === 'district') { stationWhere += ' AND d.id = ?'; params.push(req.user.scopeId); }
 
     const [rows] = await db.query(
@@ -367,8 +356,7 @@ const getCasesByStation = async (req, res, next) => {
               SUM(CASE WHEN c.status='confirmed_by_ward_commander' THEN 1 ELSE 0 END) AS \`confirmed_cases\`,
               SUM(CASE WHEN c.status='closed' THEN 1 ELSE 0 END) AS \`closed_cases\`
        FROM districts d LEFT JOIN cases c ON d.id = c.district_id
-       LEFT JOIN cities city ON d.city_id = city.id
-       LEFT JOIN regions r ON city.region_id = r.id
+       LEFT JOIN regions r ON d.region_id = r.id
        WHERE ${stationWhere}
        GROUP BY d.id ORDER BY \`total_cases\` DESC`,
       params
@@ -416,16 +404,14 @@ const getStationFullReport = async (req, res, next) => {
     let stationScope = 'd.id = ?';
     if (req.user.scopeType === 'state_administration') { stationScope += ' AND r.state_administration_id = ?'; params.push(req.user.scopeId); }
     if (req.user.scopeType === 'region') { stationScope += ' AND r.id = ?'; params.push(req.user.scopeId); }
-    if (req.user.scopeType === 'city') { stationScope += ' AND ci.id = ?'; params.push(req.user.scopeId); }
     if (req.user.scopeType === 'district') { stationScope += ' AND d.id = ?'; params.push(req.user.scopeId); }
 
     const [[station]] = await db.query(
       `SELECT d.id, d.district_name AS station_name, d.district_code AS station_code,
-              ci.city_name, r.region_name, sa.state_name,
+              r.region_name, sa.state_name,
               po.full_name AS commander_name, po.phone AS commander_phone
        FROM districts d
-       LEFT JOIN cities ci ON d.city_id = ci.id
-       LEFT JOIN regions r ON ci.region_id = r.id
+       LEFT JOIN regions r ON d.region_id = r.id
        LEFT JOIN state_administrations sa ON r.state_administration_id = sa.id
        LEFT JOIN police_officers po ON d.commander_officer_id = po.id
        WHERE ${stationScope}
@@ -1001,7 +987,6 @@ const getSecurityAuditDashboard = async (req, res, next) => {
                 WHEN 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id=ot.from_assignment_id)
                 WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=ot.from_assignment_id)
                 WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=ot.from_assignment_id)
-                WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=ot.from_assignment_id)
                 WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=ot.from_assignment_id)
                 WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=ot.from_assignment_id)
                 WHEN 'District User Link' THEN (
@@ -1016,7 +1001,6 @@ const getSecurityAuditDashboard = async (req, res, next) => {
                 WHEN 'State Unit' THEN (SELECT state_name FROM state_administrations WHERE id=ot.to_assignment_id)
                 WHEN 'Region' THEN (SELECT region_name FROM regions WHERE id=ot.to_assignment_id)
                 WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=ot.to_assignment_id)
-                WHEN 'City' THEN (SELECT city_name FROM cities WHERE id=ot.to_assignment_id)
                 WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=ot.to_assignment_id)
                 WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=ot.to_assignment_id)
                 WHEN 'District User Link' THEN (

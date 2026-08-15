@@ -93,22 +93,11 @@ exports.transferOfficer = async (req, res, next) => {
         targetLocation.region_id = rg.id;
         targetLocation.state_administration_id = rg.state_administration_id;
       } else targetLocation = null;
-    } else if (to_assignment_type === 'City') {
-      const [[ct]] = await connection.query(
-        `SELECT c.id, c.region_id, r.state_administration_id
-         FROM cities c LEFT JOIN regions r ON r.id = c.region_id WHERE c.id = ?`,
-        [to_assignment_id]
-      );
-      if (ct) {
-        targetLocation.region_id = ct.region_id;
-        targetLocation.state_administration_id = ct.state_administration_id;
-      } else targetLocation = null;
     } else if (['District', 'District Station'].includes(to_assignment_type)) {
       const [[dt]] = await connection.query(
-        `SELECT d.id, c.region_id, r.state_administration_id
+        `SELECT d.id, d.region_id, r.state_administration_id
          FROM districts d
-         LEFT JOIN cities c ON c.id = d.city_id
-         LEFT JOIN regions r ON r.id = c.region_id
+         LEFT JOIN regions r ON r.id = d.region_id
          WHERE d.id = ?`,
         [to_assignment_id]
       );
@@ -234,7 +223,6 @@ exports.transferOfficer = async (req, res, next) => {
     const tableMap = {
       'State Administration': 'state_administrations',
       'Region': 'regions',
-      'City': 'cities',
       'District': 'districts'
     };
 

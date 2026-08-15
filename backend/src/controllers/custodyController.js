@@ -537,8 +537,8 @@ const getPrisonAdmissions = async (req, res, next) => {
       params.push(Number(req.user.scopeId));
     } else if (req.user?.scopeType === 'region') {
       scopeSql = requestedDistrictId
-        ? ' AND c.district_id = ? AND c.district_id IN (SELECT d.id FROM districts d JOIN cities ci ON ci.id = d.city_id WHERE ci.region_id = ?)'
-        : ' AND c.district_id IN (SELECT d.id FROM districts d JOIN cities ci ON ci.id = d.city_id WHERE ci.region_id = ?)';
+        ? ' AND c.district_id = ? AND c.district_id IN (SELECT d.id FROM districts d WHERE d.region_id = ?)'
+        : ' AND c.district_id IN (SELECT d.id FROM districts d WHERE d.region_id = ?)';
       if (requestedDistrictId) params.push(requestedDistrictId);
       params.push(Number(req.user.scopeId));
     } else if (requestedDistrictId) {

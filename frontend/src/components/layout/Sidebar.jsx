@@ -46,7 +46,6 @@ const Sidebar = ({ collapsed }) => {
     cid_officer: '/dashboard/cid',
     state_admin: '/dashboard/operations',
     region_admin: '/dashboard/operations',
-    city_admin: '/districts',
     district_admin: '/dashboard/operations',
     state_commander: '/dashboard/operations',
     region_commander: '/dashboard/operations',
@@ -84,7 +83,6 @@ const Sidebar = ({ collapsed }) => {
     jail: 'Maamulka Xabsiga Dhexe',
     state_admin: 'Maamulaha Dawlad Goboleedka',
     region_admin: 'Maamulaha Gobolka',
-    city_admin: 'Maamulaha Magaalada',
     district_admin: 'Maamulaha Degmada',
     state_commander: 'Taliyaha Dawlad Goboleedka',
     region_commander: 'Taliyaha Gobolka',
@@ -226,10 +224,6 @@ const Sidebar = ({ collapsed }) => {
 
     if (['admin', 'state_admin'].includes(role)) {
       adminMenus.push({ key: '/regions', icon: <ApartmentOutlined />, label: 'Gobollada' });
-    }
-
-    if (role === 'admin') {
-      adminMenus.push({ key: '/cities', icon: <EnvironmentOutlined />, label: 'Magaalooyinka' });
     }
 
     if (role === 'admin') {

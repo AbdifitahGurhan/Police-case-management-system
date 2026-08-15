@@ -3,6 +3,7 @@
 
 const mongoose = require('mongoose');
 require('dotenv').config();
+const { isProduction, isLocalMongoUri } = require('./env');
 
 async function connectMongoDB() {
   const uri = process.env.MONGODB_URI;
@@ -10,6 +11,12 @@ async function connectMongoDB() {
   if (!uri) {
     console.log('MongoDB connection skipped: MONGODB_URI is not set');
     return null;
+  }
+
+  if (isProduction && isLocalMongoUri(uri)) {
+    throw new Error(
+      'Invalid production MONGODB_URI: localhost/127.0.0.1 MongoDB is only valid for local development.'
+    );
   }
 
   mongoose.connection.on('connected', () => {
@@ -24,9 +31,14 @@ async function connectMongoDB() {
     console.warn('MongoDB disconnected');
   });
 
-  await mongoose.connect(uri, {
-    serverSelectionTimeoutMS: parseInt(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS, 10) || 5000,
-  });
+  try {
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: parseInt(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS, 10) || 5000,
+    });
+  } catch (err) {
+    console.error('MongoDB connection failed:', err.message);
+    throw err;
+  }
 
   return mongoose.connection;
 }

@@ -4,9 +4,13 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
-const { testConnection, query } = require('./config/database');
+const { getAllowedOrigins, isProduction, port, uploadDir, validateEnv } = require('./config/env');
+validateEnv();
+
+const { testConnection } = require('./config/database');
 const { connectMongoDB } = require('./config/mongodb');
 const { runOneTimeArrestStatusRepair, runOneTimeOfficerAssignmentRepair } = require('./utils/dataRepair');
 const errorHandler = require('./middleware/errorHandler');
@@ -16,7 +20,6 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const stateAdministrationRoutes = require('./routes/stateAdministrationRoutes');
 const regionRoutes = require('./routes/regionRoutes');
-const cityRoutes = require('./routes/cityRoutes');
 const districtRoutes = require('./routes/districtRoutes');
 const rankRoutes = require('./routes/rankRoutes');
 const policeOfficerRoutes = require('./routes/policeOfficerRoutes');
@@ -49,19 +52,46 @@ const operationsDashboardRoutes = require('./routes/operationsDashboardRoutes');
 const app = express();
 
 // Middleware
-app.use(cors());
+const allowedOrigins = getAllowedOrigins();
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (!isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve static uploads
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+const resolvedUploadDir = path.resolve(__dirname, '..', uploadDir);
+fs.mkdirSync(resolvedUploadDir, { recursive: true });
+app.use('/uploads', express.static(resolvedUploadDir));
+
+// Health route
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'police-management-backend',
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'police-management-backend',
+  });
+});
 
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/state-administrations', stateAdministrationRoutes);
 app.use('/api/regions', regionRoutes);
-app.use('/api/cities', cityRoutes);
 app.use('/api/districts', districtRoutes);
 app.use('/api/ranks', rankRoutes);
 app.use('/api/police-officers', policeOfficerRoutes);
@@ -101,7 +131,7 @@ app.get('/', (req, res) => {
 app.use(errorHandler);
 
 // Start server
-const PORT = process.env.PORT || 5000;
+const PORT = port;
 
 const autoInitializeDb = require('../database/autoInitDb');
 
@@ -117,7 +147,7 @@ const start = async () => {
       console.log(`Server running on port ${PORT}`);
     });
   } catch (err) {
-    console.error('Failed to start server:', err.message);
+    console.error('Application startup failed:', err);
     process.exit(1);
   }
 };

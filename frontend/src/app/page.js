@@ -21,7 +21,6 @@ export default function Home() {
           ob_staff: '/ob-register',
           state_admin: '/dashboard/operations',
           region_admin: '/dashboard/operations',
-          city_admin: '/districts',
           district_admin: '/dashboard/operations',
           personnel_registry: '/police-officers',
           station_jail: '/dashboard/jail',

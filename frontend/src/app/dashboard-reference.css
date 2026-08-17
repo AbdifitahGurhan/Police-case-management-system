@@ -136,48 +136,6 @@ body,.app-shell,.app-main{background:var(--cmd-bg)!important;color:var(--cmd-tex
 .login-new-heading>.ant-typography,.login-new-security,.login-new-options .ant-checkbox-wrapper{color:rgba(255,255,255,.72)!important}
 .login-art-form .ant-input-affix-wrapper{background:rgba(255,255,255,.88)!important}
 
-/* Official Somali Police emblem */
-.login-main-badge{display:grid!important;width:112px!important;height:112px!important;margin-bottom:10px!important;overflow:hidden!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
-.login-main-badge>img{width:104px!important;height:104px!important;max-width:104px!important;object-fit:contain!important;filter:brightness(0) invert(1)!important}
-.login-mini-badge{overflow:hidden!important;background:#fff!important}
-.login-mini-badge>img{width:31px!important;height:31px!important;max-width:31px!important;object-fit:contain!important;filter:brightness(0) invert(1)!important}
-[data-theme=dark] .login-main-badge>img,[data-theme=dark] .login-mini-badge>img{filter:brightness(0) saturate(100%) invert(69%) sepia(66%) saturate(1603%) hue-rotate(168deg) brightness(101%) contrast(101%)!important}
-
-/* Login theme: white in light mode, sky blue in dark mode. */
-.login-main-badge>img,.login-mini-badge>img,[data-theme=dark] .login-main-badge>img,[data-theme=dark] .login-mini-badge>img{filter:none!important}
-.login-art-page{background:#fff!important}
-.login-grid{background-image:linear-gradient(rgba(14,116,205,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(14,116,205,.1) 1px,transparent 1px)!important}
-.login-circle{background:rgba(56,189,248,.12)!important}
-.login-circle-center{background:rgba(14,165,233,.12)!important}
-.login-new-heading h1.ant-typography,.login-art-form .ant-form-item-label>label{color:#0b2442!important;text-shadow:none!important}
-.login-new-heading>.ant-typography,.login-new-security,.login-new-options .ant-checkbox-wrapper{color:#64748b!important}
-[data-theme=dark] .login-art-page{background:#4189dd!important}
-[data-theme=dark] .login-grid{background-image:linear-gradient(rgba(255,255,255,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.1) 1px,transparent 1px)!important}
-[data-theme=dark] .login-circle{background:rgba(255,255,255,.1)!important}
-[data-theme=dark] .login-new-heading h1.ant-typography,[data-theme=dark] .login-art-form .ant-form-item-label>label{color:#fff!important}
-[data-theme=dark] .login-new-heading>.ant-typography,[data-theme=dark] .login-new-security,[data-theme=dark] .login-new-options .ant-checkbox-wrapper{color:rgba(255,255,255,.78)!important}
-[data-theme=dark] .login-mini-badge span,[data-theme=dark] .login-main-badge span{color:#fff!important}
-
-/* Dark mode uses one exact Somali-blue background with no color overlays. */
-html[data-theme=dark] .login-art-page{background-color:#4189dd!important;background-image:none!important}
-html[data-theme=dark] .login-grid,html[data-theme=dark] .login-circle,html[data-theme=dark] .login-shield-outline{display:none!important}
-
-/* Light mode: retain the background artwork and keep every label readable. */
-html[data-theme=light] .login-grid{display:block!important;opacity:1!important;background-image:linear-gradient(rgba(65,137,221,.13) 1px,transparent 1px),linear-gradient(90deg,rgba(65,137,221,.13) 1px,transparent 1px)!important}
-html[data-theme=light] .login-circle{display:block!important;background:rgba(65,137,221,.1)!important}
-html[data-theme=light] .login-circle-center{background:rgba(65,137,221,.12)!important}
-html[data-theme=light] .login-shield-outline{display:block!important;border-color:#4189dd!important;opacity:.12!important}
-html[data-theme=light] .login-identity,html[data-theme=light] .login-secure{border-color:rgba(65,137,221,.25)!important;background:rgba(255,255,255,.7)!important;color:#12345a!important;box-shadow:0 5px 18px rgba(65,137,221,.08)!important}
-html[data-theme=light] .login-identity strong{color:#12345a!important}
-html[data-theme=light] .login-identity small{color:#557493!important}
-html[data-theme=light] .login-new-shell footer,html[data-theme=light] .login-new-shell footer span{color:#496b91!important}
-html[data-theme=light] .login-art-card,html[data-theme=light] .login-art-card.ant-card{border-color:rgba(65,137,221,.25)!important;background:rgba(255,255,255,.62)!important;box-shadow:0 24px 60px rgba(35,84,140,.16),inset 0 1px 0 #fff!important}
-
-/* Secure login transition */
-.login-art-card{transition:border-color .3s ease-out,box-shadow .3s ease-out,transform .7s cubic-bezier(.22,1,.36,1),opacity .7s cubic-bezier(.22,1,.36,1)!important}
-.login-state-verifying .login-art-card{border-color:rgba(65,137,221,.72)!important;box-shadow:0 0 0 4px rgba(65,137,221,.12),0 24px 65px rgba(24,95,177,.3)!important}
-.login-art-button{display:flex!important;align-items:center!important;justify-content:center!important;gap:9px!important;transition:background-color .3s ease-out,box-shadow .3s ease-out,transform .3s ease-out!important}
-.login-art-button[disabled]{color:#fff!important;background:#176ceb!important;opacity:1!important;cursor:wait!important}
 .login-state-success .login-art-button,.login-state-leaving .login-art-button{color:#fff!important;background:#169b62!important;box-shadow:0 8px 20px rgba(22,155,98,.3)!important}
 .login-success-check{margin:0!important;animation:login-check-in .3s cubic-bezier(.22,1,.36,1) both}
 .login-state-success .login-main-badge{animation:login-logo-pulse .5s ease-out both}
@@ -185,21 +143,6 @@ html[data-theme=light] .login-art-card,html[data-theme=light] .login-art-card.an
 .login-state-success .login-art-card{border-color:rgba(22,155,98,.48)!important;box-shadow:0 0 0 4px rgba(22,155,98,.1),0 24px 65px rgba(0,35,60,.25)!important}
 .login-state-leaving .login-art-card{opacity:0!important;transform:translateY(-22px)!important}
 .login-art-page:before{position:absolute;inset:-3%;z-index:0;background:inherit;content:'';opacity:0;transform:scale(1);transition:opacity .25s ease,transform .7s cubic-bezier(.22,1,.36,1);pointer-events:none}.login-state-leaving:before{opacity:1;transform:scale(1.035)}
-.dashboard-entering{animation:dashboard-secure-enter .7s cubic-bezier(.22,1,.36,1) both}
-@keyframes login-check-in{from{opacity:0;transform:scale(.45)}to{opacity:1;transform:scale(1)}}
-@keyframes login-logo-pulse{0%{transform:scale(1)}45%{transform:scale(1.055);filter:drop-shadow(0 0 10px rgba(65,137,221,.45))}100%{transform:scale(1)}}
-@keyframes login-welcome-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-@keyframes dashboard-secure-enter{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
-@media(prefers-reduced-motion:reduce){.login-art-card,.login-art-button,.login-art-page:before{transition-duration:.01ms!important}.login-state-leaving .login-art-card{transform:none!important}.login-state-leaving:before{transform:none!important}.login-state-success .login-main-badge,.login-success-check,.login-welcome,.dashboard-entering{animation:none!important}}
-
-/* Branded police-emblem loading treatment */
-.login-main-badge{position:relative!important;overflow:visible!important}.login-main-badge>img{position:relative;z-index:2}.login-logo-loader{position:absolute;z-index:1;inset:-7px;border:3px solid transparent;border-top-color:#4189dd;border-right-color:rgba(65,137,221,.28);border-radius:50%;opacity:0;pointer-events:none}
-.login-state-verifying .login-logo-loader{opacity:1;animation:login-logo-ring 1s linear infinite}.login-state-verifying .login-main-badge>img{animation:login-emblem-breathe 1.4s ease-in-out infinite}
-.login-button-emblem{position:relative;display:inline-grid;width:22px;height:22px;flex:0 0 22px;place-items:center;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:login-logo-ring .8s linear infinite}.login-button-emblem>img{width:14px!important;height:14px!important;object-fit:contain;filter:brightness(0) invert(1)}
-.login-state-success .login-logo-loader,.login-state-leaving .login-logo-loader{inset:-7px;border-color:#169b62;opacity:1;animation:login-ring-confirm .42s cubic-bezier(.22,1,.36,1) both}
-@keyframes login-logo-ring{to{transform:rotate(360deg)}}
-@keyframes login-emblem-breathe{0%,100%{transform:scale(.97);opacity:.82}50%{transform:scale(1.035);opacity:1}}
-@keyframes login-ring-confirm{from{opacity:1;transform:scale(.88)}to{opacity:.45;transform:scale(1.08)}}
 @media(prefers-reduced-motion:reduce){.login-state-verifying .login-logo-loader,.login-state-verifying .login-main-badge>img,.login-button-emblem,.login-state-success .login-logo-loader,.login-state-leaving .login-logo-loader{animation:none!important}}
 
 /* Permissions administration — supplied reference layout. */

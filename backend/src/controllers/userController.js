@@ -548,6 +548,23 @@ const deleteUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const DEPRECATED_ROLES = new Set([
+  'officer',
+  'taliyaha_saldhiga',
+  'police_station_commander',
+  'prosecutor',
+  'taliyaha-gobolka',
+  'region_commander',
+  'staff',
+  'taliyaha maamul goboleedka',
+  'state_commander',
+  'ward_commander',
+  'garsoore',
+  'judge',
+  'taliyaha degmada',
+  'district_commander',
+]);
+
 /** GET /api/users/roles — Get all roles */
 const getRoles = async (req, res, next) => {
   try {
@@ -558,9 +575,14 @@ const getRoles = async (req, res, next) => {
       where = `LOWER(name) IN (${assignableRoles.map(() => '?').join(', ')})`;
       params.push(...assignableRoles);
     }
-    if(req.user.scopeType==='district'){const allowed=[...DISTRICT_OPERATIONAL_ROLES];where=`LOWER(name) IN (${allowed.map(()=>'?').join(',')})`;params.push(...allowed)}
+    if (req.user.scopeType === 'district') {
+      const allowed = [...DISTRICT_OPERATIONAL_ROLES];
+      where = `LOWER(name) IN (${allowed.map(() => '?').join(',')})`;
+      params.push(...allowed);
+    }
     const [rows] = await db.query(`SELECT * FROM roles WHERE ${where} ORDER BY id`, params);
-    res.json({ success: true, data: rows });
+    const filteredRows = rows.filter(r => !DEPRECATED_ROLES.has(String(r.name || '').toLowerCase()));
+    res.json({ success: true, data: filteredRows });
   } catch (err) { next(err); }
 };
 

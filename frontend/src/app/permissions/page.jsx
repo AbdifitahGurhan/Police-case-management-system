@@ -8,16 +8,35 @@ import api from '@/services/api';
 
 const { Title, Text } = Typography;
 const ROLE_LABELS = {
-  admin: 'Admin', sub_admin: 'Sub Admin', state_admin: 'State Administration',
-  region_admin: 'Region Administration', district_admin: 'District Administration',
-  personnel_registry: 'Diiwaanka Ciidanka', ob_staff: 'Diiwaangeliyaha OB-da',
-  investigator: 'Baare', station_jail: 'Xabsiga Saldhigga', jail: 'Xabsiga Dhexe',
-  court: 'Maxkamad', court_admin: 'Maamulka Maxkamadda', judge: 'Garsoore',
-  prosecutor: 'Xeer-ilaaliye', prosecutor_liaison: 'Xiriiriyaha Xeer-ilaalinta',
-  court_clerk: 'Kaaliyaha Maxkamadda', state_commander: 'Taliyaha Maamul-Goboleedka',
-  region_commander: 'Taliyaha Gobolka', district_commander: 'Taliyaha Degmada',
-  police_station_commander: 'Taliyaha Saldhigga',
+  admin: 'Admin',
+  sub_admin: 'Sub Admin',
+  state_admin: 'State Administration',
+  region_admin: 'Region Administration',
+  district_admin: 'District Administration',
+  personnel_registry: 'Diiwaanka Ciidanka',
+  ob_staff: 'Diiwaangeliyaha OB-da',
+  investigator: 'Baare',
+  station_jail: 'Xabsiga Saldhigga',
+  jail: 'Xabsiga Dhexe',
+  court: 'Maxkamadda',
+  cid: 'CID Baare',
 };
+const DEPRECATED_ROLES = new Set([
+  'officer',
+  'taliyaha_saldhiga',
+  'police_station_commander',
+  'prosecutor',
+  'taliyaha-gobolka',
+  'region_commander',
+  'staff',
+  'taliyaha maamul goboleedka',
+  'state_commander',
+  'ward_commander',
+  'garsoore',
+  'judge',
+  'taliyaha degmada',
+  'district_commander',
+]);
 const HIERARCHY_ROLES = ['admin', 'sub_admin', 'state_admin', 'region_admin', 'district_admin'];
 const PERMISSION_GROUPS = [
   { key: 'system', title: 'Nidaamka & Maamulka', prefixes: ['permissions.', 'roles.', 'users.', 'audit_logs.'], danger: true },
@@ -65,15 +84,17 @@ export default function PermissionsPage() {
     try {
       const { data } = await api.get('/permissions');
       setPermissions(data.data.permissions || []);
-      setRoles((data.data.roles || []).map(role => ({
-        ...role, targetType: 'role', targetKey: `role-${role.id}`,
-        permissions: Array.isArray(role.permissions) ? role.permissions : JSON.parse(role.permissions || '[]'),
-      })).sort((a, b) => {
-        const ai = HIERARCHY_ROLES.indexOf(String(a.name).toLowerCase());
-        const bi = HIERARCHY_ROLES.indexOf(String(b.name).toLowerCase());
-        if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-        return String(a.name).localeCompare(String(b.name));
-      }));
+      setRoles((data.data.roles || [])
+        .filter(role => !DEPRECATED_ROLES.has(String(role.name || '').toLowerCase()))
+        .map(role => ({
+          ...role, targetType: 'role', targetKey: `role-${role.id}`,
+          permissions: Array.isArray(role.permissions) ? role.permissions : JSON.parse(role.permissions || '[]'),
+        })).sort((a, b) => {
+          const ai = HIERARCHY_ROLES.indexOf(String(a.name).toLowerCase());
+          const bi = HIERARCHY_ROLES.indexOf(String(b.name).toLowerCase());
+          if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+          return String(a.name).localeCompare(String(b.name));
+        }));
       setAccounts((data.data.users || []).map(user => ({ ...user, targetType: 'user', targetKey: `user-${user.id}` })));
     } catch (error) {
       message.error(error.response?.data?.message || 'Awoodaha lama soo qaadi karin.');

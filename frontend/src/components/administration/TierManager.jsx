@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { App, Table, Card, Typography, Space, Button, Modal, Form, Input, Select, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, UserOutlined } from '@ant-design/icons';
 import api from '@/services/api';
@@ -10,15 +10,15 @@ import { codeRules, passwordRules, requiredRule, textLengthRule, usernameRules }
 const { Title } = Typography;
 
 export default function TierManager({
-  entityName, // e.g. "Region"
-  apiEndpoint, // e.g. "/regions"
+  entityName, // e.g. "Region" or "District"
+  apiEndpoint, // e.g. "/regions" or "/districts"
   columns,
   formItems,
-  parentKey, // e.g. "state_administration_id"
-  parentEndpoint, // e.g. "/state-administrations" (optional, for dropdowns)
-  parentLabel, // e.g. "State Administration"
-  parentNameKey, // e.g. "state_name"
-  entityKey, // Optional: manual override for field prefix e.g. "state"
+  parentKey, // e.g. "state_administration_id" or "region_id"
+  parentEndpoint, // e.g. "/state-administrations" or "/regions"
+  parentLabel, // e.g. "State Administration" or "Gobolka"
+  parentNameKey, // e.g. "state_name" or "region_name"
+  entityKey, // Optional override e.g. "district"
   autoParentRoles = [],
   nameOptions = null,
   nameOptionsByParent = null,
@@ -39,12 +39,86 @@ export default function TierManager({
   const safeEntityKey = entityKey || entityName.toLowerCase();
   const autoParent = Boolean(parentKey && autoParentRoles.includes(user?.role));
   const selectedParent = parents.find(parent => Number(parent.id) === Number(selectedParentId));
-  const entityNameOptions = nameOptions || (nameOptionsByParent
-    ? (nameOptionsByParent[selectedParent?.[nameOptionsParentKey]] || nameOptionsByParent[selectedParent?.state_code] || nameOptionsByParent[selectedParent?.[parentNameKey]] || [])
-    : []);
-  const normalizedNameOptions = entityNameOptions.map(option => typeof option === 'string' ? { name: option } : option);
+
+  // Resolve master list options based on selected parent (region or state)
+  const normalizedNameOptions = useMemo(() => {
+    if (nameOptions) {
+      return nameOptions.map(option => typeof option === 'string' ? { name: option, code: undefined } : option);
+    }
+    if (!nameOptionsByParent || !selectedParent) {
+      return [];
+    }
+
+    const directKeys = [
+      nameOptionsParentKey ? selectedParent[nameOptionsParentKey] : null,
+      selectedParent[parentNameKey],
+      selectedParent.region_name,
+      selectedParent.state_name,
+      selectedParent.name,
+      selectedParent.region_code,
+      selectedParent.state_code,
+      selectedParent.code,
+    ].filter(Boolean);
+
+    for (const key of directKeys) {
+      if (nameOptionsByParent[key]) {
+        return nameOptionsByParent[key].map(opt => typeof opt === 'string' ? { name: opt, code: undefined } : opt);
+      }
+    }
+
+    // Normalized matching (ignores case, spaces, and suffixes like "region" / "gobolka")
+    const cleanStr = (str) =>
+      String(str || '')
+        .toLowerCase()
+        .replace(/\bregion\b|\bgobolka\b|\bstate\b|\badministration\b/g, '')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+
+    for (const key of directKeys) {
+      const cleanK = cleanStr(key);
+      if (!cleanK) continue;
+      for (const [mapKey, val] of Object.entries(nameOptionsByParent)) {
+        if (cleanStr(mapKey) === cleanK) {
+          return val.map(opt => typeof opt === 'string' ? { name: opt, code: undefined } : opt);
+        }
+      }
+    }
+
+    return [];
+  }, [nameOptions, nameOptionsByParent, nameOptionsParentKey, parentNameKey, selectedParent]);
+
   const hasGeneratedOptions = normalizedNameOptions.length > 0;
   const requiresParentForOptions = Boolean(nameOptionsByParent);
+
+  // Exclude already created entities for this parent so user only picks uncreated ones
+  const existingNamesInParent = useMemo(() => {
+    if (!selectedParentId && parentKey) return new Set();
+    return new Set(
+      data
+        .filter(item => {
+          if (parentKey && Number(item[parentKey]) !== Number(selectedParentId)) {
+            return false;
+          }
+          if (editingRecord && Number(item.id) === Number(editingRecord.id)) {
+            return false;
+          }
+          return true;
+        })
+        .map(item => String(item[`${safeEntityKey}_name`] || item.name || '').trim().toLowerCase())
+    );
+  }, [data, parentKey, selectedParentId, safeEntityKey, editingRecord]);
+
+  const availableOptions = useMemo(() => {
+    if (!hasGeneratedOptions) return [];
+    return normalizedNameOptions.filter(option => {
+      const optName = String(option.name || '').trim().toLowerCase();
+      // In edit mode, allow the currently saved value
+      if (editingRecord && String(editingRecord[`${safeEntityKey}_name`] || editingRecord.name || '').trim().toLowerCase() === optName) {
+        return true;
+      }
+      return !existingNamesInParent.has(optName);
+    });
+  }, [hasGeneratedOptions, normalizedNameOptions, existingNamesInParent, editingRecord, safeEntityKey]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -53,12 +127,12 @@ export default function TierManager({
         api.get(apiEndpoint),
         api.get('/police-officers')
       ]);
-      setData(resData.data.data);
-      setOfficers(resOfficers.data.data);
+      setData(resData.data.data || []);
+      setOfficers(resOfficers.data.data || []);
 
       if (parentEndpoint) {
         const resParents = await api.get(parentEndpoint);
-        setParents(resParents.data.data);
+        setParents(resParents.data.data || []);
       }
     } catch (err) {
       if (err.response?.status !== 403) {
@@ -146,9 +220,19 @@ export default function TierManager({
 
           {parentEndpoint && !autoParent && (
             <Form.Item name={parentKey} label={parentLabel || `Parent Level`} rules={[requiredRule(parentLabel || 'Parent level')]}>
-              <Select placeholder={`Select ${parentLabel || 'Parent Entity'}`} onChange={() => {
-                if (nameOptionsByParent) form.setFieldsValue({ [`${safeEntityKey}_name`]: undefined, [`${safeEntityKey}_code`]: undefined });
-              }}>
+              <Select
+                placeholder={`Select ${parentLabel || 'Parent Entity'}`}
+                showSearch
+                optionFilterProp="children"
+                onChange={() => {
+                  if (nameOptionsByParent) {
+                    form.setFieldsValue({
+                      [`${safeEntityKey}_name`]: undefined,
+                      [`${safeEntityKey}_code`]: undefined,
+                    });
+                  }
+                }}
+              >
                 {parents.map(p => (
                   <Select.Option key={p.id} value={p.id}>{parentNameKey ? p[parentNameKey] : (p[`${parentEndpoint.replace('/', '').replace('-administrations', '_name').replace(/s$/, '')}_name`] || p.name || `ID: ${p.id}`)}</Select.Option>
                 ))}
@@ -158,15 +242,40 @@ export default function TierManager({
 
           {formItems}
 
-          <Form.Item name={`${safeEntityKey}_name`} label={`${entityName} Name`} rules={[requiredRule(`${entityName} name`), textLengthRule(`${entityName} name`, 2, 150)]}>
+          <Form.Item
+            name={`${safeEntityKey}_name`}
+            label={`${entityName} Name`}
+            rules={[requiredRule(`${entityName} name`), textLengthRule(`${entityName} name`, 2, 150)]}
+            extra={
+              hasGeneratedOptions && requiresParentForOptions && selectedParentId && availableOptions.length === 0 && !editingRecord ? (
+                <Typography.Text type="warning" style={{ fontSize: '12px' }}>
+                  Dhammaan degmooyinka gobolkan horey ayaa loo wada diiwaangeliyay.
+                </Typography.Text>
+              ) : null
+            }
+          >
             {hasGeneratedOptions ? (
               <Select
-                placeholder={requiresParentForOptions && !selectedParentId ? `Select ${parentLabel} first` : `Select ${entityName}`}
+                showSearch
+                optionFilterProp="label"
+                allowClear
+                placeholder={
+                  requiresParentForOptions && !selectedParentId
+                    ? `Dooro ${parentLabel || 'Gobolka'} marka hore...`
+                    : availableOptions.length === 0
+                    ? 'Dhammaan degmooyinka gobolkan waa la wada diiwaangeliyay'
+                    : `Dooro ${entityName}...`
+                }
                 disabled={requiresParentForOptions && !selectedParentId}
-                options={normalizedNameOptions.map(option => ({ value: option.name, label: option.name }))}
+                options={availableOptions.map(option => ({
+                  value: option.name,
+                  label: option.code ? `${option.name} (${option.code})` : option.name,
+                }))}
                 onChange={(name) => {
                   const option = normalizedNameOptions.find(item => item.name === name);
-                  if (generatedCode) form.setFieldValue(`${safeEntityKey}_code`, option?.code);
+                  if (generatedCode) {
+                    form.setFieldValue(`${safeEntityKey}_code`, option?.code || '');
+                  }
                 }}
               />
             ) : (
@@ -189,7 +298,7 @@ export default function TierManager({
           )}
 
           <Form.Item name="commander_officer_id" label="Commander Officer">
-            <Select placeholder="Select Commander (Optional)" allowClear>
+            <Select placeholder="Select Commander (Optional)" allowClear showSearch optionFilterProp="children">
               {officers.map(o => (
                 <Select.Option key={o.id} value={o.id}>{o.full_name} ({o.force_number})</Select.Option>
               ))}

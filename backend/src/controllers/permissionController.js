@@ -1,8 +1,114 @@
 'use strict';
-const db=require('../config/database');
-const {writeAuditLog}=require('../utils/auditLogger');
-const getMatrix=async(req,res,next)=>{try{const [permissions]=await db.query('SELECT * FROM permissions ORDER BY permission_key');const [roles]=await db.query('SELECT id,name,description FROM roles ORDER BY name');const [grants]=await db.query(`SELECT rp.role_id,p.permission_key FROM role_permissions rp JOIN permissions p ON p.id=rp.permission_id`);for(const role of roles)role.permissions=grants.filter(item=>item.role_id===role.id).map(item=>item.permission_key);const [users]=await db.query(`SELECT u.id,u.username,u.full_name,u.email,u.state_administration_id,u.region_id,u.district_id,r.id role_id,r.name role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.is_active=1 AND u.status='ACTIVE' ORDER BY u.full_name,u.username`);const [overrides]=await db.query(`SELECT up.user_id,p.permission_key,up.effect FROM user_permissions up JOIN permissions p ON p.id=up.permission_id`);for(const user of users){const effective=new Set(grants.filter(item=>item.role_id===user.role_id).map(item=>item.permission_key));for(const item of overrides.filter(row=>row.user_id===user.id))item.effect==='DENY'?effective.delete(item.permission_key):effective.add(item.permission_key);user.permissions=[...effective]}res.json({success:true,data:{permissions,roles,users}})}catch(e){next(e)}};
-const updateRolePermissions=async(req,res,next)=>{const connection=await db.pool.getConnection();try{const keys=Array.isArray(req.body.permissions)?req.body.permissions:[];const [[role]]=await connection.query('SELECT * FROM roles WHERE id=?',[req.params.roleId]);if(!role)return res.status(404).json({success:false,message:'Role lama helin.'});if(String(role.name).toLowerCase()==='admin')return res.status(409).json({success:false,message:'Awoodaha Admin-ka lama dhimi karo.'});await connection.beginTransaction();await connection.query('DELETE FROM role_permissions WHERE role_id=?',[role.id]);for(const key of keys)await connection.query('INSERT INTO role_permissions(role_id,permission_id,granted_by) SELECT ?,id,? FROM permissions WHERE permission_key=?',[role.id,req.user.username,key]);await connection.query(`INSERT INTO permission_change_history(actor,target_type,target_id,permission_key,new_effect) VALUES(?, 'ROLE', ?, '*', ?)`,[req.user.username,role.id,JSON.stringify(keys)]);await connection.commit();await writeAuditLog({userId:req.user.username,userEmail:req.user.email,action:'UPDATE_ROLE_PERMISSIONS',entityType:'roles',entityId:role.id,newData:{permissions:keys}});res.json({success:true,message:'Awoodaha role-ka waa la cusboonaysiiyey.'})}catch(e){await connection.rollback();next(e)}finally{connection.release()}};
-const createRole=async(req,res,next)=>{try{const {name,description}=req.body;if(!/^[a-z][a-z0-9_]{2,49}$/.test(String(name||'')))return res.status(400).json({success:false,message:'Magaca role-ka waa inuu noqdaa xarfo yaryar iyo underscore.'});const [r]=await db.query('INSERT INTO roles(name,description) VALUES(?,?)',[name,description||null]);res.status(201).json({success:true,roleId:r.insertId})}catch(e){next(e)}};
-const updateUserPermissions=async(req,res,next)=>{const connection=await db.pool.getConnection();try{const keys=new Set(Array.isArray(req.body.permissions)?req.body.permissions:[]);const [[user]]=await connection.query(`SELECT u.id,u.username,u.role_id,r.name role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`,[req.params.userId]);if(!user)return res.status(404).json({success:false,message:'User-ka lama helin.'});if(String(user.role_name).toLowerCase()==='admin')return res.status(409).json({success:false,message:'Awoodaha Admin-ka lama dhimi karo.'});const [baseRows]=await connection.query(`SELECT rp.permission_id,p.permission_key FROM role_permissions rp JOIN permissions p ON p.id=rp.permission_id WHERE rp.role_id=?`,[user.role_id]);const [allPermissions]=await connection.query('SELECT id,permission_key FROM permissions');const base=new Set(baseRows.map(item=>item.permission_key));await connection.beginTransaction();await connection.query('DELETE FROM user_permissions WHERE user_id=?',[user.id]);for(const permission of allPermissions){const wanted=keys.has(permission.permission_key),inBase=base.has(permission.permission_key);if(wanted!==inBase)await connection.query('INSERT INTO user_permissions(user_id,permission_id,effect,granted_by) VALUES(?,?,?,?)',[user.id,permission.id,wanted?'ALLOW':'DENY',req.user.username])}await connection.query(`INSERT INTO permission_change_history(actor,target_type,target_id,permission_key,new_effect) VALUES(?,'USER',?,'*',?)`,[req.user.username,user.id,JSON.stringify([...keys])]);await connection.commit();await writeAuditLog({userId:req.user.username,userEmail:req.user.email,action:'UPDATE_USER_PERMISSIONS',entityType:'users',entityId:user.id,newData:{permissions:[...keys]}});res.json({success:true,message:'Awoodaha user-ka waa la cusboonaysiiyey.'})}catch(e){await connection.rollback();next(e)}finally{connection.release()}};
-module.exports={getMatrix,updateRolePermissions,updateUserPermissions,createRole};
+const db = require('../config/database');
+const { writeAuditLog } = require('../utils/auditLogger');
+
+const DEPRECATED_ROLES = new Set([
+  'officer',
+  'taliyaha_saldhiga',
+  'police_station_commander',
+  'prosecutor',
+  'taliyaha-gobolka',
+  'region_commander',
+  'staff',
+  'taliyaha maamul goboleedka',
+  'state_commander',
+  'ward_commander',
+  'garsoore',
+  'judge',
+  'taliyaha degmada',
+  'district_commander',
+]);
+
+const getMatrix = async (req, res, next) => {
+  try {
+    const [permissions] = await db.query('SELECT * FROM permissions ORDER BY permission_key');
+    const [allRoles] = await db.query('SELECT id, name, description FROM roles ORDER BY name');
+    const roles = allRoles.filter(r => !DEPRECATED_ROLES.has(String(r.name || '').toLowerCase()));
+    const [grants] = await db.query(`SELECT rp.role_id, p.permission_key FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id`);
+    for (const role of roles) {
+      role.permissions = grants.filter(item => item.role_id === role.id).map(item => item.permission_key);
+    }
+    const [users] = await db.query(`SELECT u.id, u.username, u.full_name, u.email, u.state_administration_id, u.region_id, u.district_id, r.id role_id, r.name role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.is_active = 1 AND u.status = 'ACTIVE' ORDER BY u.full_name, u.username`);
+    const [overrides] = await db.query(`SELECT up.user_id, p.permission_key, up.effect FROM user_permissions up JOIN permissions p ON p.id = up.permission_id`);
+    for (const user of users) {
+      const effective = new Set(grants.filter(item => item.role_id === user.role_id).map(item => item.permission_key));
+      for (const item of overrides.filter(row => row.user_id === user.id)) {
+        item.effect === 'DENY' ? effective.delete(item.permission_key) : effective.add(item.permission_key);
+      }
+      user.permissions = [...effective];
+    }
+    res.json({ success: true, data: { permissions, roles, users } });
+  } catch (e) {
+    next(e);
+  }
+};
+
+const updateRolePermissions = async (req, res, next) => {
+  const connection = await db.pool.getConnection();
+  try {
+    const keys = Array.isArray(req.body.permissions) ? req.body.permissions : [];
+    const [[role]] = await connection.query('SELECT * FROM roles WHERE id = ?', [req.params.roleId]);
+    if (!role) return res.status(404).json({ success: false, message: 'Role lama helin.' });
+    if (String(role.name).toLowerCase() === 'admin') return res.status(409).json({ success: false, message: 'Awoodaha Admin-ka lama dhimi karo.' });
+    await connection.beginTransaction();
+    await connection.query('DELETE FROM role_permissions WHERE role_id = ?', [role.id]);
+    for (const key of keys) {
+      await connection.query('INSERT INTO role_permissions(role_id, permission_id, granted_by) SELECT ?, id, ? FROM permissions WHERE permission_key = ?', [role.id, req.user.username, key]);
+    }
+    await connection.query(`INSERT INTO permission_change_history(actor, target_type, target_id, permission_key, new_effect) VALUES(?, 'ROLE', ?, '*', ?)`, [req.user.username, role.id, JSON.stringify(keys)]);
+    await connection.commit();
+    await writeAuditLog({ userId: req.user.username, userEmail: req.user.email, action: 'UPDATE_ROLE_PERMISSIONS', entityType: 'roles', entityId: role.id, newData: { permissions: keys } });
+    res.json({ success: true, message: 'Awoodaha role-ka waa la cusboonaysiiyey.' });
+  } catch (e) {
+    await connection.rollback();
+    next(e);
+  } finally {
+    connection.release();
+  }
+};
+
+const createRole = async (req, res, next) => {
+  try {
+    const { name, description } = req.body;
+    if (!/^[a-z][a-z0-9_]{2,49}$/.test(String(name || ''))) {
+      return res.status(400).json({ success: false, message: 'Magaca role-ka waa inuu noqdaa xarfo yaryar iyo underscore.' });
+    }
+    const [r] = await db.query('INSERT INTO roles(name, description) VALUES(?, ?)', [name, description || null]);
+    res.status(201).json({ success: true, roleId: r.insertId });
+  } catch (e) {
+    next(e);
+  }
+};
+
+const updateUserPermissions = async (req, res, next) => {
+  const connection = await db.pool.getConnection();
+  try {
+    const keys = new Set(Array.isArray(req.body.permissions) ? req.body.permissions : []);
+    const [[user]] = await connection.query(`SELECT u.id, u.username, u.role_id, r.name role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?`, [req.params.userId]);
+    if (!user) return res.status(404).json({ success: false, message: 'User-ka lama helin.' });
+    if (String(user.role_name).toLowerCase() === 'admin') return res.status(409).json({ success: false, message: 'Awoodaha Admin-ka lama dhimi karo.' });
+    const [baseRows] = await connection.query(`SELECT rp.permission_id, p.permission_key FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ?`, [user.role_id]);
+    const [allPermissions] = await connection.query('SELECT id, permission_key FROM permissions');
+    const base = new Set(baseRows.map(item => item.permission_key));
+    await connection.beginTransaction();
+    await connection.query('DELETE FROM user_permissions WHERE user_id = ?', [user.id]);
+    for (const permission of allPermissions) {
+      const wanted = keys.has(permission.permission_key), inBase = base.has(permission.permission_key);
+      if (wanted !== inBase) {
+        await connection.query('INSERT INTO user_permissions(user_id, permission_id, effect, granted_by) VALUES(?, ?, ?, ?)', [user.id, permission.id, wanted ? 'ALLOW' : 'DENY', req.user.username]);
+      }
+    }
+    await connection.query(`INSERT INTO permission_change_history(actor, target_type, target_id, permission_key, new_effect) VALUES(?, 'USER', ?, '*', ?)`, [req.user.username, user.id, JSON.stringify([...keys])]);
+    await connection.commit();
+    await writeAuditLog({ userId: req.user.username, userEmail: req.user.email, action: 'UPDATE_USER_PERMISSIONS', entityType: 'users', entityId: user.id, newData: { permissions: [...keys] } });
+    res.json({ success: true, message: 'Awoodaha user-ka waa la cusboonaysiiyey.' });
+  } catch (e) {
+    await connection.rollback();
+    next(e);
+  } finally {
+    connection.release();
+  }
+};
+
+module.exports = { getMatrix, updateRolePermissions, updateUserPermissions, createRole };
+

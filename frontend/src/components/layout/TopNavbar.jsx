@@ -2,7 +2,25 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Layout, Button, Avatar, Dropdown, Space, Typography, Tag, Modal, Upload, App as AntApp, Form, Input, Divider, Badge, Empty, Spin, Tooltip } from 'antd';
+import {
+  Layout,
+  Button,
+  Avatar,
+  Dropdown,
+  Space,
+  Typography,
+  Tag,
+  Modal,
+  Upload,
+  App as AntApp,
+  Form,
+  Input,
+  Divider,
+  Badge,
+  Empty,
+  Spin,
+  Tooltip,
+} from 'antd';
 import {
   MenuUnfoldOutlined,
   MenuFoldOutlined,
@@ -21,94 +39,101 @@ import {
   MoonOutlined,
   CalendarOutlined,
   SearchOutlined,
+  EnvironmentOutlined,
+  SettingOutlined,
+  KeyOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import api from '@/services/api';
 import { emailRule, nameRules, optionalPasswordRules } from '@/utils/validation';
 
 const { Header } = Layout;
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 // ─── Notification helpers ───────────────────────────────────────────────────
 
 const typeIcon = (type = '') => {
-  if (type.startsWith('CID')) return <SafetyOutlined style={{ color: '#7c3aed' }} />;
-  if (type.startsWith('audit')) return <AuditOutlined style={{ color: '#0284c7' }} />;
-  if (type.includes('CASE')) return <FileTextOutlined style={{ color: '#0891b2' }} />;
-  if (type.includes('ALERT')) return <AlertOutlined style={{ color: '#dc2626' }} />;
-  return <ClockCircleOutlined style={{ color: '#6b7280' }} />;
+  if (type.startsWith('CID')) return <SafetyOutlined style={{ color: '#A855F7' }} />;
+  if (type.startsWith('audit')) return <AuditOutlined style={{ color: '#38BDF8' }} />;
+  if (type.includes('CASE')) return <FileTextOutlined style={{ color: '#22C55E' }} />;
+  if (type.includes('ALERT')) return <AlertOutlined style={{ color: '#EF4444' }} />;
+  return <ClockCircleOutlined style={{ color: '#9CA3AF' }} />;
 };
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return 'Just now';
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) return 'Hadda';
+  if (m < 60) return `${m}m ka hor`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return `${h}h ka hor`;
+  return `${Math.floor(h / 24)}d ka hor`;
 }
 
 // ─── Notification Dropdown Content ──────────────────────────────────────────
 
-function NotificationPanel({ notifications, loading, onMarkAllRead, unreadCount }) {
+function NotificationPanel({ notifications, loading, onMarkAllRead, unreadCount, onItemClick }) {
   return (
-    <div className="notification-popover">
+    <div className="topbar-notification-popover">
       {/* Header */}
-      <div className="notification-popover-header">
+      <div className="topbar-notification-header">
         <Space>
-          <Text strong style={{ fontSize: 14 }}>Notifications</Text>
+          <Text strong style={{ fontSize: 13.5, color: '#F5F5F5' }}>Ogaysiisyada</Text>
           {unreadCount > 0 && (
-            <Tag color="blue" style={{ borderRadius: 99, margin: 0 }}>{unreadCount} new</Tag>
+            <Tag color="cyan" style={{ borderRadius: 12, margin: 0, fontSize: 11, fontWeight: 600 }}>
+              {unreadCount} cusub
+            </Tag>
           )}
         </Space>
         {unreadCount > 0 && (
-          <Tooltip title="Mark all as read">
-            <Button
-              type="text"
-              size="small"
-              icon={<CheckOutlined />}
-              onClick={onMarkAllRead}
-              style={{ color: '#2563eb', fontSize: 12 }}
-            >
-              Mark all read
-            </Button>
-          </Tooltip>
+          <Button
+            type="text"
+            size="small"
+            icon={<CheckOutlined />}
+            onClick={onMarkAllRead}
+            className="topbar-mark-read-btn"
+          >
+            Dhammaan Akhri
+          </Button>
         )}
       </div>
 
       {/* Body */}
-      <div className="notification-list">
+      <div className="topbar-notification-list">
         {loading && notifications.length === 0 ? (
-          <div className="notification-loading">
+          <div className="topbar-notification-loading">
             <Spin size="small" />
           </div>
         ) : notifications.length === 0 ? (
-          <div style={{ padding: '32px 0' }}>
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No recent activity" />
+          <div style={{ padding: '28px 0' }}>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Wax ogaysiis cusub ah ma jiraan" />
           </div>
         ) : (
           notifications.map((item) => (
             <div
-              className={`notification-item${item.is_read ? '' : ' notification-item--unread'}`}
+              className={`topbar-notification-item${item.is_read ? '' : ' unread'}`}
               key={item.id || `${item.type}-${item.created_at}`}
+              onClick={() => onItemClick && onItemClick(item)}
             >
-              <div className="notification-item-icon">
+              <div className="topbar-notification-icon">
                 {typeIcon(item.type)}
               </div>
-              <div className="notification-item-body">
-                <Text strong style={{ fontSize: 13, display: 'block', lineHeight: '1.4' }}>
+              <div className="topbar-notification-body">
+                <Text strong className="topbar-notification-title">
                   {item.title}
                 </Text>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: '1.4' }}>
+                <Text className="topbar-notification-msg">
                   {item.message}
                 </Text>
-                <Text type="secondary" style={{ fontSize: 11, marginTop: 2, display: 'block' }}>
+                <span className="topbar-notification-time">
+                  <ClockCircleOutlined style={{ fontSize: 10, marginRight: 4 }} />
                   {timeAgo(item.created_at)}
-                </Text>
+                </span>
               </div>
             </div>
           ))
@@ -117,9 +142,9 @@ function NotificationPanel({ notifications, loading, onMarkAllRead, unreadCount 
 
       {/* Footer */}
       {notifications.length > 0 && (
-        <div className="notification-popover-footer">
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Showing {notifications.length} recent event{notifications.length !== 1 ? 's' : ''}
+        <div className="topbar-notification-footer">
+          <Text style={{ fontSize: 11.5, color: '#737373' }}>
+            Muujinaya {notifications.length} ogaysiis ee ugu dambeeyey
           </Text>
         </div>
       )}
@@ -130,6 +155,7 @@ function NotificationPanel({ notifications, loading, onMarkAllRead, unreadCount 
 // ─── Main TopNavbar ──────────────────────────────────────────────────────────
 
 const TopNavbar = ({ collapsed, setCollapsed }) => {
+  const router = useRouter();
   const { user, logout, updateUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { message } = AntApp.useApp();
@@ -138,6 +164,8 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
   const [fileList, setFileList] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentTime, setCurrentTime] = useState(dayjs().format('HH:mm:ss'));
 
   // Notification state
   const [notifications, setNotifications] = useState([]);
@@ -146,14 +174,20 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const timerRef = useRef(null);
 
+  // Live clock tick
+  useEffect(() => {
+    const clockInterval = setInterval(() => {
+      setCurrentTime(dayjs().format('HH:mm:ss'));
+    }, 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
+
   const fetchNotifications = useCallback(async () => {
     setNotificationLoading(true);
     try {
       const response = await api.get('/notifications', { params: { limit: 15 } });
       setNotifications(response.data.data || []);
     } catch (error) {
-      // Notifications are a background enhancement. Keep the last successful
-      // list when the API briefly restarts; the polling interval retries it.
       if (error.response?.status === 401) setNotifications([]);
     } finally {
       setNotificationLoading(false);
@@ -167,12 +201,10 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     return () => clearInterval(timerRef.current);
   }, [user, fetchNotifications]);
 
-  // When dropdown opens, refresh and mark visible items as read
   const handleDropdownOpenChange = (open) => {
     setDropdownOpen(open);
     if (open) {
       fetchNotifications();
-      // Mark current notifications as read locally
       setReadIds((prev) => {
         const next = new Set(prev);
         notifications.forEach((n) => n.id && next.add(n.id));
@@ -187,6 +219,23 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
       notifications.forEach((n) => n.id && next.add(n.id));
       return next;
     });
+    message.success('Dhammaan ogaysiisyada waxaa loo calaamadeeyay in la akhriyey.');
+  };
+
+  const handleNotificationClick = (item) => {
+    setDropdownOpen(false);
+    if (item.case_id || item.link?.includes('/cases/')) {
+      router.push(item.link || `/cases/${item.case_id}`);
+    } else if (item.ob_id || item.link?.includes('/ob-register/')) {
+      router.push(item.link || `/ob-register/${item.ob_id}`);
+    }
+  };
+
+  const handleSearchSubmit = (e) => {
+    if (e && e.key && e.key !== 'Enter') return;
+    const query = searchTerm.trim();
+    if (!query) return;
+    router.push(`/search?q=${encodeURIComponent(query)}`);
   };
 
   const enrichedNotifications = notifications.map((n) => ({
@@ -202,7 +251,7 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
   const profileImageUrl = user.profileImage ? `${apiOrigin}${user.profileImage}` : null;
   const displayName = user.fullName || user.username || 'User';
   const isDarkMode = theme === 'dark';
-  const themeToggleLabel = isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+  const themeToggleLabel = isDarkMode ? 'U beddel Iftiinka (Light)' : 'U beddel Mugdiga (Dark)';
   const initials = displayName
     .split(' ')
     .filter(Boolean)
@@ -212,32 +261,39 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     .toUpperCase();
 
   const roleLabels = {
-    admin: 'Dawladda Dhexe',
-    officer: 'Sarkaalka Booliska',
-    cid: 'Baaraha CID-da',
-    cid_director: 'Agaasimaha CID-da',
-    cid_supervisor: 'Kormeeraha CID-da',
-    cid_officer: 'Baaraha CID-da',
-    court: 'Maxkamadda',
-    court_admin: 'Maamulaha Maxkamadda',
-    judge: 'Garsoore',
-    prosecutor: 'Xeer-ilaaliye',
-    prosecutor_liaison: 'Liaison-ka Xeer-ilaalinta',
-    court_clerk: 'Kalaarkha Maxkamadda',
-    station_jail: 'Xabsiga Saldhigga',
-    jail: 'Maamulka Xabsiga Dhexe',
-    state_admin: 'Maamulaha Dawlad Goboleedka',
-    region_admin: 'Maamulaha Gobolka',
-    district_admin: 'Maamulaha Degmada',
-    state_commander: 'Taliyaha Dawlad Goboleedka',
-    region_commander: 'Taliyaha Gobolka',
-    district_commander: 'Taliyaha Degmada',
-    police_station_commander: 'Taliyaha Saldhigga Booliska',
+    admin: 'Dawladda Dhexe (Admin)',
+    sub_admin: 'Sub Admin',
+    state_admin: 'Maamulka Dawlad Goboleedka',
+    region_admin: 'Maamulka Gobolka',
+    district_admin: 'Maamulka Degmada',
+    personnel_registry: 'Diiwaanka Ciidanka',
     ob_staff: 'Diiwaangeliyaha OB-da',
-    staff: 'Shaqaalaha Hawlgalka',
+    investigator: 'Baare (Investigator)',
+    station_jail: 'Xabsiga Saldhigga',
+    jail: 'Xabsiga Dhexe',
+    court: 'Maxkamadda',
+    cid: 'CID Baare',
   };
 
+  const locationBadge = user.location?.name || user.district_name || user.region_name || user.state_name || (user.role === 'admin' ? 'HQ Central Command' : null);
+
   const menuItems = [
+    {
+      key: 'user_info',
+      label: (
+        <div className="topbar-user-dropdown-header">
+          <div style={{ fontWeight: 600, color: '#F5F5F5', fontSize: 13 }}>{displayName}</div>
+          <div style={{ fontSize: 11.5, color: '#9CA3AF' }}>{user.email || user.username}</div>
+          <div style={{ marginTop: 4 }}>
+            <Tag color="cyan" style={{ fontSize: 10.5, borderRadius: 4, margin: 0 }}>
+              {roleLabels[user.role] || user.role}
+            </Tag>
+          </div>
+        </div>
+      ),
+      disabled: true,
+    },
+    { type: 'divider' },
     {
       key: 'profile',
       label: 'Profile-kayga (My Profile)',
@@ -261,7 +317,7 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
       label: 'Ka bax Nidaamka (Logout)',
       icon: <LogoutOutlined />,
       danger: true,
-      onClick: logout
+      onClick: logout,
     },
   ];
 
@@ -278,7 +334,7 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
 
   const handleProfileUpload = async () => {
     if (!fileList.length) {
-      message.warning('Please choose a profile image first.');
+      message.warning('Fadlan marka hore dooro sawirka.');
       return;
     }
 
@@ -293,9 +349,9 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
       updateUser(response.data.user);
       setFileList([]);
       setProfileOpen(false);
-      message.success('Profile image updated.');
+      message.success('Sawirka profile-ka waa la cusboonaysiiyey.');
     } catch (error) {
-      message.error(error.response?.data?.message || 'Could not upload profile image.');
+      message.error(error.response?.data?.message || 'Sawirka lama gelin karin.');
     } finally {
       setUploading(false);
     }
@@ -320,45 +376,76 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
         password: '',
         confirm_password: '',
       });
-      message.success('Profile updated.');
+      message.success('Xogta profile-ka waa la kaydiyey.');
+      setProfileOpen(false);
     } catch (error) {
-      message.error(error.response?.data?.message || 'Could not update profile.');
+      message.error(error.response?.data?.message || 'Xogta lama kaydin karin.');
     } finally {
       setSavingProfile(false);
     }
   };
 
   return (
-    <Header className="app-topbar">
-      <Button
-        className="topbar-toggle"
-        type="text"
-        icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-        onClick={() => setCollapsed(!collapsed)}
-      />
+    <Header className="app-topbar-modern">
+      {/* Left: Sidebar toggle + Global Quick Search */}
+      <div className="topbar-left-zone">
+        <Button
+          className="topbar-toggle-btn"
+          type="text"
+          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          onClick={() => setCollapsed(!collapsed)}
+        />
 
-      <div className="topbar-search">
-        <Input prefix={<SearchOutlined />} placeholder="Raadi kiis ama OB..." variant="borderless" />
+        <div className="topbar-search-box">
+          <Input
+            prefix={<SearchOutlined style={{ color: '#737373', fontSize: 13 }} />}
+            placeholder="Raadi kiis, OB, eedaysane..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={handleSearchSubmit}
+            allowClear
+            suffix={
+              <span className="topbar-search-shortcut" onClick={handleSearchSubmit}>
+                ↵ Raadi
+              </span>
+            }
+            className="topbar-search-input"
+          />
+        </div>
       </div>
 
-      <Space size="large">
-        <div className="topbar-date">
-          <CalendarOutlined />
-          <span>{dayjs().format('dddd, D MMMM YYYY')}</span>
+      {/* Right: Date/Clock + Location Badge + Theme + Notifications + User Menu */}
+      <div className="topbar-right-zone">
+        {/* Date & Live Clock */}
+        <div className="topbar-datetime-pill">
+          <CalendarOutlined style={{ color: 'var(--ui-primary, #A8FF4D)' }} />
+          <span className="topbar-date-text">{dayjs().format('ddd, D MMM YYYY')}</span>
+          <span className="topbar-clock-sep">•</span>
+          <span className="topbar-clock-text">{currentTime}</span>
         </div>
-        {/* ── Theme toggle ── */}
+
+        {/* Location Scope Badge */}
+        {locationBadge && (
+          <Tooltip title={`Xarunta/Goobta: ${locationBadge}`}>
+            <div className="topbar-location-pill">
+              <EnvironmentOutlined style={{ color: '#38BDF8' }} />
+              <span className="topbar-location-text">{locationBadge}</span>
+            </div>
+          </Tooltip>
+        )}
+
+        {/* Theme Toggle */}
         <Tooltip title={themeToggleLabel}>
           <Button
             aria-label={themeToggleLabel}
-            className="topbar-icon-button"
+            className="topbar-action-btn"
             type="text"
-            title={themeToggleLabel}
-            icon={isDarkMode ? <SunOutlined style={{ color: '#A8FF4D' }} /> : <MoonOutlined />}
+            icon={isDarkMode ? <SunOutlined style={{ color: 'var(--ui-primary, #A8FF4D)' }} /> : <MoonOutlined />}
             onClick={toggleTheme}
           />
         </Tooltip>
 
-        {/* ── Notification bell ── */}
+        {/* Notifications */}
         <Dropdown
           open={dropdownOpen}
           onOpenChange={handleDropdownOpenChange}
@@ -370,36 +457,48 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
               loading={notificationLoading}
               unreadCount={unreadCount}
               onMarkAllRead={handleMarkAllRead}
+              onItemClick={handleNotificationClick}
             />
           )}
         >
           <Badge count={unreadCount} size="small" offset={[-2, 2]}>
             <Button
-              className={`topbar-icon-button${dropdownOpen ? ' topbar-icon-button--active' : ''}`}
+              className={`topbar-action-btn${dropdownOpen ? ' active' : ''}`}
               type="text"
               icon={<BellOutlined />}
             />
           </Badge>
         </Dropdown>
 
-        {/* ── User menu ── */}
-        <Dropdown menu={{ items: menuItems }} placement="bottomRight">
-          <Space className="topbar-user">
-            <Avatar className="topbar-avatar" src={profileImageUrl} icon={!profileImageUrl && <UserOutlined />}>
+        {/* User Menu */}
+        <Dropdown menu={{ items: menuItems }} placement="bottomRight" trigger={['click']}>
+          <div className="topbar-user-pill">
+            <Avatar
+              className="topbar-user-avatar"
+              src={profileImageUrl}
+              icon={!profileImageUrl && <UserOutlined />}
+            >
               {!profileImageUrl && initials}
             </Avatar>
-            <div className="topbar-user-copy">
-              <Text strong>{displayName}</Text>
-              <Tag className="status-tag status-tag--open">
+            <div className="topbar-user-meta">
+              <span className="topbar-user-name">{displayName}</span>
+              <span className="topbar-user-role">
                 {roleLabels[user.role] || user.role || 'User'}
-              </Tag>
+              </span>
             </div>
-          </Space>
+            <RightOutlined className="topbar-user-chevron" />
+          </div>
         </Dropdown>
-      </Space>
+      </div>
 
+      {/* Edit Profile Modal */}
       <Modal
-        title="My Profile"
+        title={
+          <Space>
+            <SettingOutlined style={{ color: 'var(--ui-primary, #A8FF4D)' }} />
+            <span>Xogta Profile-kayga (My Profile)</span>
+          </Space>
+        }
         open={profileOpen}
         onCancel={() => {
           setProfileOpen(false);
@@ -407,10 +506,13 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
         }}
         footer={null}
         forceRender
+        className="topbar-profile-modal"
+        centered
+        width={560}
       >
         <div className="profile-upload-panel">
           <Avatar
-            size={88}
+            size={80}
             className="profile-upload-avatar"
             src={profileImageUrl}
             icon={!profileImageUrl && <UserOutlined />}
@@ -418,8 +520,11 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
             {!profileImageUrl && initials}
           </Avatar>
           <div className="profile-upload-copy">
-            <Text strong>{displayName}</Text>
+            <Title level={4} style={{ margin: 0, color: '#F5F5F5' }}>{displayName}</Title>
             <Text type="secondary">{user.email || user.username}</Text>
+            <div style={{ marginTop: 4 }}>
+              <Tag color="cyan">{roleLabels[user.role] || user.role}</Tag>
+            </div>
           </div>
         </div>
 
@@ -429,56 +534,56 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
           onFinish={handleProfileSave}
           className="profile-edit-form"
         >
-          <Form.Item name="full_name" label="Full name" rules={nameRules('Full name')}>
-            <Input placeholder="Full name" />
+          <Form.Item name="full_name" label="Magaca oo Dhammaystiran" rules={nameRules('Magaca')}>
+            <Input placeholder="Magacaaga oo buuxa" />
           </Form.Item>
-          <Form.Item name="username" label="Username">
+          <Form.Item name="username" label="Username-ka Login-ka">
             <Input disabled readOnly />
           </Form.Item>
           {!user.scopeType && (
             <>
-              <Form.Item name="email" label="Email" rules={[emailRule]}>
-                <Input placeholder="Email address" />
+              <Form.Item name="email" label="Email Address" rules={[emailRule]}>
+                <Input placeholder="Email-kaaga" />
               </Form.Item>
-              <Form.Item name="password" label="New password" rules={optionalPasswordRules}>
-                <Input.Password placeholder="Leave blank to keep current password" />
+              <Form.Item name="password" label="Password Cusub (Ikhtiyaari)" rules={optionalPasswordRules}>
+                <Input.Password placeholder="Ka tag bannaanka haddii aadan beddelayn" />
               </Form.Item>
               <Form.Item
                 name="confirm_password"
-                label="Confirm new password"
+                label="Xaqiiji Password-ka Cusub"
                 dependencies={['password']}
                 rules={[
                   ({ getFieldValue }) => ({
                     validator(_, value) {
                       if (!getFieldValue('password') || getFieldValue('password') === value) return Promise.resolve();
-                      return Promise.reject(new Error('Passwords do not match.'));
+                      return Promise.reject(new Error('Password-yadu iskuma mid ma aha.'));
                     },
                   }),
                 ]}
               >
-                <Input.Password placeholder="Confirm new password" />
+                <Input.Password placeholder="Dib u qor password-ka cusub" />
               </Form.Item>
             </>
           )}
-          <Button type="primary" htmlType="submit" loading={savingProfile} block>
-            Save profile
+          <Button type="primary" htmlType="submit" loading={savingProfile} block style={{ height: 40, fontWeight: 600 }}>
+            Kaydi Profile-ka
           </Button>
         </Form>
 
-        <Divider />
+        <Divider style={{ borderColor: '#262626' }} />
         <Upload.Dragger {...uploadProps} className="profile-upload-dropzone">
-          <p className="ant-upload-drag-icon"><CameraOutlined /></p>
-          <p className="ant-upload-text">Choose a new profile image</p>
-          <p className="ant-upload-hint">PNG, JPG, or WEBP up to 3MB.</p>
+          <p className="ant-upload-drag-icon"><CameraOutlined style={{ color: 'var(--ui-primary, #A8FF4D)' }} /></p>
+          <p className="ant-upload-text" style={{ color: '#E0E0E0' }}>Dooro Sawir Cusub oo Profile ah</p>
+          <p className="ant-upload-hint" style={{ color: '#737373' }}>PNG, JPG, ama WEBP ilaa 3MB.</p>
         </Upload.Dragger>
         <Button
           icon={<UploadOutlined />}
           loading={uploading}
           onClick={handleProfileUpload}
           block
-          style={{ marginTop: 12 }}
+          style={{ marginTop: 12, height: 38 }}
         >
-          Upload photo
+          Geli Sawirka
         </Button>
       </Modal>
     </Header>

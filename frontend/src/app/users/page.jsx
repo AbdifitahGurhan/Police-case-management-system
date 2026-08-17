@@ -13,6 +13,23 @@ import { useSearchParams } from 'next/navigation';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+const DEPRECATED_ROLES = new Set([
+  'officer',
+  'taliyaha_saldhiga',
+  'police_station_commander',
+  'prosecutor',
+  'taliyaha-gobolka',
+  'region_commander',
+  'staff',
+  'taliyaha maamul goboleedka',
+  'state_commander',
+  'ward_commander',
+  'garsoore',
+  'judge',
+  'taliyaha degmada',
+  'district_commander',
+]);
+
 const roleLabel=role=>String(role?.name).toLowerCase()==='jail'?'Jail-ka Sare':String(role?.name).toLowerCase()==='district_admin'?'District Administration':'Diiwaanka Ciidanka';
 
 
@@ -131,7 +148,7 @@ function UserManagementContent() {
         throw uRes.reason || rRes.reason;
       }
       setUsers(uRes.value.data.data);
-      setRoles(rRes.value.data.data);
+      setRoles((rRes.value.data.data || []).filter(r => !DEPRECATED_ROLES.has(String(r.name || '').toLowerCase())));
       setStates(stateRes.status === 'fulfilled' ? stateRes.value.data.data : []);
       setRegions(regionRes.status === 'fulfilled' ? regionRes.value.data.data : []);
       setDistricts(districtRes.status === 'fulfilled' ? districtRes.value.data.data : []);

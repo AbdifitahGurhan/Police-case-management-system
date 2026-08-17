@@ -21,15 +21,28 @@ export default function LoginPage() {
   useEffect(() => {
     if (user && !submittingRef.current) {
       const roleRedirects = {
-        admin: '/dashboard/operations', sub_admin: '/police-officers', ob_staff: '/ob-register',
-        state_admin: '/dashboard/operations', region_admin: '/dashboard/operations',
-        district_admin: '/dashboard/operations', personnel_registry: '/police-officers',
-        investigator: '/dashboard/investigator', station_jail: '/dashboard/jail', officer: '/dashboard/officer',
-        cid: '/dashboard/cid', cid_director: '/dashboard/cid', cid_supervisor: '/dashboard/cid',
-        cid_officer: '/dashboard/cid', court: '/dashboard/court', prosecutor: '/dashboard/court',
-        prosecutor_liaison: '/dashboard/cid', jail: '/dashboard/central-jail',
-        state_commander: '/dashboard/operations', region_commander: '/dashboard/operations',
-        district_commander: '/dashboard/operations', police_station_commander: '/dashboard/operations'
+        admin: '/dashboard/operations',
+        sub_admin: '/police-officers',
+        ob_staff: '/ob-register',
+        state_admin: '/dashboard/operations',
+        region_admin: '/dashboard/operations',
+        district_admin: '/dashboard/operations',
+        personnel_registry: '/police-officers',
+        investigator: '/dashboard/investigator',
+        station_jail: '/dashboard/jail',
+        officer: '/dashboard/officer',
+        cid: '/dashboard/cid',
+        cid_director: '/dashboard/cid',
+        cid_supervisor: '/dashboard/cid',
+        cid_officer: '/dashboard/cid',
+        court: '/dashboard/court',
+        prosecutor: '/dashboard/court',
+        prosecutor_liaison: '/dashboard/cid',
+        jail: '/dashboard/central-jail',
+        state_commander: '/dashboard/operations',
+        region_commander: '/dashboard/operations',
+        district_commander: '/dashboard/operations',
+        police_station_commander: '/dashboard/operations',
       };
       router.replace(roleRedirects[user.role] || '/police-officers');
     }
@@ -67,21 +80,42 @@ export default function LoginPage() {
       <div className="login-circle login-circle-left" aria-hidden="true" />
       <div className="login-shield-outline" aria-hidden="true" />
 
+      {/* Top Header */}
       <header className="login-topbar">
         <div className="login-identity">
-          <div className="login-mini-badge"><Image src="/somali-police-emblem-v2.png" alt="Somali Police Force" width={1200} height={1200} priority /></div>
-          <div><strong>CIDANKA BOOLISKA SOOMAALIYEED</strong><small>Somali Police Force</small></div>
+          <div className="login-mini-badge">
+            <Image
+              src="/somali-police-emblem-v2.png"
+              alt="Somali Police Force"
+              width={28}
+              height={28}
+              style={{ width: 28, height: 28, objectFit: 'contain' }}
+              priority
+            />
+          </div>
+          <div>
+            <strong>CIDANKA BOOLISKA SOOMAALIYEED</strong>
+            <small>Somali Police Force</small>
+          </div>
         </div>
         <div className="login-secure"><i /> Xiriir ammaan ah</div>
       </header>
 
+      {/* Center Form */}
       <main className="login-form-panel">
         <div className="login-new-shell">
           <Card className="login-art-card" variant="none">
             <div className="login-new-heading">
               <div className="login-main-badge">
                 <span className="login-logo-loader" aria-hidden="true" />
-                <Image src="/somali-police-emblem-v2.png" alt="Somali Police Force logo" width={1200} height={1200} priority />
+                <Image
+                  src="/somali-police-emblem-v2.png"
+                  alt="Somali Police Force logo"
+                  width={90}
+                  height={90}
+                  style={{ width: 90, height: 90, objectFit: 'contain', margin: '0 auto', display: 'block' }}
+                  priority
+                />
               </div>
               <b>CIDANKA BOOLISKA SOOMAALIYEED</b>
               {welcomeName && <div className="login-welcome">Ku soo dhawoow, {welcomeName}</div>}
@@ -103,9 +137,19 @@ export default function LoginPage() {
               </div>
               <Form.Item>
                 <Button type="primary" htmlType="submit" disabled={loading} block className="login-art-button">
-                  {loginState === 'verifying' && <span className="login-button-emblem"><Image src="/somali-police-emblem-v2.png" alt="" width={1200} height={1200} /></span>}
+                  {loginState === 'verifying' && (
+                    <span className="login-button-emblem">
+                      <Image src="/somali-police-emblem-v2.png" alt="" width={16} height={16} style={{ width: 16, height: 16, objectFit: 'contain' }} />
+                    </span>
+                  )}
                   {(loginState === 'success' || loginState === 'leaving') && <CheckOutlined className="login-success-check" />}
-                  <span>{loginState === 'verifying' ? 'Xogta waa la hubinayaa...' : loginState === 'success' || loginState === 'leaving' ? 'Gelitaan waa la xaqiijiyey' : 'Gal Nidaamka'}</span>
+                  <span>
+                    {loginState === 'verifying'
+                      ? 'Xogta waa la hubinayaa...'
+                      : loginState === 'success' || loginState === 'leaving'
+                      ? 'Gelitaan waa la xaqiijiyey'
+                      : 'Gal Nidaamka'}
+                  </span>
                 </Button>
               </Form.Item>
             </Form>

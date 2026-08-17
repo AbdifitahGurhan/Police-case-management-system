@@ -460,7 +460,7 @@ export default function CourtDashboard() {
           {courtCase ? (
             <Space orientation="vertical" size="large" style={{ width: '100%' }}>
               <Card size="small" className="standard-panel" title="Court case progress">
-                <CaseStatusStepper status={courtCase.status} flow="court" />
+                <CaseStatusStepper status={courtCase.status} outcome={courtCase.final_outcome} flow="court" />
                 <Space wrap style={{ marginTop: 8 }}>
                   {statusTag(courtCase.status)}
                   {courtCase.final_outcome && (
@@ -618,8 +618,23 @@ export default function CourtDashboard() {
                     ]}
                   />
                 </Form.Item>
-                <Form.Item name="decision_date" label="Decision date" rules={[requiredRule('Decision date')]}>
-                  <DatePicker style={{ width: '100%' }} />
+                <Form.Item
+                  name="decision_date"
+                  label="Decision date"
+                  rules={[
+                    requiredRule('Decision date'),
+                    {
+                      validator: (_, val) => {
+                        if (!val) return Promise.resolve();
+                        if (val.isAfter(dayjs().endOf('day'))) {
+                          return Promise.reject(new Error('Decision date cannot be in the future'));
+                        }
+                        return Promise.resolve();
+                      }
+                    }
+                  ]}
+                >
+                  <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current.isAfter(dayjs().endOf('day'))} />
                 </Form.Item>
                 <Form.Item
                   name="judgment_summary"

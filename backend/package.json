@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Backend API for Web-Based Criminal Case Management System",
   "main": "src/app.js",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",

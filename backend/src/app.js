@@ -135,6 +135,17 @@ const PORT = port;
 
 const autoInitializeDb = require('../database/autoInitDb');
 
+function listen(portNumber) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(portNumber, () => {
+      console.log(`Server running on port ${portNumber}`);
+      resolve(server);
+    });
+
+    server.on('error', reject);
+  });
+}
+
 const start = async () => {
   try {
     await testConnection();
@@ -143,9 +154,7 @@ const start = async () => {
     await runOneTimeArrestStatusRepair(db);
     await runOneTimeOfficerAssignmentRepair(db);
     await connectMongoDB();
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
+    await listen(PORT);
   } catch (err) {
     console.error('Application startup failed:', err);
     process.exit(1);

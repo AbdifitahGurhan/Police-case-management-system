@@ -129,8 +129,9 @@ const FLOW_MAP = {
 /**
  * Reusable workflow stepper — custom renderer to prevent label overflow/collision.
  * @param {'case'|'cid'|'court'} flow
+ * @param {string} outcome - 'convicted' | 'acquitted' | 'dismissed'
  */
-export default function CaseStatusStepper({ status, flow = 'case', style }) {
+export default function CaseStatusStepper({ status, outcome, flow = 'case', style }) {
   const config = FLOW_MAP[flow] || FLOW_MAP.case;
 
   const current = useMemo(() => {
@@ -140,6 +141,7 @@ export default function CaseStatusStepper({ status, flow = 'case', style }) {
     return byKey >= 0 ? byKey : 0;
   }, [config, status]);
 
+  const isNonConviction = outcome === 'dismissed' || outcome === 'acquitted';
   const steps = config.steps;
 
   return (
@@ -153,22 +155,47 @@ export default function CaseStatusStepper({ status, flow = 'case', style }) {
       }}
     >
       {steps.map((step, idx) => {
-        const isCompleted = idx < current;
-        const isCurrent   = idx === current;
-        const isUpcoming  = idx > current;
+        const isSentenceStep = step.key === 'sentenced' || step.key === 'sentence';
+        const isSkipped = isSentenceStep && isNonConviction;
+
+        let isCompleted = idx < current && !isSkipped;
+        const isCurrent = idx === current && !isSkipped;
 
         // Circle colours
-        const circleBg     = isCompleted ? '#A8FF4D' : isCurrent ? '#A8FF4D' : '#2B2B2B';
-        const circleColor  = isCompleted ? '#0E0E0E' : isCurrent ? '#0E0E0E' : '#707070';
-        const circleBorder = isCurrent   ? '2px solid #A8FF4D' : '2px solid transparent';
-        const circleGlow   = isCurrent   ? '0 0 0 3px rgba(168, 255, 77, 0.20)' : 'none';
+        const circleBg = isSkipped
+          ? '#2B2B2B'
+          : isCompleted
+          ? '#A8FF4D'
+          : isCurrent
+          ? '#A8FF4D'
+          : '#2B2B2B';
+
+        const circleColor = isSkipped
+          ? '#707070'
+          : isCompleted
+          ? '#0E0E0E'
+          : isCurrent
+          ? '#0E0E0E'
+          : '#707070';
+
+        const circleBorder = isSkipped
+          ? '1px dashed #707070'
+          : isCurrent
+          ? '2px solid #A8FF4D'
+          : '2px solid transparent';
+
+        const circleGlow = isCurrent ? '0 0 0 3px rgba(168, 255, 77, 0.20)' : 'none';
 
         // Label colour
-        const labelColor = isCompleted ? '#A5A5A5' : isCurrent ? '#A8FF4D' : '#707070';
+        const labelColor = isSkipped ? '#707070' : isCompleted ? '#A5A5A5' : isCurrent ? '#A8FF4D' : '#707070';
 
         // Connector line (after every step except last)
         const showConnector = idx < steps.length - 1;
-        const connectorColor = isCompleted ? '#A8FF4D' : '#2B2B2B';
+        const connectorColor = isCompleted || (isSkipped && idx < current) ? '#A8FF4D' : '#2B2B2B';
+
+        const displayTitle = isSkipped
+          ? `${step.title} (Aan lagu ridin)`
+          : step.title;
 
         return (
           <div
@@ -211,7 +238,9 @@ export default function CaseStatusStepper({ status, flow = 'case', style }) {
                   zIndex: 1,
                 }}
               >
-                {isCompleted ? (
+                {isSkipped ? (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#707070' }}>—</span>
+                ) : isCompleted ? (
                   // Checkmark SVG
                   <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
                     <path d="M1 4L4.5 7.5L11 1" stroke="#0E0E0E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -251,7 +280,7 @@ export default function CaseStatusStepper({ status, flow = 'case', style }) {
                 transition: 'color 0.3s',
               }}
             >
-              {step.title}
+              {displayTitle}
             </div>
           </div>
         );

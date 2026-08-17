@@ -241,13 +241,15 @@ export default function CourtCasesPage() {
     }
     if (type === 'hearing') {
       values.assigned_judge = assignedJudge;
+      values.hearing_date = values.hearing_date ? dayjs(values.hearing_date) : dayjs();
     }
     if (type === 'judgment') {
       values.judge_name = assignedJudge;
-      values.decision_date = dayjs();
+      values.decision_date = values.decision_date ? dayjs(values.decision_date) : dayjs();
     }
     if (type === 'remand') {
       values.sent_to_role = values.sent_to_role || 'station';
+      values.deadline_date = values.deadline_date ? dayjs(values.deadline_date) : dayjs().add(7, 'day');
     }
     if (type === 'sentence') {
       const sent = initial.sentence || null;
@@ -591,7 +593,7 @@ export default function CourtCasesPage() {
                 <Text style={{ display: 'block', fontSize: 13, color: '#A5A5A5', marginBottom: 18 }}>
                   {courtCase.case_title}
                 </Text>
-                <CaseStatusStepper status={courtCase.status} flow="court" />
+                <CaseStatusStepper status={courtCase.status} outcome={courtCase.final_outcome} flow="court" />
                 {['remanded_to_investigator', 'returned_from_remand'].includes(courtCase.status) && selected?.latestRemand && (
                   <Alert
                     style={{ marginTop: 14 }}
@@ -1151,16 +1153,35 @@ export default function CourtCasesPage() {
       )}
       {modalType === 'hearing' && (
         <Row gutter={16}>
-          <Col span={12}><Form.Item name="hearing_type" label="Nooca Dhegeysiga" rules={[{ required: true }]}><Select options={[
+          <Col span={12}><Form.Item name="hearing_type" label="Nooca Dhegeysiga" rules={[{ required: true, message: 'Fadlan dooro nooca dhegeysiga' }]}><Select options={[
             { value: 'preliminary', label: 'Dhegeysiga Hordhaca Ah' },
             { value: 'evidence', label: 'Dhegeysiga Caddeymaha' },
             { value: 'witness', label: 'Dhegeysiga Markhaatiyaasha' },
             { value: 'final', label: 'Dhegeysiga kama dambaysta ah' },
             { value: 'appeal', label: 'Racfaanka' },
           ]} /></Form.Item></Col>
-          <Col span={12}><Form.Item name="court_room" label="Qolka Maxkamadda"><Input /></Form.Item></Col>
-          <Col span={12}><Form.Item name="hearing_date" label="Taariikhda Dhegeysiga" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-          <Col span={12}><Form.Item name="hearing_time" label="Saacadda Dhegeysiga" rules={[{ required: true }]}><TimePicker style={{ width: '100%' }} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="court_room" label="Qolka Maxkamadda"><Input placeholder="Tusaale. 7" /></Form.Item></Col>
+          <Col span={12}>
+            <Form.Item
+              name="hearing_date"
+              label="Taariikhda Dhegeysiga"
+              rules={[
+                { required: true, message: 'Fadlan dooro taariikhda dhegeysiga' },
+                {
+                  validator: (_, val) => {
+                    if (!val) return Promise.resolve();
+                    if (val.isBefore(dayjs().startOf('day'))) {
+                      return Promise.reject(new Error('Taariikhda dhegeysiga ma noqon karto taariikh la soo dhaafay'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current.isBefore(dayjs().startOf('day'))} />
+            </Form.Item>
+          </Col>
+          <Col span={12}><Form.Item name="hearing_time" label="Saacadda Dhegeysiga" rules={[{ required: true, message: 'Fadlan dooro saacadda dhegeysiga' }]}><TimePicker style={{ width: '100%' }} format="HH:mm" /></Form.Item></Col>
           <Col span={24}>
             <Form.Item name="assigned_judge" label="Garsooraha Kiiska loo Xilsaaray">
               <Select
@@ -1197,9 +1218,28 @@ export default function CourtCasesPage() {
       )}
       {modalType === 'hearing_update' && (
         <Row gutter={16}>
-          <Col span={12}><Form.Item name="hearing_date" label="Taariikhda Dhegeysiga"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-          <Col span={12}><Form.Item name="hearing_time" label="Saacadda Dhegeysiga"><TimePicker style={{ width: '100%' }} /></Form.Item></Col>
-          <Col span={12}><Form.Item name="court_room" label="Qolka Maxkamadda"><Input /></Form.Item></Col>
+          <Col span={12}>
+            <Form.Item
+              name="hearing_date"
+              label="Taariikhda Dhegeysiga"
+              rules={[
+                { required: true, message: 'Fadlan dooro taariikhda dhegeysiga' },
+                {
+                  validator: (_, val) => {
+                    if (!val) return Promise.resolve();
+                    if (val.isBefore(dayjs().startOf('day'))) {
+                      return Promise.reject(new Error('Taariikhda dhegeysiga ma noqon karto taariikh la soo dhaafay'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current.isBefore(dayjs().startOf('day'))} />
+            </Form.Item>
+          </Col>
+          <Col span={12}><Form.Item name="hearing_time" label="Saacadda Dhegeysiga"><TimePicker style={{ width: '100%' }} format="HH:mm" /></Form.Item></Col>
+          <Col span={12}><Form.Item name="court_room" label="Qolka Maxkamadda"><Input placeholder="Tusaale. 7" /></Form.Item></Col>
           <Col span={12}><Form.Item name="assigned_judge" label="Garsooraha"><Select allowClear options={courtPersonnel.judges} /></Form.Item></Col>
           <Col span={24}><Form.Item name="status" label="Heerka"><Select options={[
             { value: 'scheduled', label: 'Qorshaysan' },
@@ -1239,8 +1279,23 @@ export default function CourtCasesPage() {
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="deadline_date" label="Deadline">
-              <DatePicker style={{ width: '100%' }} />
+            <Form.Item
+              name="deadline_date"
+              label="Deadline"
+              rules={[
+                { required: true, message: 'Fadlan dooro taariikhda deadline-ka' },
+                {
+                  validator: (_, val) => {
+                    if (!val) return Promise.resolve();
+                    if (val.isBefore(dayjs().startOf('day'))) {
+                      return Promise.reject(new Error('Taariikhda deadline-ka ma noqon karto taariikh la soo dhaafay'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current.isBefore(dayjs().startOf('day'))} />
             </Form.Item>
           </Col>
           <Col span={24}>
@@ -1264,14 +1319,31 @@ export default function CourtCasesPage() {
       )}
       {modalType === 'judgment' && (
         <>
-          <Form.Item name="judge_name" label="Magaca Garsooraha"><Input /></Form.Item>
-          <Form.Item name="decision_date" label="Taariikhda Go'aanka"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="decision_type" label="Go'aanka" rules={[{ required: true }]}><Select options={[
+          <Form.Item name="judge_name" label="Magaca Garsooraha"><Input placeholder="Tusaale. Xaakim Xasan Cali Maxamud" /></Form.Item>
+          <Form.Item
+            name="decision_date"
+            label="Taariikhda Go'aanka"
+            rules={[
+              { required: true, message: 'Fadlan dooro taariikhda go\'aanka' },
+              {
+                validator: (_, val) => {
+                  if (!val) return Promise.resolve();
+                  if (val.isAfter(dayjs().endOf('day'))) {
+                    return Promise.reject(new Error('Taariikhda go\'aanka ma noqon karto taariikh soo socota (mustaqbal)'));
+                  }
+                  return Promise.resolve();
+                }
+              }
+            ]}
+          >
+            <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current.isAfter(dayjs().endOf('day'))} />
+          </Form.Item>
+          <Form.Item name="decision_type" label="Go'aanka" rules={[{ required: true, message: 'Fadlan dooro go\'aanka maxkamadda' }]}><Select options={[
             { value: 'convicted', label: 'Eedaysanaha la Xukumay (Convicted)' },
             { value: 'acquitted', label: 'Eedaysanaha la Sii Daayay (Acquitted)' },
             { value: 'dismissed', label: 'Kiiska la Laalay (Dismissed)' },
           ]} /></Form.Item>
-          <Form.Item name="judgment_summary" label="Koobsiga Go'aanka Maxkamadda" rules={[{ required: true }]}><TextArea rows={4} /></Form.Item>
+          <Form.Item name="judgment_summary" label="Koobsiga Go'aanka Maxkamadda" rules={[{ required: true, message: 'Koobsiga waa qasab' }]}><TextArea rows={4} /></Form.Item>
         </>
       )}
       {modalType === 'sentence' && (() => {

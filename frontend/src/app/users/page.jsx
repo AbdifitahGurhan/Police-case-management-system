@@ -117,9 +117,17 @@ function UserManagementContent() {
   };
 
   const operationalRoleLabel = (role) => ({
-    investigator: 'Baare',
-    station_jail: 'Station Jail',
+    ob_staff: 'OB Staff (Diiwaanka OB)',
+    investigator: 'Baare (Investigator)',
+    station_jail: 'Xabsiga Saldhigga (Station Jail)',
   }[String(role?.name || '').toLowerCase()] || role?.name);
+
+  const districtRoleOptions = useMemo(() => {
+    const allowed = new Set(['ob_staff', 'investigator', 'station_jail']);
+    return (roles || [])
+      .filter((role) => allowed.has(String(role?.name || '').toLowerCase()))
+      .map((role) => ({ value: role.id, label: operationalRoleLabel(role) }));
+  }, [roles]);
 
   const filteredUsers = useMemo(() => {
     return (users || []).filter((item) => {
@@ -199,7 +207,7 @@ function UserManagementContent() {
           ...fullUser,
           role_id: fullUser.role_id || roles.find(r => r.name === fullUser.role)?.id,
           police_officer_id: fullUser.police_officer_id || undefined,
-          password: '********', // Show dummy placeholder indicating a password is set
+          password: '', // Keep empty so user can enter a new password if desired
         });
         setIsModalOpen(true);
       } else {
@@ -425,7 +433,7 @@ function UserManagementContent() {
           <Form form={form} layout="vertical" onFinish={handleSave}>
             {isDistrictCreate && <>
               <Form.Item name="role_id" label="Role-ka Shaqada" rules={[{required:true,message:'Dooro role-ka shaqada.'}]}>
-                <Select placeholder="Dooro role-ka" options={roles.map(role=>({value:role.id,label:operationalRoleLabel(role)}))}/>
+                <Select placeholder="Dooro role-ka" options={districtRoleOptions}/>
               </Form.Item>
               <Form.Item
                 name="police_officer_id"
@@ -511,10 +519,11 @@ function UserManagementContent() {
                 <Col xs={24}>
                   <Form.Item
                     name="password"
-                    label={editingUser ? 'Change Password (optional)' : 'Password'}
+                    label={editingUser ? 'Beddel Furaha Sirta (Ikhtiyaari)' : 'Furaha Sirta (Password)'}
                     rules={editingUser ? optionalPasswordRules : passwordRules}
+                    extra={editingUser ? 'Ka tag meel bannaan haddii aadan rabin inaad beddesho furaha sirta.' : undefined}
                   >
-                    <Input.Password placeholder="Qor password-ka" />
+                    <Input.Password placeholder={editingUser ? 'Geli furaha cusub haddii aad beddelayso...' : 'Qor password-ka...'} />
                   </Form.Item>
                 </Col>
 

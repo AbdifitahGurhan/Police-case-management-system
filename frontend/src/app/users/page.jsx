@@ -9,6 +9,7 @@ import api from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { emailRule, nameRules, optionalPasswordRules, passwordRules, phoneRules, requiredRule, textLengthRule, usernameRules } from '@/utils/validation';
 import { useSearchParams } from 'next/navigation';
+import { getDistrictsForRegion } from '@/utils/somaliDistricts';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -67,11 +68,58 @@ function UserManagementContent() {
       .map((role) => ({ value: role.id, label: roleLabel(role) }));
   }, [roles]);
   const regionalDistrictOptions = useMemo(() => {
-    const regionId = user?.role === 'state_admin' ? regionalRegionId : user?.location?.regionId;
-    return districts
-      .filter((district) => !regionId || Number(district.region_id) === Number(regionId))
-      .map((district) => ({ value: district.id, label: district.district_name }));
-  }, [districts, regionalRegionId, user?.location?.regionId, user?.role]);
+    const regionId = user?.role === 'state_admin' ? regionalRegionId : (user?.location?.regionId || user?.scopeId);
+    if (!regionId) return [];
+
+    const selectedRegionObj = regions.find((r) => Number(r.id) === Number(regionId)) || {
+      id: regionId,
+      region_name: user?.location?.regionName || user?.location?.name || '',
+      region_code: user?.location?.regionCode || '',
+    };
+
+    const catalogDistricts = getDistrictsForRegion(selectedRegionObj);
+
+    const occupiedDistrictNames = new Set(
+      (users || [])
+        .filter((u) => String(u.role).toLowerCase() === 'district_admin' && (u.is_active !== 0 && String(u.status || '').toUpperCase() !== 'INACTIVE'))
+        .map((u) => String(u.district_police_station_name || u.district_name || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const occupiedDistrictIds = new Set(
+      (users || [])
+        .filter((u) => String(u.role).toLowerCase() === 'district_admin' && (u.is_active !== 0 && String(u.status || '').toUpperCase() !== 'INACTIVE'))
+        .map((u) => Number(u.district_id))
+        .filter(Boolean)
+    );
+
+    const regionDbDistricts = (districts || []).filter((d) => Number(d.region_id) === Number(regionId));
+
+    if (catalogDistricts.length > 0) {
+      return catalogDistricts
+        .filter((cat) => {
+          const cleanName = String(cat.name || '').trim().toLowerCase();
+          if (occupiedDistrictNames.has(cleanName)) return false;
+          const dbMatch = regionDbDistricts.find(
+            (d) => String(d.district_name || '').trim().toLowerCase() === cleanName
+          );
+          if (dbMatch && occupiedDistrictIds.has(Number(dbMatch.id))) return false;
+          return true;
+        })
+        .map((cat) => {
+          const dbMatch = regionDbDistricts.find(
+            (d) => String(d.district_name || '').trim().toLowerCase() === String(cat.name || '').trim().toLowerCase()
+          );
+          return {
+            value: dbMatch ? dbMatch.id : cat.name,
+            label: cat.code ? `${cat.name} (${cat.code})` : cat.name,
+          };
+        });
+    }
+
+    return regionDbDistricts
+      .filter((d) => !occupiedDistrictIds.has(Number(d.id)))
+      .map((d) => ({ value: d.id, label: d.district_name }));
+  }, [districts, regions, regionalRegionId, user?.location?.name, user?.location?.regionCode, user?.location?.regionId, user?.location?.regionName, user?.role, user?.scopeId, users]);
   const isDistrictCreate = user?.role === 'district_admin' && !editingUser;
 
   const selectedRoleId = Form.useWatch('role_id', form);
@@ -413,7 +461,7 @@ function UserManagementContent() {
           <Form form={regionalForm} layout="vertical" onFinish={saveRegionalAccount}>
             {user?.role==='state_admin'&&<Form.Item name="region_id" label="Gobolka" rules={[{required:true,message:'Dooro gobolka.'}]}><Select showSearch optionFilterProp="label" options={regions.map(region=>({value:region.id,label:region.region_name}))} onChange={()=>regionalForm.setFieldValue('district_id', undefined)}/></Form.Item>}
             <Form.Item name="role_id" label="Role-ka" rules={[{required:true,message:'Dooro role-ka.'}]}><Select options={regionalRoleOptions}/></Form.Item>
-            {String(selectedRegionalRole?.name).toLowerCase()==='district_admin'&&<Form.Item name="district_id" label="Degmada uu Maamulayo" rules={[{required:true,message:'Dooro degmada.'}]}><Select showSearch optionFilterProp="label" options={regionalDistrictOptions}/></Form.Item>}
+            {String(selectedRegionalRole?.name).toLowerCase()==='district_admin'&&<Form.Item name="district_id" label="Degmada" rules={[{required:true,message:'Dooro degmada.'}]}><Select showSearch optionFilterProp="label" placeholder="Dooro degmada" options={regionalDistrictOptions}/></Form.Item>}
             <Form.Item name="username" label="Username" rules={usernameRules}><Input/></Form.Item>
             <Form.Item name="password" label="Password" rules={passwordRules}><Input.Password/></Form.Item>
             <Typography.Text type="secondary">Magaca iyo gobolka system-ka ayaa si otomaatig ah u gelinaya.</Typography.Text>

@@ -98,6 +98,7 @@ export default function PoliceOfficersPage() {
   const { user } = useAuth();
   const permissions = new Set(user?.permissions || []);
   const allowed = key => user?.role === 'admin' || permissions.has('*') || permissions.has(key);
+  const canView = allowed('officers.view');
   const canCreate = allowed('officers.create');
   const canUpdate = allowed('officers.update');
   const canApprove = allowed('officers.approve');
@@ -483,7 +484,7 @@ export default function PoliceOfficersPage() {
       key: 'action',
       render: (_, record) => (
         <Space wrap>
-          {canUpdate && <Button icon={<EyeOutlined />} type="primary" onClick={() => router.push(`/police-officers/${record.id}`)}>Faahfaahin</Button>}
+          {canView && <Button icon={<EyeOutlined />} type="primary" onClick={() => router.push(`/police-officers/${record.id}`)}>Faahfaahin</Button>}
           {canUpdate && (user?.role === 'admin' || (!record.is_deployed_by_admin && String(record.created_by).toLowerCase() !== 'admin')) && <Button icon={<EditOutlined />} onClick={() => handleOpenModal(record)}>Wax ka beddel</Button>}
           {canAssignRank && (user?.role === 'admin' || user?.role === 'state_admin') && (
             <Button icon={<StarOutlined />} onClick={() => handleOpenRankModal(record)}>Darajo</Button>
@@ -506,7 +507,7 @@ export default function PoliceOfficersPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'state_admin', 'personnel_registry', 'region_admin', 'region_commander']} requiredPermissions={['officers.view', 'officers.create', 'officers.approve']}>
+    <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'state_admin', 'personnel_registry', 'region_admin', 'region_commander']} requiredPermissions={['officers.view']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>

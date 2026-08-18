@@ -31,6 +31,14 @@ const { TextArea } = Input;
 
 const allowedRoles = [
   'admin',
+  'sub_admin',
+  'state_admin',
+  'state_commander',
+  'region_admin',
+  'region_commander',
+  'district_admin',
+  'district_commander',
+  'police_station_commander',
   'court',
   'court_admin',
   'court_clerk',
@@ -42,9 +50,6 @@ const allowedRoles = [
   'cid_director',
   'cid_supervisor',
   'cid_officer',
-  'district_admin',
-  'district_commander',
-  'police_station_commander',
 ];
 
 const WARRANT_TYPES = [
@@ -261,8 +266,12 @@ export default function WarrantsPage() {
               },
               {
                 title: 'Saldhigga / Station',
-                dataIndex: 'police_station',
-                render: (v) => v || '—',
+                render: (_, r) => (
+                  <Space orientation="vertical" size={0}>
+                    <Text>{r.police_station || '—'}</Text>
+                    {r.region_name && <Text type="secondary" style={{ fontSize: 11 }}>{r.region_name}</Text>}
+                  </Space>
+                ),
               },
               {
                 title: 'Issue Date',

@@ -54,7 +54,7 @@ router.use(authMiddleware);
 
 router.get('/deployed', requirePermission('officers.view'), controller.getDeployedOfficers);
 router.get('/', requirePermission('officers.view'), controller.getAll);
-router.get('/:id', requirePermission('officers.update'), controller.getById);
+router.get('/:id', requirePermission('officers.view'), controller.getById);
 router.post('/', requirePermission('officers.create'), upload.single('profile_image'), controller.create);
 router.post('/:id/review', requirePermission('officers.approve'), controller.reviewApproval);
 router.post('/:id/rank', requireAnyPermission('ranks.assign', 'officers.approve'), controller.assignRank);

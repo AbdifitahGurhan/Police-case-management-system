@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../config/database');
 const { writeAuditLog } = require('../utils/auditLogger');
 const { normalizeRole } = require('../utils/locationScope');
+const { findDistrictByName } = require('../utils/somaliDistricts');
 
 const REGION_ASSIGNABLE_ROLES = new Set([
   'personnel_registry',
@@ -176,13 +177,66 @@ const createUser = async (req, res, next) => {
         await ensureRegionInState(region_id, req.user.scopeId);
       }
       const selectedRole=await ensureRegionAssignableRole(role_id); const roleName=normalizeRole(selectedRole.name);
-      if(roleName==='district_admin'){
-        if(!district_id)return res.status(400).json({success:false,message:'Dooro degmada District Administration-ku maamulayo.'});
-        const [[district]]=await db.query('SELECT id, district_name FROM districts WHERE id = ? AND region_id = ?', [district_id, region_id]);
-        if(!district)return res.status(403).json({success:false,message:'Degmada la doortay kama tirsana gobolkaaga.'});
-        full_name=`${district.district_name} Administration`;assigned_level='DISTRICT_POLICE_STATION';user_type='COMMANDER';is_commander=1;
-      }else{
-        full_name=roleName==='personnel_registry'?'Diiwaanka Ciidanka':'Jail-ka Sare';assigned_level='REGION';user_type='STAFF';district_id=null;
+      if (roleName === 'district_admin') {
+        if (!district_id && !req.body.district_name) {
+          return res.status(400).json({ success: false, message: 'Dooro degmada District Administration-ku maamulayo.' });
+        }
+
+        let district = null;
+        if (district_id && !isNaN(Number(district_id))) {
+          const [[found]] = await db.query('SELECT id, district_name, district_code FROM districts WHERE id = ? AND region_id = ?', [Number(district_id), region_id]);
+          district = found;
+        }
+
+        if (!district) {
+          const searchName = String(req.body.district_name || district_id || '').trim();
+          const [[found]] = await db.query(
+            'SELECT id, district_name, district_code FROM districts WHERE (LOWER(district_name) = LOWER(?) OR LOWER(district_code) = LOWER(?)) AND region_id = ?',
+            [searchName, searchName, region_id]
+          );
+          district = found;
+        }
+
+        if (!district) {
+          const searchName = String(req.body.district_name || district_id || '').trim();
+          const [[regionRow]] = await db.query('SELECT id, region_name, region_code FROM regions WHERE id = ?', [region_id]);
+          const catalogItem = findDistrictByName(regionRow, searchName);
+          const finalDistrictName = catalogItem ? catalogItem.name : searchName;
+          const finalDistrictCode = catalogItem ? catalogItem.code : `${regionRow?.region_code || 'DST'}-${searchName.substring(0, 3).toUpperCase()}`;
+
+          const internalHash = await bcrypt.hash(`district-${Date.now()}-${Math.random()}`, 10);
+          const [ins] = await db.query(
+            `INSERT INTO districts (region_id, district_name, district_code, username, password_hash, created_by)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [region_id, finalDistrictName, finalDistrictCode, `catalog_${finalDistrictCode.toLowerCase().replace(/[^a-z0-9]/g, '_')}`, internalHash, req.user.username || 'system']
+          );
+          district = { id: ins.insertId, district_name: finalDistrictName, district_code: finalDistrictCode };
+        }
+
+        district_id = district.id;
+
+        const [[existingAdmin]] = await db.query(
+          `SELECT u.id, u.username FROM users u
+           JOIN roles r ON r.id = u.role_id
+           WHERE u.district_id = ? AND LOWER(REPLACE(r.name, '-', '_')) = 'district_admin' AND u.is_active = 1`,
+          [district_id]
+        );
+        if (existingAdmin) {
+          return res.status(409).json({
+            success: false,
+            message: `Degmada ${district.district_name} mar hore ayaa user District Administration ah loo sameeyay (${existingAdmin.username}).`
+          });
+        }
+
+        full_name = `${district.district_name} Administration`;
+        assigned_level = 'DISTRICT_POLICE_STATION';
+        user_type = 'COMMANDER';
+        is_commander = 1;
+      } else {
+        full_name = roleName === 'personnel_registry' ? 'Diiwaanka Ciidanka' : 'Jail-ka Sare';
+        assigned_level = 'REGION';
+        user_type = 'STAFF';
+        district_id = null;
       }
     }
     if (req.user.scopeType === 'district') {

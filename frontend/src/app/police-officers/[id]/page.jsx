@@ -301,7 +301,7 @@ export default function OfficerDetailsPage({ params }) {
   ];
 
   return (
-    <ProtectedRoute requiredPermissions={['officers.update']}>
+    <ProtectedRoute requiredPermissions={['officers.view']}>
       <Card loading={loading} variant="none">
         
         <Space orientation="vertical" size="large" style={{ width: '100%' }}>

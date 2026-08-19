@@ -24,6 +24,12 @@ exports.getAll = async (req, res, next) => {
               WHEN a.assignment_type = 'Region Unit' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
               WHEN a.assignment_type = 'District Station' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
+              WHEN a.assignment_type = 'Sub-Admin' THEN COALESCE((
+                SELECT CONCAT('Taliska Guud (User: ', u.username, ')')
+                FROM users u
+                WHERE u.id = a.assignment_id OR u.police_officer_id = o.id
+                LIMIT 1
+              ), 'Taliska Guud (Maamul Dhexe)')
               WHEN a.assignment_type = 'District User Link' THEN (
                 SELECT d.district_name
                 FROM users u
@@ -98,6 +104,12 @@ exports.getById = async (req, res, next) => {
           WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=t.from_assignment_id)
           WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=t.from_assignment_id)
           WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=t.from_assignment_id)
+          WHEN 'Sub-Admin' THEN COALESCE((
+            SELECT CONCAT('Taliska Guud (User: ', u.username, ')')
+            FROM users u
+            WHERE u.id=t.from_assignment_id OR u.police_officer_id=t.officer_id
+            LIMIT 1
+          ), 'Taliska Guud (Maamul Dhexe)')
           WHEN 'District User Link' THEN (
             SELECT d.district_name
             FROM users u
@@ -112,6 +124,12 @@ exports.getById = async (req, res, next) => {
           WHEN 'Region Unit' THEN (SELECT region_name FROM regions WHERE id=t.to_assignment_id)
           WHEN 'District' THEN (SELECT district_name FROM districts WHERE id=t.to_assignment_id)
           WHEN 'District Station' THEN (SELECT district_name FROM districts WHERE id=t.to_assignment_id)
+          WHEN 'Sub-Admin' THEN COALESCE((
+            SELECT CONCAT('Taliska Guud (User: ', u.username, ')')
+            FROM users u
+            WHERE u.id=t.to_assignment_id OR u.police_officer_id=t.officer_id
+            LIMIT 1
+          ), 'Taliska Guud (Maamul Dhexe)')
           WHEN 'District User Link' THEN (
             SELECT d.district_name
             FROM users u
@@ -132,6 +150,12 @@ exports.getById = async (req, res, next) => {
           WHEN a.assignment_type = 'Region Unit' THEN (SELECT region_name FROM regions WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
           WHEN a.assignment_type = 'District Station' THEN (SELECT district_name FROM districts WHERE id = a.assignment_id)
+          WHEN a.assignment_type = 'Sub-Admin' THEN COALESCE((
+            SELECT CONCAT('Taliska Guud (User: ', u.username, ')')
+            FROM users u
+            WHERE u.id = a.assignment_id OR u.police_officer_id = a.officer_id
+            LIMIT 1
+          ), 'Taliska Guud (Maamul Dhexe)')
           WHEN a.assignment_type = 'District User Link' THEN (
             SELECT d.district_name
             FROM users u
@@ -152,7 +176,7 @@ exports.getById = async (req, res, next) => {
       officer.current_assignment_name = currentReq.assignment_name;
     } else {
       officer.current_assignment_type = 'Unassigned';
-      officer.current_assignment_name = 'Headquarters';
+      officer.current_assignment_name = 'Unassigned';
     }
 
     res.json({ success: true, data: officer });
@@ -194,36 +218,42 @@ exports.create = async (req, res, next) => {
       return res.status(400).json({ success: false, message: validationError });
     }
 
-    if(!full_name||!mother_name||!date_of_birth||!gender||!phone)return res.status(400).json({success:false,message:'Magaca, magaca hooyada, dhalashada, jinsiga iyo telefoonka waa wajib.'});
-    if(!req.file)return res.status(400).json({success:false,message:'Sawirka askariga waa wajib; document ama fayl aan sawir ahayn lama oggola.'});
-    const profile_image=req.file?'/uploads/officers/'+req.file.filename:null;
-    let force_number=null;
-    for(let attempt=0;attempt<5;attempt++){
-      const year=new Date().getFullYear();const[[last]]=await db.query(`SELECT force_number FROM police_officers WHERE force_number LIKE ? ORDER BY CAST(SUBSTRING_INDEX(force_number,'-',-1) AS UNSIGNED) DESC LIMIT 1`,[`SPF-${year}-%`]);
-      const next=(Number(String(last?.force_number||'').split('-').pop())||0)+1;force_number=`SPF-${year}-${String(next+attempt).padStart(5,'0')}`;
-      const[[duplicate]]=await db.query('SELECT id FROM police_officers WHERE force_number=?',[force_number]);if(!duplicate)break;
+    if (!full_name || !mother_name || !date_of_birth || !gender || !phone) {
+      return res.status(400).json({ success: false, message: 'Magaca, magaca hooyada, dhalashada, jinsiga iyo telefoonka waa wajib.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Sawirka askariga waa wajib; document ama fayl aan sawir ahayn lama oggola.' });
+    }
+    const profile_image = req.file ? '/uploads/officers/' + req.file.filename : null;
+    let force_number = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const year = new Date().getFullYear();
+      const [[last]] = await db.query(`SELECT force_number FROM police_officers WHERE force_number LIKE ? ORDER BY CAST(SUBSTRING_INDEX(force_number,'-',-1) AS UNSIGNED) DESC LIMIT 1`, [`SPF-${year}-%`]);
+      const next = (Number(String(last?.force_number || '').split('-').pop()) || 0) + 1;
+      force_number = `SPF-${year}-${String(next + attempt).padStart(5, '0')}`;
+      const [[duplicate]] = await db.query('SELECT id FROM police_officers WHERE force_number = ?', [force_number]);
+      if (!duplicate) break;
     }
 
-    const location=await getUserLocation(req.user); const directApproval=req.user.role==='admin';
+    const location = await getUserLocation(req.user);
+    const directApproval = req.user.role === 'admin';
     const [result] = await db.query(
-      `INSERT INTO police_officers (full_name,mother_name, force_number, rank_id, phone, email, national_id, department, position, gender, date_of_birth, address, employment_date, profile_image, employment_status, weapons_issued, blood_group, station_id, created_by,approval_status,state_administration_id,region_id,district_id,registration_state_administration_id,registration_region_id,registration_district_id)
+      `INSERT INTO police_officers (full_name, mother_name, force_number, rank_id, phone, email, national_id, department, position, gender, date_of_birth, address, employment_date, profile_image, employment_status, weapons_issued, blood_group, station_id, created_by, approval_status, state_administration_id, region_id, district_id, registration_state_administration_id, registration_region_id, registration_district_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        full_name, mother_name, force_number, null, phone, null, national_id||null, department||null, position||null, gender, date_of_birth, address || null, employment_date||null, profile_image,
-        employment_status||'active', weapons_issued||null, blood_group||null, station_id||null, req.user.username,directApproval?'APPROVED':'PENDING',location.state_administration_id||null,location.region_id||null,location.district_id||null,
-        location.state_administration_id||null,location.region_id||null,location.district_id||null
+        full_name, mother_name, force_number, null, phone, null, national_id || null, department || null, position || null, gender, date_of_birth, address || null, employment_date || null, profile_image,
+        employment_status || 'active', weapons_issued || null, blood_group || null, station_id || null, req.user.username, directApproval ? 'APPROVED' : 'PENDING', location.state_administration_id || null, location.region_id || null, location.district_id || null,
+        location.state_administration_id || null, location.region_id || null, location.district_id || null
       ]
     );
 
-    await db.query('INSERT INTO officer_approval_history(officer_id,previous_status,new_status,notes,performed_by) VALUES(?,NULL,?,?,?)',[result.insertId,directApproval?'APPROVED':'PENDING',directApproval?'Admin ayaa abuuray oo ansixiyey.':'Waxaa loo gudbiyey State Administration.',req.user.username]);
-    res.json({ success: true, message: directApproval?'Sarkaalka waa la abuuray.':'Askariga waa la diiwaangeliyey, wuxuuna sugayaa State Administration.', id: result.insertId, force_number, profile_image });
-  } catch (err) { 
-    if(err.code === 'ER_DUP_ENTRY') return res.status(400).json({success: false, message: 'Force number already exists.'});
-    next(err); 
+    await db.query('INSERT INTO officer_approval_history(officer_id, previous_status, new_status, notes, performed_by) VALUES(?, NULL, ?, ?, ?)', [result.insertId, directApproval ? 'APPROVED' : 'PENDING', directApproval ? 'Admin ayaa abuuray oo ansixiyey.' : 'Waxaa loo gudbiyey State Administration.', req.user.username]);
+    res.json({ success: true, message: directApproval ? 'Sarkaalka waa la abuuray.' : 'Askariga waa la diiwaangeliyey, wuxuuna sugayaa State Administration.', id: result.insertId, force_number, profile_image });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ success: false, message: 'Force number already exists.' });
+    next(err);
   }
 };
-
-exports.reviewApproval=async(req,res,next)=>{try{const{status,rank_id,notes}=req.body;if(!['APPROVED','REJECTED','RETURNED'].includes(status))return res.status(400).json({success:false,message:'Xaalad sax ah dooro.'});const[[officer]]=await db.query('SELECT * FROM police_officers WHERE id=?',[req.params.id]);if(!officer)return res.status(404).json({success:false,message:'Askariga lama helin.'});if(status==='APPROVED'&&!rank_id)return res.status(400).json({success:false,message:'Darajo ayaa loo baahan yahay marka la ansixinayo.'});await db.query(`UPDATE police_officers SET approval_status=?,rank_id=COALESCE(?,rank_id),employment_status=?,approval_notes=?,approved_by=?,approved_at=IF(?='APPROVED',NOW(),approved_at) WHERE id=?`,[status,rank_id||null,status==='APPROVED'?'active':'inactive',notes||null,req.user.username,status,officer.id]);await db.query('INSERT INTO officer_approval_history(officer_id,previous_status,new_status,notes,performed_by) VALUES(?,?,?,?,?)',[officer.id,officer.approval_status,status,notes||null,req.user.username]);await writeAuditLog({userId:req.user.username,userEmail:req.user.email,action:'REVIEW_OFFICER_REGISTRATION',entityType:'police_officers',entityId:officer.id,oldData:{status:officer.approval_status},newData:{status,rank_id,notes}});res.json({success:true,message:status==='APPROVED'?'Askariga waa la ansixiyey oo la hawlgeliyey.':'Go’aanka waa la kaydiyey.'})}catch(e){next(e)}};
 
 // Ansixintu waxay beddeshaa xaaladda ansixinta iyo darajada oo keliya.
 // Xaaladda shaqadu waxay ahaanaysaa active laga bilaabo maalinta la diiwaangeliyo.
@@ -233,13 +263,13 @@ exports.reviewApproval = async (req, res, next) => {
     if (!['APPROVED', 'REJECTED', 'RETURNED'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Xaalad sax ah dooro.' });
     }
-    const [[officer]] = await db.query('SELECT * FROM police_officers WHERE id=?', [req.params.id]);
+    const [[officer]] = await db.query('SELECT * FROM police_officers WHERE id = ?', [req.params.id]);
     if (!officer) return res.status(404).json({ success: false, message: 'Askariga lama helin.' });
     if (status === 'APPROVED' && !rank_id) {
       return res.status(400).json({ success: false, message: 'Darajo ayaa loo baahan yahay marka la ansixinayo.' });
     }
     if (status === 'APPROVED') {
-      const [[rank]] = await db.query('SELECT rank_code FROM ranks WHERE id=?', [rank_id]);
+      const [[rank]] = await db.query('SELECT rank_code FROM ranks WHERE id = ?', [rank_id]);
       if (!rank) return res.status(400).json({ success: false, message: 'Darajada la doortay lama helin.' });
       if (req.user.role === 'state_admin' && !STATE_ADMIN_RANK_CODES.has(String(rank.rank_code).trim().toUpperCase())) {
         return res.status(403).json({
@@ -250,13 +280,13 @@ exports.reviewApproval = async (req, res, next) => {
     }
     await db.query(
       `UPDATE police_officers
-       SET approval_status=?, rank_id=COALESCE(?,rank_id), approval_notes=?, approved_by=?,
-           approved_at=IF(?='APPROVED',NOW(),approved_at)
-       WHERE id=?`,
+       SET approval_status = ?, rank_id = COALESCE(?, rank_id), approval_notes = ?, approved_by = ?,
+           approved_at = IF(? = 'APPROVED', NOW(), approved_at)
+       WHERE id = ?`,
       [status, rank_id || null, notes || null, req.user.username, status, officer.id]
     );
     await db.query(
-      'INSERT INTO officer_approval_history(officer_id,previous_status,new_status,notes,performed_by) VALUES(?,?,?,?,?)',
+      'INSERT INTO officer_approval_history(officer_id, previous_status, new_status, notes, performed_by) VALUES(?, ?, ?, ?, ?)',
       [officer.id, officer.approval_status, status, notes || null, req.user.username]
     );
     await writeAuditLog({

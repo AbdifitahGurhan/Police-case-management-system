@@ -1281,7 +1281,7 @@ export default function CourtCasesPage() {
           <Col span={12}>
             <Form.Item
               name="deadline_date"
-              label="Deadline"
+              label="Deadline (Ugu badnaan 45 maalmood)"
               rules={[
                 { required: true, message: 'Fadlan dooro taariikhda deadline-ka' },
                 {
@@ -1290,12 +1290,19 @@ export default function CourtCasesPage() {
                     if (val.isBefore(dayjs().startOf('day'))) {
                       return Promise.reject(new Error('Taariikhda deadline-ka ma noqon karto taariikh la soo dhaafay'));
                     }
+                    if (val.isAfter(dayjs().add(45, 'day').endOf('day'))) {
+                      return Promise.reject(new Error('Deadline-ka waa inuu ku guda jiro 45 maalmood'));
+                    }
                     return Promise.resolve();
                   }
                 }
               ]}
             >
-              <DatePicker style={{ width: '100%' }} disabledDate={(current) => current && current.isBefore(dayjs().startOf('day'))} />
+              <DatePicker
+                style={{ width: '100%' }}
+                placeholder="Dooro taariikh (1 - 45 maalmood)"
+                disabledDate={(current) => current && (current.isBefore(dayjs().startOf('day')) || current.isAfter(dayjs().add(45, 'day').endOf('day')))}
+              />
             </Form.Item>
           </Col>
           <Col span={24}>

@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, App, Upload, Avatar, Tag, DatePicker, Row, Col, Image, Alert, Tabs } from 'antd';
-import { PlusOutlined, EditOutlined, UploadOutlined, SwapOutlined, EyeOutlined, StarOutlined } from '@ant-design/icons';
+import { Table, Card, Typography, Space, Button, Modal, Form, Input, Select, App, Upload, Avatar, Tag, DatePicker, Row, Col, Image, Alert, Tabs, Popconfirm } from 'antd';
+import { PlusOutlined, EditOutlined, UploadOutlined, SwapOutlined, EyeOutlined, StarOutlined, SearchOutlined, SafetyCertificateOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,6 +21,7 @@ import {
 } from '@/utils/validation';
 
 const { Title } = Typography;
+const { Option } = Select;
 const COMMISSIONED_CODES = new Set(['SG', 'SGS', 'SGT', 'GSH-S', 'GSH-DH', 'GSH', 'DHM', 'LXDG', 'XDG']);
 const STATE_ADMIN_RANK_CODES = new Set(['AL', 'SA', 'XDH', 'LXDH', 'LA', 'SXD']);
 const DISTRICT_USER_ROLES = new Set(['sub_admin', 'personnel_registry', 'ob_staff', 'investigator', 'station_jail']);
@@ -101,8 +102,11 @@ export default function PoliceOfficersPage() {
   const canView = allowed('officers.view');
   const canCreate = allowed('officers.create');
   const canUpdate = allowed('officers.update');
+  const canDelete = allowed('officers.delete');
   const canApprove = allowed('officers.approve');
   const canAssignRank = allowed('ranks.assign') || allowed('officers.approve');
+  const canChangeRank = canAssignRank;
+  const canReview = canApprove;
   const canViewLocations = allowed('locations.view');
   const canTransfer = allowed('officers.transfer') && canViewLocations;
   const { message } = App.useApp();
@@ -356,12 +360,12 @@ export default function PoliceOfficersPage() {
        
        let targetId = null;
        if (values.to_assignment_type === 'State Administration' || values.to_assignment_type === 'State Unit') targetId = values.state_id;
-       if (values.to_assignment_type === 'Sub-Admin' || values.to_assignment_type === 'District User Link') targetId = values.sub_admin_id;
+       if (values.to_assignment_type === 'District User Link') targetId = values.sub_admin_id;
        if (values.to_assignment_type === 'District Station') targetId = isDistrictAdmin ? (user?.location?.districtId || user?.scopeId) : values.district_id;
        if (values.to_assignment_type === 'Region' || values.to_assignment_type === 'Region Unit') targetId = values.region_id;
        if (values.to_assignment_type === 'District') targetId = values.district_id;
 
-       if (!targetId) {
+       if (values.to_assignment_type !== 'Sub-Admin' && !targetId) {
          return message.error("Please complete the unit selection dropdowns.");
        }
 
@@ -372,7 +376,7 @@ export default function PoliceOfficersPage() {
          transfer_reason: values.transfer_reason,
          remarks: values.remarks,
        });
-       message.success("Officer transferred successfully.");
+       message.success("Sarkaalka si guul leh ayaa loo qoondeeyay / loo wareejiyay.");
        setIsTransferModalOpen(false);
        fetchData();
      } catch (err) {
@@ -383,7 +387,7 @@ export default function PoliceOfficersPage() {
 
   const reviewOfficer = async status => {
     try { const values=await reviewForm.validateFields(status==='APPROVED'?['rank_id','notes']:['notes']); await api.post(`/police-officers/${reviewRecord.id}/review`,{...values,status}); message.success(status==='APPROVED'?'Askariga waa la ansixiyey oo la hawlgeliyey.':'Go’aanka waa la kaydiyey.');setReviewRecord(null);reviewForm.resetFields();fetchData(); }
-    catch(error){if(!error.errorFields)message.error(error.response?.data?.message||'Go’aanka lama kaydin karin.');}
+    catch(e){ if(e.errorFields)return; message.error(e.response?.data?.message||'Action failed'); }
   };
 
   const handleOpenRankModal = (record) => {
@@ -428,7 +432,7 @@ export default function PoliceOfficersPage() {
         originFileObj: file,
       };
       setFileList([fileObj]);
-      return false; // Prevent auto upload
+      return false;
     },
   };
 
@@ -437,10 +441,11 @@ export default function PoliceOfficersPage() {
       title: 'Sawirka',
       dataIndex: 'profile_image',
       key: 'profile_image',
-      render: (i, record) => (
+      width: 70,
+      render: (img, record) => (
         <Image
-          src={getImageUrl(i)}
-          alt={record.full_name}
+          src={getImageUrl(img)}
+          alt={record.full_name || 'Officer'}
           width={44}
           height={44}
           style={{ objectFit: 'cover', borderRadius: '50%', border: '1px solid #e5e7eb' }}
@@ -455,43 +460,100 @@ export default function PoliceOfficersPage() {
       title: 'Goobta Shaqada',
       key: 'current_assignment',
       render: (_, record) => {
-        if (!record.current_assignment_name && !record.current_assignment_type) {
+        const isSubAdmin = record.current_assignment_type === 'Sub-Admin';
+        const isUnassigned = (!record.current_assignment_name ||
+          record.current_assignment_name === 'Unassigned' ||
+          record.current_assignment_name === 'Unknown' ||
+          record.current_assignment_type === 'Unassigned' ||
+          !record.current_assignment_type) && !isSubAdmin;
+
+        if (isUnassigned) {
           return (
             <Space orientation="vertical" size={0}>
-              <Typography.Text type="secondary">Lama qoondeyn</Typography.Text>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Unassigned</Typography.Text>
+              <Tag color="default">Lama Qoondeyn</Tag>
             </Space>
           );
         }
 
-        const isCentralCommand = ['Sub-Admin', 'State Administration', 'Admin'].includes(record.current_assignment_type);
+        if (isSubAdmin) {
+          return (
+            <Space orientation="vertical" size={0}>
+              <Typography.Text strong>{record.current_assignment_name || 'Taliska Guud (Qaran)'}</Typography.Text>
+              <Tag color="purple" style={{ margin: 0 }}>Maamul Hoose (Sub-Admin)</Tag>
+            </Space>
+          );
+        }
+
+        const isCentralCommand = ['State Administration', 'Admin'].includes(record.current_assignment_type);
         const mainLocation = record.current_assignment_name || (isCentralCommand ? 'Taliska Dhexe' : 'Goobta Shaqada');
 
         return (
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{mainLocation}</Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {assignmentTypeLabel(record.current_assignment_type) || ''}
+              {assignmentTypeLabel(record.current_assignment_type) || record.current_assignment_type}
             </Typography.Text>
           </Space>
         );
       },
     },
-    { title: 'Ansixinta', dataIndex: 'approval_status', render: s => <Tag color={s==='APPROVED'?'green':s==='PENDING'?'gold':'red'}>{s||'APPROVED'}</Tag> },
-    { title: 'Xaaladda Shaqada', dataIndex: 'employment_status', key: 'employment_status', render: s => <Tag color={String(s).toLowerCase() === 'active' ? 'green' : 'red'}>{s}</Tag> },
     {
-      title: 'Ficilka',
-      key: 'action',
+      title: 'Ansixinta',
+      dataIndex: 'approval_status',
+      render: (s) => {
+        const status = s || 'APPROVED';
+        const labelMap = { APPROVED: 'La Ansixiyey', PENDING: 'Sugaya Ansixin', REJECTED: 'La Diiday' };
+        const colorMap = { APPROVED: 'green', PENDING: 'gold', REJECTED: 'red' };
+        return <Tag color={colorMap[status] || 'blue'}>{labelMap[status] || status}</Tag>;
+      },
+    },
+    {
+      title: 'Xaaladda Shaqada',
+      dataIndex: 'employment_status',
+      render: (status) => {
+        const normalized = String(status || '').toLowerCase();
+        const color = normalized === 'active' ? 'success' : 'default';
+        const label = normalized === 'active' ? 'Shaqeynaya' : 'Aan Shaqeyn';
+        return <Tag color={color}>{label}</Tag>;
+      },
+    },
+    {
+      title: 'Diiwaangeliyaha',
+      dataIndex: 'is_deployed_by_admin',
+      key: 'deployed_by',
+      render: (isDeployed, record) => {
+        if (isDeployed || String(record.created_by).toLowerCase() === 'admin') {
+          return <Tag color="purple">Taliska Guud (Admin)</Tag>;
+        }
+        return <Tag color="cyan">Dawlad Goboleed</Tag>;
+      },
+    },
+    {
+      title: 'Hawlaha',
+      key: 'actions',
       render: (_, record) => (
-        <Space wrap>
-          {canView && <Button icon={<EyeOutlined />} type="primary" onClick={() => router.push(`/police-officers/${record.id}`)}>Faahfaahin</Button>}
+        <Space>
+          <Button icon={<EyeOutlined />} onClick={() => router.push(`/police-officers/${record.id}`)}>Eeg</Button>
           {canUpdate && (user?.role === 'admin' || (!record.is_deployed_by_admin && String(record.created_by).toLowerCase() !== 'admin')) && <Button icon={<EditOutlined />} onClick={() => handleOpenModal(record)}>Wax ka beddel</Button>}
-          {canAssignRank && (user?.role === 'admin' || user?.role === 'state_admin') && (
-            <Button icon={<StarOutlined />} onClick={() => handleOpenRankModal(record)}>Darajo</Button>
+          {canTransfer && <Button icon={<SwapOutlined />} type="dashed" onClick={() => handleOpenTransferModal(record)}>Qoondee / Beddel</Button>}
+          {canChangeRank && (
+            <Button
+              icon={<SafetyCertificateOutlined />}
+              onClick={() => handleOpenRankModal(record)}
+            >
+              Darajo
+            </Button>
           )}
-          {canTransfer && (user?.role !== 'state_admin' || STATE_ADMIN_RANK_CODES.has(String(record.rank_code || '').trim().toUpperCase())) &&
-            <Button icon={<SwapOutlined />} type="dashed" onClick={() => handleOpenTransferModal(record)}>Wareeji</Button>}
-          {canApprove&&user?.role==='state_admin'&&record.approval_status==='PENDING'&&<Button type="primary" onClick={()=>{setReviewRecord(record);reviewForm.resetFields()}}>Dib u Eeg</Button>}
+          {canReview && record.approval_status === 'PENDING' && (
+            <Button type="primary" onClick={() => { setReviewRecord(record); reviewForm.resetFields(); }}>
+              Ansi bixi
+            </Button>
+          )}
+          {canDelete && (user?.role === 'admin' || (!record.is_deployed_by_admin && String(record.created_by).toLowerCase() !== 'admin')) && (
+            <Popconfirm title="Ma hubtaa inaad tirtirto sarkaalkan?" onConfirm={() => handleDelete(record.id)} okText="Haa" cancelText="Maya">
+              <Button danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -505,6 +567,12 @@ export default function PoliceOfficersPage() {
     loading,
     scroll: { x: 'max-content' },
   };
+
+  const isCurrentAssigned = transferRecord?.current_assignment_name &&
+    transferRecord.current_assignment_name !== 'Unassigned' &&
+    transferRecord.current_assignment_name !== 'Unknown' &&
+    transferRecord?.current_assignment_type !== 'Unassigned' &&
+    transferRecord?.current_assignment_type;
 
   return (
     <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'state_admin', 'personnel_registry', 'region_admin', 'region_commander']} requiredPermissions={['officers.view']}>
@@ -538,75 +606,98 @@ export default function PoliceOfficersPage() {
           )}
         </Card>
 
-        {/* Create/Edit Modal */}
+        {/* Create / Edit Officer Modal */}
         <Modal
-          title={editingRecord ? "Wax ka Beddel Askariga" : "Diiwaangeli Askari"}
+          title={editingRecord ? "Wax ka beddel Xogta Sarkaalka" : "Diiwaangeli Askari Cusub"}
           open={isModalOpen}
-          width={700}
           onCancel={() => setIsModalOpen(false)}
           onOk={handleSave}
+          width={800}
         >
           <Form form={form} layout="vertical">
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="full_name" label="Magaca oo Buuxa" rules={nameRules('Magaca askariga')}>
-                  <Input placeholder="Qor magaca oo buuxa" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="mother_name" label="Magaca Hooyada" rules={nameRules('Magaca hooyada')}>
-                  <Input placeholder="Qor magaca hooyada" />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="date_of_birth" label="Taariikhda Dhalashada" rules={[requiredRule('Taariikhda dhalashada'), noFutureDateRule('Taariikhda dhalashada'), minimumAge18Rule('Taariikhda dhalashada')]}><DatePicker style={{ width: '100%' }} disabledDate={disabledUnder18DobDate} /></Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item label="Da’da"><Input readOnly value={calculatedAge === '' ? '' : `${calculatedAge} sano`} placeholder="Waxaa laga xisaabinayaa dhalashada" /></Form.Item>
-              </Col>
-            </Row>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="gender" label="Jinsiga" rules={[requiredRule('Jinsiga')]}><Select options={[{value:'male',label:'Lab'},{value:'female',label:'Dhedig'}]} /></Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="phone" label="Lambarka Telefoonka" rules={[requiredRule('Telefoonka'),...phoneRules]}><Input placeholder="tusaale +252615555555" /></Form.Item>
-              </Col>
-            </Row>
-            <Form.Item name="address" label="Cinwaanka Deganaanshaha" rules={[textLengthRule('Cinwaanka deganaanshaha', 3, 500)]}>
-              <Input.TextArea rows={2} placeholder="Qor cinwaanka uu askarigu degan yahay" />
-            </Form.Item>
+             <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="full_name" label="Magaca oo Buuxa" rules={[requiredRule('Magaca')]}>
+                    <Input placeholder="Tusaale: Cali Faarax Axmed" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="mother_name" label="Magaca Hooyada" rules={[requiredRule('Magaca Hooyada')]}>
+                    <Input placeholder="Tusaale: Maryan Maxamed Nuur" />
+                  </Form.Item>
+                </Col>
+             </Row>
 
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="national_id" label="National ID (ikhtiyaari)">
-                  <Input placeholder="National ID" />
-                </Form.Item>
-              </Col>
-            </Row>
-            {!editingRecord && (
-              <Card size="small" title="Goobtii Laga Diiwaangeliyey" style={{ marginBottom: 16 }}>
-                <Row gutter={12}>
-                  <Col span={12}><Form.Item label="State" style={{ marginBottom: 0 }}><Input readOnly value={user?.location?.stateName || 'Si otomaatig ah'} /></Form.Item></Col>
-                  <Col span={12}><Form.Item label="Gobolka" style={{ marginBottom: 0 }}><Input readOnly value={user?.location?.regionName || '—'} /></Form.Item></Col>
-                </Row>
-              </Card>
-            )}
-            <Form.Item label="Sawirka Askariga" required>
-              <Upload {...uploadProps} listType="picture" accept=".jpg,.jpeg,.png,.webp,.gif">
-                <Button icon={<UploadOutlined />}>Dooro Sawir</Button>
-              </Upload>
-              <Typography.Text type="secondary">Waxaa la oggol yahay JPG, JPEG, PNG, WEBP ama GIF oo keliya; ugu badnaan 5MB.</Typography.Text>
-            </Form.Item>
-            <Form.Item label="Force Number"><Input readOnly value={editingRecord?.force_number || 'Si otomaatig ah ayaa loo dhalinayaa'} /></Form.Item>
+             <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="date_of_birth" label="Taariikhda Dhalashada" rules={[requiredRule('Taariikhda dhalashada')]}>
+                    <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" placeholder="Dooro Taariikhda" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="Da'da (Sano)">
+                    <Input value={calculatedAge ? `${calculatedAge} sano` : ''} disabled placeholder="Si toos ah ayaa loo xisaabinayaa" />
+                  </Form.Item>
+                </Col>
+             </Row>
+
+             <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="gender" label="Jinsiga" rules={[requiredRule('Jinsiga')]}>
+                    <Select placeholder="Dooro Jinsiga">
+                      <Option value="Male">Lab (Male)</Option>
+                      <Option value="Female">Dhedig (Female)</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="phone" label="Telefoonka" rules={[requiredRule('Telefoonka')]}>
+                    <Input placeholder="Tusaale: +25261XXXXXXX ama 061XXXXXXX" />
+                  </Form.Item>
+                </Col>
+             </Row>
+
+             <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="national_id" label="Warqadda Aqoonsiga / National ID">
+                    <Input placeholder="Tusaale: SOM-XXXXXX" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="blood_group" label="Nooca Dhiigga (Blood Group)">
+                    <Select placeholder="Dooro Blood Group" allowClear>
+                      {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
+                        <Option key={bg} value={bg}>{bg}</Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+             </Row>
+
+             <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="department" label="Qeybta / Waaxda">
+                    <Input placeholder="Tusaale: CID, Traffic, Security" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="position" label="Booska / Xilka">
+                    <Input placeholder="Tusaale: Madaxa Ilaalada" />
+                  </Form.Item>
+                </Col>
+             </Row>
+
+             <Form.Item name="address" label="Cinwaanka">
+                <Input.TextArea rows={2} placeholder="Tusaale: Degmada Hodan, Muqdisho" />
+             </Form.Item>
+
+             <Form.Item label="Sawirka Askariga" required={!editingRecord}>
+                <Upload {...uploadProps}>
+                  <Button icon={<UploadOutlined />}>Dooro Sawir</Button>
+                </Upload>
+                <Typography.Text type="secondary">Waxaa la oggol yahay JPG, JPEG, PNG, WEBP ama GIF oo keliya; ugu badnaan 5MB.</Typography.Text>
+             </Form.Item>
           </Form>
-        </Modal>
-
-        {/* Review Modal */}
-        <Modal title={`Ansixinta Askariga · ${reviewRecord?.full_name||''}`} open={!!reviewRecord} onCancel={()=>setReviewRecord(null)} footer={null}>
-          <Form form={reviewForm} layout="vertical"><Form.Item name="rank_id" label="Darajada" rules={[{required:true,message:'Darajo dooro.'}]}><Select options={ranks.filter(r=>user?.role!=='state_admin'||STATE_ADMIN_RANK_CODES.has(String(r.rank_code||'').trim().toUpperCase())).map(r=>({value:r.id,label:`${r.rank_name} (${r.rank_code})`}))}/></Form.Item><Form.Item name="notes" label="Faallo"><Input.TextArea rows={3}/></Form.Item><Space><Button danger onClick={()=>reviewOfficer('REJECTED')}>Diid</Button><Button onClick={()=>reviewOfficer('RETURNED')}>Dib ugu Celi Sixid</Button><Button type="primary" onClick={()=>reviewOfficer('APPROVED')}>Ansixi oo Hawlgeli</Button></Space></Form>
         </Modal>
 
         {/* Deployment / Transfer Modal */}
@@ -619,12 +710,12 @@ export default function PoliceOfficersPage() {
         >
            <Form form={transferForm} layout="vertical">
               <Alert
-                type={transferRecord?.current_assignment_name ? "info" : "warning"}
+                type={isCurrentAssigned ? "info" : "warning"}
                 showIcon
                 style={{ marginBottom: 16 }}
                 title={
-                  transferRecord?.current_assignment_name ? (
-                    <span>Hadda wuxuu ku qoondeysan yahay: <strong>{(transferRecord.current_assignment_name === 'Unknown' || !transferRecord.current_assignment_name) ? (assignmentTypeLabel(transferRecord.current_assignment_type) || 'Goobta Shaqada') : transferRecord.current_assignment_name}</strong> ({assignmentTypeLabel(transferRecord.current_assignment_type)})</span>
+                  isCurrentAssigned ? (
+                    <span>Hadda wuxuu ku qoondeysan yahay: <strong>{transferRecord.current_assignment_name}</strong> ({assignmentTypeLabel(transferRecord.current_assignment_type)})</span>
                   ) : (
                     <span>Sarkaalkan weli goob shaqo looma qoondeyn (Unassigned).</span>
                   )
@@ -639,7 +730,7 @@ export default function PoliceOfficersPage() {
                  />
               </Form.Item>
 
-              {assignmentType && user?.role !== 'state_admin' && user?.role !== 'district_admin' && (
+              {assignmentType && assignmentType !== 'Sub-Admin' && user?.role !== 'state_admin' && user?.role !== 'district_admin' && (
                 <Form.Item name="state_id" label="State Administration (Maamulka Dawlad-Goboleedka)" rules={[requiredRule('State administration')]}>
                   <Select
                     placeholder="Dooro State Administration"
@@ -680,14 +771,14 @@ export default function PoliceOfficersPage() {
                 </Form.Item>
               )}
 
-              {(assignmentType === 'Sub-Admin' || assignmentType === 'District User Link') && (
+              {assignmentType === 'District User Link' && (
                 <Form.Item
                   name="sub_admin_id"
-                  label={assignmentType === 'Sub-Admin' ? "Sub-Admin (Maamul Hoose)" : "Operational Account (OB / Baare / Station Jail)"}
-                  rules={[requiredRule(assignmentType === 'Sub-Admin' ? 'Sub-Admin' : 'Operational Account')]}
+                  label="Operational Account (OB / Baare / Station Jail)"
+                  rules={[requiredRule('Operational Account')]}
                 >
                   <Select
-                    placeholder={assignmentType === 'Sub-Admin' ? "Dooro Sub-Admin" : "Dooro account-ka bannaan"}
+                    placeholder="Dooro account-ka bannaan"
                     showSearch
                     optionFilterProp="label"
                     options={eligibleSubAdmins.map(sa => ({
@@ -698,7 +789,7 @@ export default function PoliceOfficersPage() {
                 </Form.Item>
               )}
 
-              {selectedSubAdminUser && (() => {
+              {assignmentType === 'District User Link' && selectedSubAdminUser && (() => {
                 const selectedDistrictObj = (allDistricts.length ? allDistricts : districts || []).find(d => Number(d.id) === Number(selectedSubAdminUser?.district_id || selectedDistrict));
                 const districtNameDisplay = (selectedSubAdminUser?.district_name && selectedSubAdminUser.district_name !== 'Degmada')
                   ? selectedSubAdminUser.district_name

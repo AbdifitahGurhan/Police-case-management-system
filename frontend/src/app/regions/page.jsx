@@ -15,19 +15,19 @@ const REGIONS_BY_STATE = {
 
 export default function RegionsPage() {
   const columns = [
-    { title: 'Region Name', dataIndex: 'region_name', key: 'region_name' },
-    { title: 'State Name', dataIndex: 'state_name', key: 'state_name' },
+    { title: 'Magaca Gobolka', dataIndex: 'region_name', key: 'region_name' },
+    { title: 'Dawlad Goboleedka', dataIndex: 'state_name', key: 'state_name' },
   ];
 
   return (
     <ProtectedRoute allowedRoles={['admin', 'state_admin']}>
       <TierManager
-        entityName="Region"
+        entityName="Gobol"
         apiEndpoint="/regions"
         columns={columns}
         parentKey="state_administration_id"
         parentEndpoint="/state-administrations"
-        parentLabel="State Administration"
+        parentLabel="Dawlad Goboleedka"
         parentNameKey="state_name"
         autoParentRoles={['state_admin']}
         nameOptionsByParent={REGIONS_BY_STATE}

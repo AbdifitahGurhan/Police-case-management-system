@@ -801,25 +801,25 @@ export default function ReportsPage() {
 
   const activityColumns = [
     {
-      title: 'Time',
+      title: 'Waqtiga',
       dataIndex: 'created_at',
-      render: (value) => value ? dayjs(value).format('YYYY-MM-DD HH:mm') : 'N/A',
+      render: (value) => value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '—',
     },
     {
-      title: 'Case OB',
+      title: 'Lambarka OB',
       dataIndex: 'ob_number',
     },
     {
-      title: 'Ficilka',
+      title: 'Hawsha La Qabtay',
       dataIndex: 'action_type',
     },
     {
-      title: 'Officer',
+      title: 'Sarkaalka Fuliyay',
       dataIndex: 'officer_name',
-      render: (_, row) => row.officer_name || row.performed_by || 'N/A',
+      render: (_, row) => row.officer_name || row.performed_by || 'Nidaamka',
     },
     {
-      title: 'Description',
+      title: 'Sharaxaadda',
       dataIndex: 'description',
       ellipsis: true,
     },
@@ -827,23 +827,23 @@ export default function ReportsPage() {
 
   const prisonerColumns = [
     {
-      title: 'Name',
+      title: 'Magaca Maxbuuska',
       dataIndex: 'full_name',
       render: (value, row) => (
         <Space orientation="vertical" size={0}>
           <Text strong>{value}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>{row.ob_number}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>OB: {row.ob_number}</Text>
         </Space>
       ),
     },
-    { title: 'Station', dataIndex: 'station_name' },
-    { title: 'Status', dataIndex: 'sentence_status', render: (value) => <Tag color="blue">{value}</Tag> },
-    { title: 'Expected Release', dataIndex: 'expected_release_date', render: (value) => value || 'N/A' },
+    { title: 'Saldhigga Booliska', dataIndex: 'station_name' },
+    { title: 'Xaaladda Xukunka', dataIndex: 'sentence_status', render: (value) => <Tag color="blue">{value}</Tag> },
+    { title: 'Waqtiga Sii-deynta', dataIndex: 'expected_release_date', render: (value) => value ? dayjs(value).format('DD/MM/YYYY') : '—' },
   ];
 
   const renderDataTable = ({ columns, dataSource = [], rowKey, loading: tableLoading = loading, ...props }) => {
     if (!tableLoading && dataSource.length === 0) {
-      return <Text type="secondary">No records found.</Text>;
+      return <Text type="secondary">Wax xog ah lagama helin diiwaankan.</Text>;
     }
     return (
       <Table
@@ -864,9 +864,9 @@ export default function ReportsPage() {
       <div className="reports-page">
         <div className="reports-hero">
           <div>
-            <Text className="dashboard-eyebrow">Analytics Center</Text>
-            <Title level={2}>Reports & Monitoring</Title>
-            <Text type="secondary">Reports on cases, evidence, stations, and user activity.</Text>
+            <Text className="dashboard-eyebrow">Xarunta Warbixinnada</Text>
+            <Title level={2}>Warbixinnada & Dabagalka Guud</Title>
+            <Text type="secondary">Warbixinno dhammaystiran oo ku saabsan kiisaska, caddeymaha, saldhigyada, iyo xogta ciidanka.</Text>
           </div>
           <Space wrap>
             <Space orientation="vertical" size={4}>
@@ -879,19 +879,19 @@ export default function ReportsPage() {
               />
               {dateRangeError && <Text type="danger">{dateRangeError}</Text>}
             </Space>
-            <Button icon={<DownloadOutlined />} onClick={handleExportReport} loading={loading}>Export</Button>
+            <Button icon={<DownloadOutlined />} onClick={handleExportReport} loading={loading}>Soo Deji Warbixinta</Button>
             {user?.role === 'admin' && (
-              <Button icon={<DownloadOutlined />} onClick={handleExportCasesCsv}>Cases CSV</Button>
+              <Button icon={<DownloadOutlined />} onClick={handleExportCasesCsv}>Kiisaska (CSV)</Button>
             )}
             <Button type="primary" icon={<SafetyCertificateOutlined />} onClick={handleIntegrityReport} loading={loading}>
-              Integrity Report
+              Warbixinta Amniga & Daacadnimada
             </Button>
           </Space>
         </div>
 
         <Row gutter={[16, 16]}>
           <Col xs={24}>
-            <Card variant="none" className="report-panel" title="Printable Reports" extra={<FileTextOutlined />}>
+            <Card variant="none" className="report-panel" title="Warbixinnada Rasmiga ah ee La Daabacan Karo" extra={<FileTextOutlined />}>
               <Space wrap align="center">
                 <Select
                   value={selectedPrintableReport}

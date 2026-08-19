@@ -249,9 +249,9 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
 
   const apiOrigin = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
   const profileImageUrl = user.profileImage ? `${apiOrigin}${user.profileImage}` : null;
-  const displayName = user.fullName || user.username || 'User';
+  const displayName = user.fullName || user.username || 'Isticmaale';
   const isDarkMode = theme === 'dark';
-  const themeToggleLabel = isDarkMode ? 'U beddel Iftiinka (Light)' : 'U beddel Mugdiga (Dark)';
+  const themeToggleLabel = isDarkMode ? 'Habka Iftiinka (Light)' : 'Habka Mugdiga (Dark)';
   const initials = displayName
     .split(' ')
     .filter(Boolean)
@@ -261,21 +261,24 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     .toUpperCase();
 
   const roleLabels = {
-    admin: 'Dawladda Dhexe (Admin)',
-    sub_admin: 'Sub Admin',
+    admin: 'Dawladda Dhexe (Taliska Guud)',
+    sub_admin: 'Maamul Hoose (Sub-Admin)',
     state_admin: 'Maamulka Dawlad Goboleedka',
     region_admin: 'Maamulka Gobolka',
     district_admin: 'Maamulka Degmada',
     personnel_registry: 'Diiwaanka Ciidanka',
     ob_staff: 'Diiwaangeliyaha OB-da',
-    investigator: 'Baare (Investigator)',
+    investigator: 'Baaraha Kiiska',
     station_jail: 'Xabsiga Saldhigga',
     jail: 'Xabsiga Dhexe',
     court: 'Maxkamadda',
-    cid: 'CID Baare',
+    cid: 'Baaraha CID-da',
+    officer: 'Sarkaalka Booliska',
+    judge: 'Garsoore',
+    prosecutor: 'Xeer-ilaaliye',
   };
 
-  const locationBadge = user.location?.name || user.district_name || user.region_name || user.state_name || (user.role === 'admin' ? 'HQ Central Command' : null);
+  const locationBadge = user.location?.name || user.district_name || user.region_name || user.state_name || (user.role === 'admin' ? 'Taliska Guud ee Ciidanka' : null);
 
   const menuItems = [
     {
@@ -296,7 +299,7 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     { type: 'divider' },
     {
       key: 'profile',
-      label: 'Profile-kayga (My Profile)',
+      label: 'Xogta Koontadayda',
       icon: <UserOutlined />,
       onClick: () => {
         profileForm.setFieldsValue({
@@ -314,7 +317,7 @@ const TopNavbar = ({ collapsed, setCollapsed }) => {
     },
     {
       key: 'logout',
-      label: 'Ka bax Nidaamka (Logout)',
+      label: 'Ka Bax Nidaamka',
       icon: <LogoutOutlined />,
       danger: true,
       onClick: logout,

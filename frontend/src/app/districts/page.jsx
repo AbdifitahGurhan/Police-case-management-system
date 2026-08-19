@@ -7,14 +7,14 @@ import { DISTRICTS_BY_REGION } from '@/utils/somaliDistricts';
 
 export default function DistrictsPage() {
   const columns = [
-    { title: 'District Name', dataIndex: 'district_name', key: 'district_name' },
+    { title: 'Magaca Degmada', dataIndex: 'district_name', key: 'district_name' },
     { title: 'Gobolka', dataIndex: 'region_name', key: 'region_name' },
   ];
 
   return (
     <ProtectedRoute allowedRoles={['admin', 'region_admin']}>
       <TierManager
-        entityName="District"
+        entityName="Degmo"
         apiEndpoint="/districts"
         columns={columns}
         parentKey="region_id"

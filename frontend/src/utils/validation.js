@@ -132,8 +132,55 @@ export const minimumAge18Rule = (label = 'Taariikhda dhalashada') => ({
   },
 });
 
-export const nameRules = (label = 'Name') => [requiredRule(label), textLengthRule(label, 2, 150)];
-export const optionalNameRules = (label = 'Name') => [textLengthRule(label, 2, 150)];
+export const lettersOnlyRule = (label = 'Qoraalka') => ({
+  validator: (_, value) => {
+    const text = trimValue(value);
+    if (!text) return Promise.resolve();
+    // Allow letters (including accented/Somali vowels), spaces, hyphens, and apostrophes
+    const lettersRegex = /^[a-zA-ZÀ-ÿ\s\'-]+$/;
+    if (!lettersRegex.test(text)) {
+      return Promise.reject(new Error(`${label} waa inuu ka koobnaadaa xarfo iyo meelo bannaan oo keliya (lambarro lama oggola).`));
+    }
+    return Promise.resolve();
+  },
+});
+
+export const nameOnlyRule = (label = 'Magaca') => ({
+  validator: (_, value) => {
+    const text = trimValue(value);
+    if (!text) return Promise.resolve();
+    const nameRegex = /^[a-zA-ZÀ-ÿ\s\'-]{2,120}$/;
+    if (!nameRegex.test(text)) {
+      return Promise.reject(new Error(`${label} waa inuu noqdaa magac sax ah oo xarfo keliya ka kooban (lambarro lama oggola).`));
+    }
+    return Promise.resolve();
+  },
+});
+
+export const textNotPureNumberRule = (label = 'Goobta/Qoraalka') => ({
+  validator: (_, value) => {
+    const text = trimValue(value);
+    if (!text) return Promise.resolve();
+    if (/^\d+$/.test(text)) {
+      return Promise.reject(new Error(`${label} ma noqon karo lambarro oo keliya, fadlan qor qoraal sax ah.`));
+    }
+    return Promise.resolve();
+  },
+});
+
+export const numberOnlyRule = (label = 'Lambarka') => ({
+  validator: (_, value) => {
+    const text = trimValue(value);
+    if (!text) return Promise.resolve();
+    if (!/^\d+$/.test(text)) {
+      return Promise.reject(new Error(`${label} waa inuu ka koobnaadaa lambarro oo keliya.`));
+    }
+    return Promise.resolve();
+  },
+});
+
+export const nameRules = (label = 'Name') => [requiredRule(label), textLengthRule(label, 2, 150), nameOnlyRule(label)];
+export const optionalNameRules = (label = 'Name') => [textLengthRule(label, 2, 150), nameOnlyRule(label)];
 export const phoneRules = [somaliPhoneRule];
 export const requiredPhoneRules = [requiredRule('Phone number'), somaliPhoneRule];
 export const somaliPhoneRules = [somaliPhoneRule];
@@ -150,16 +197,16 @@ export const dynamicIdNumberRule = (idTypeFieldName = 'id_type') => ({ getFieldV
 
     const idType = getFieldValue(idTypeFieldName) || 'National ID';
 
-    if (idType === 'National ID') {
+    if (idType === 'National ID' || idType === 'Aqoonsiga Qaranka') {
       if (text.length !== 14) {
-        return Promise.reject(new Error('National ID-ga waa inuu ka koobnaadaa 14 meelood (14 characters/digits).'));
+        return Promise.reject(new Error('Aqoonsiga Qaranka (National ID) waa inuu ka koobnaadaa 14 meelood/lambar.'));
       }
-    } else if (idType === 'Passport') {
+    } else if (idType === 'Passport' || idType === 'Baasaboor') {
       if (text.length !== 9) {
-        return Promise.reject(new Error('Passport-ku waa inuu ka koobnaadaa 9 meelood (sida X99999999).'));
+        return Promise.reject(new Error('Baasaboorku waa inuu ka koobnaadaa 9 meelood (tusaale: P12345678).'));
       }
       if (!/^[A-Za-z0-9]{9}$/.test(text)) {
-        return Promise.reject(new Error('Passport-ku waa inuu ka koobnaadaa 9 meelood (sida X99999999).'));
+        return Promise.reject(new Error('Baasaboorku waa inuu ka koobnaadaa 9 xaraf iyo lambar (tusaale: P12345678).'));
       }
     }
     return Promise.resolve();

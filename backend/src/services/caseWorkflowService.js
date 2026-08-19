@@ -280,7 +280,16 @@ const lockAndAssertReferralAllowed = async (connection, policeCaseId, targetRole
     [policeCaseId, targetRole]
   );
   if (activeDuplicate) {
-    throw new WorkflowError(`An active ${targetRole} referral already exists.`, 409, 'DUPLICATE_REFERRAL');
+    const canReRefer = ['under_investigation', 'investigation', 'returned_from_remand', 'remanded_to_investigator', 'open', 'approved_for_court'].includes(policeCase.status);
+    if (canReRefer) {
+      await connection.query(
+        `UPDATE referrals SET status = 'completed', responded_at = COALESCE(responded_at, NOW()), response = 'Superseded by subsequent referral'
+         WHERE id = ?`,
+        [activeDuplicate.id]
+      );
+    } else {
+      throw new WorkflowError(`An active ${targetRole} referral already exists.`, 409, 'DUPLICATE_REFERRAL');
+    }
   }
   return policeCase;
 };

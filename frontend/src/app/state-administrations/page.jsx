@@ -15,14 +15,14 @@ const SOMALIA_STATE_OPTIONS = [
 
 export default function StateAdministrationsPage() {
   const columns = [
-    { title: 'State Name', dataIndex: 'state_name', key: 'state_name' },
-    { title: 'State Code', dataIndex: 'state_code', key: 'state_code' },
+    { title: 'Magaca Dawlad Goboleedka', dataIndex: 'state_name', key: 'state_name' },
+    { title: 'Koodhka', dataIndex: 'state_code', key: 'state_code' },
   ];
 
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <TierManager
-        entityName="State Administration"
+        entityName="Dawlad Goboleed"
         entityKey="state"
         apiEndpoint="/state-administrations"
         columns={columns}

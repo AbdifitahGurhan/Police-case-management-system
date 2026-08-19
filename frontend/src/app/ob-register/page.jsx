@@ -126,14 +126,14 @@ export default function ObRegisterPage() {
   };
 
   const columns = [
-    { title: 'OB Number', dataIndex: 'ob_number', render: (value) => <Text strong>{value}</Text> },
+    { title: 'Lambarka OB', dataIndex: 'ob_number', render: (value) => <Text strong style={{ color: '#0284c7' }}>{value}</Text> },
     { title: 'Cinwaanka Dacwadda', dataIndex: 'case_title' },
-    { title: 'Nooca Dacwadda', dataIndex: 'case_type' },
-    { title: 'Dacwoodaha', dataIndex: 'reported_by' },
-    { title: 'Taariikhda', dataIndex: 'incident_datetime', render: (value) => value || 'N/A' },
-    { title: 'Saldhigga', dataIndex: 'district_police_station_name', render: (value) => value || location.districtName || 'N/A' },
+    { title: 'Nooca Dhacdada', dataIndex: 'case_type' },
+    { title: 'Soo Dacwoodaha', dataIndex: 'reported_by' },
+    { title: 'Taariikhda Dhacdada', dataIndex: 'incident_datetime', render: (value) => value || '—' },
+    { title: 'Saldhigga / Degmada', dataIndex: 'district_police_station_name', render: (value) => value || location.districtName || '—' },
     { title: 'Xaaladda', dataIndex: 'status', render: (value) => <Tag color={statusColors[value] || 'blue'}>{statusLabels[value] || value}</Tag> },
-    { title: 'Ficil', render: (_, record) => <Link href={`/ob-register/${record.id}`}><Button size="small" type="primary">Faahfaahin</Button></Link> },
+    { title: 'Hawlaha', render: (_, record) => <Link href={`/ob-register/${record.id}`}><Button size="small" type="primary">Eeg Faahfaahinta</Button></Link> },
   ];
 
   return (
@@ -196,7 +196,7 @@ export default function ObRegisterPage() {
           title={null}
           open={open}
           onCancel={() => setOpen(false)}
-          width={930}
+          width={1100}
           footer={null}
         >
           <div className="ob-modal-head">

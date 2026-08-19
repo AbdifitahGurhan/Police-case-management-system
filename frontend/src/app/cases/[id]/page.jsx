@@ -1900,7 +1900,7 @@ export default function CaseDetailsPage({ caseId, mode = 'page', onClose, onBack
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item name="bail_status" label="Heerka Damaanadda (Bail Status)" initialValue="no_bail">
+              <Form.Item name="bail_status" label="Heerka Damaanadda (Bail Status)">
                 <Select
                   options={[
                     { value: 'no_bail', label: 'No Bail (Damaanad La\'aan)' },

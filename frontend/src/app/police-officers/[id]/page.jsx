@@ -223,12 +223,12 @@ export default function OfficerDetailsPage({ params }) {
       
       let targetId = null;
       if (values.to_assignment_type === 'State Administration' || values.to_assignment_type === 'State Unit') targetId = values.state_id;
-      if (values.to_assignment_type === 'Sub-Admin' || values.to_assignment_type === 'District User Link') targetId = values.sub_admin_id;
+      if (values.to_assignment_type === 'District User Link') targetId = values.sub_admin_id;
       if (values.to_assignment_type === 'District Station') targetId = isDistrictAdmin ? (user?.location?.districtId || user?.scopeId) : values.district_id;
       if (values.to_assignment_type === 'Region' || values.to_assignment_type === 'Region Unit') targetId = values.region_id;
       if (values.to_assignment_type === 'District') targetId = values.district_id;
 
-      if (!targetId) {
+      if (values.to_assignment_type !== 'Sub-Admin' && !targetId) {
         return message.error("Please complete the unit selection dropdowns.");
       }
 
@@ -238,7 +238,7 @@ export default function OfficerDetailsPage({ params }) {
         to_assignment_id: targetId,
         remarks: values.remarks
       });
-      message.success("Officer successfully transferred.");
+      message.success("Sarkaalka si guul leh ayaa loo qoondeeyay / loo wareejiyay.");
       setIsTransferModalOpen(false);
       transferForm.resetFields();
       fetchOfficerDetails();
@@ -434,7 +434,11 @@ export default function OfficerDetailsPage({ params }) {
                   </Text>
                   <div style={{ marginTop: 8 }}>
                     {(!groupedAssignments.operationalLocations || groupedAssignments.operationalLocations.length === 0) ? (
-                      <Text type="secondary" style={{ fontSize: 13 }}>Weli goob shaqo looma qoondeyn</Text>
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        {(groupedAssignments.adminRoles && groupedAssignments.adminRoles.length > 0)
+                          ? 'Goobta shaqadu waa Taliska Guud (Doorka Maamulka)'
+                          : 'Weli goob shaqo looma qoondeyn (Unassigned)'}
+                      </Text>
                     ) : (
                       groupedAssignments.operationalLocations.map(o => (
                         <Tag key={o.id} color="blue" style={{ marginBottom: 6, fontSize: 13, padding: '4px 10px', borderRadius: 4, display: 'inline-block' }}>
@@ -484,12 +488,24 @@ export default function OfficerDetailsPage({ params }) {
         >
            <Form form={transferForm} layout="vertical">
               <Alert
-                type={officer?.current_assignment_name ? "info" : "warning"}
+                type={
+                  officer?.current_assignment_name &&
+                  officer.current_assignment_name !== 'Unassigned' &&
+                  officer.current_assignment_name !== 'Unknown' &&
+                  officer?.current_assignment_type !== 'Unassigned' &&
+                  officer?.current_assignment_type
+                    ? "info"
+                    : "warning"
+                }
                 showIcon
                 style={{ marginBottom: 16 }}
                 title={
-                  officer?.current_assignment_name ? (
-                    <span>Hadda wuxuu ku qoondeysan yahay: <strong>{(officer.current_assignment_name === 'Unknown' || !officer.current_assignment_name) ? (assignmentTypeLabel(officer.current_assignment_type) || 'Goobta Shaqada') : officer.current_assignment_name}</strong> ({assignmentTypeLabel(officer.current_assignment_type)})</span>
+                  officer?.current_assignment_name &&
+                  officer.current_assignment_name !== 'Unassigned' &&
+                  officer.current_assignment_name !== 'Unknown' &&
+                  officer?.current_assignment_type !== 'Unassigned' &&
+                  officer?.current_assignment_type ? (
+                    <span>Hadda wuxuu ku qoondeysan yahay: <strong>{officer.current_assignment_name}</strong> ({assignmentTypeLabel(officer.current_assignment_type)})</span>
                   ) : (
                     <span>Sarkaalkan weli goob shaqo looma qoondeyn (Unassigned).</span>
                   )
@@ -504,7 +520,7 @@ export default function OfficerDetailsPage({ params }) {
                  />
               </Form.Item>
 
-              {assignmentType && user?.role !== 'state_admin' && user?.role !== 'district_admin' && (
+              {assignmentType && assignmentType !== 'Sub-Admin' && user?.role !== 'state_admin' && user?.role !== 'district_admin' && (
                 <Form.Item name="state_id" label="State Administration (Maamulka Dawlad-Goboleedka)" rules={[requiredRule('State administration')]}>
                   <Select
                     placeholder="Dooro State Administration"
@@ -545,14 +561,14 @@ export default function OfficerDetailsPage({ params }) {
                 </Form.Item>
               )}
 
-              {(assignmentType === 'Sub-Admin' || assignmentType === 'District User Link') && (
+              {assignmentType === 'District User Link' && (
                 <Form.Item
                   name="sub_admin_id"
-                  label={assignmentType === 'Sub-Admin' ? "Sub-Admin (Maamul Hoose)" : "Operational Account (OB / Baare / Station Jail)"}
-                  rules={[requiredRule(assignmentType === 'Sub-Admin' ? 'Sub-Admin' : 'Operational Account')]}
+                  label="Operational Account (OB / Baare / Station Jail)"
+                  rules={[requiredRule('Operational Account')]}
                 >
                   <Select
-                    placeholder={assignmentType === 'Sub-Admin' ? "Dooro Sub-Admin" : "Dooro account-ka bannaan"}
+                    placeholder="Dooro account-ka bannaan"
                     showSearch
                     optionFilterProp="label"
                     options={eligibleSubAdmins.map(sa => ({
@@ -563,7 +579,7 @@ export default function OfficerDetailsPage({ params }) {
                 </Form.Item>
               )}
 
-              {selectedSubAdminUser && (() => {
+              {assignmentType === 'District User Link' && selectedSubAdminUser && (() => {
                 const selectedDistrictObj = (allDistricts.length ? allDistricts : districts || []).find(d => Number(d.id) === Number(selectedSubAdminUser?.district_id || selectedDistrict));
                 const districtNameDisplay = (selectedSubAdminUser?.district_name && selectedSubAdminUser.district_name !== 'Degmada')
                   ? selectedSubAdminUser.district_name

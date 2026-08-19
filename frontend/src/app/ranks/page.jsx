@@ -239,7 +239,7 @@ function RanksPageContent() {
       render: (val) => (val ? new Date(val).toLocaleDateString() : '—'),
     },
     {
-      title: 'Ficilka',
+      title: 'Hawlaha',
       key: 'action',
       render: (_, record) => (
         <Space size="middle">

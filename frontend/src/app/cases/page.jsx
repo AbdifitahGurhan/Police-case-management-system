@@ -39,21 +39,29 @@ const CASE_WRITE_ROLES = [
 ];
 
 const STATUS_OPTIONS = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'registered', label: 'OB created' },
-  { value: 'CASE_REGISTERED', label: 'Case opened' },
-  { value: 'under_investigation', label: 'Baaritaan' },
-  { value: 'referred_to_court', label: 'Maxkamad loo gudbiyey' },
-  { value: 'closed', label: 'Closed' },
-  { value: 'archived', label: 'Archived' },
+  { value: 'draft', label: 'Qabyo' },
+  { value: 'registered', label: 'Diiwaangashan' },
+  { value: 'CASE_REGISTERED', label: 'Kiis Furay' },
+  { value: 'under_investigation', label: 'Baaris ku Socota' },
+  { value: 'referred_to_court', label: 'Maxkamadda loo Gudbiyey' },
+  { value: 'court_decided', label: 'Maxkamaddu Go\'aamisay' },
+  { value: 'closed', label: 'La Soo Gabagabeeyay' },
+  { value: 'archived', label: 'La Kaydiyey (Archived)' },
 ];
 
 const PRIORITY_OPTIONS = [
-  { value: 'critical', label: 'Critical' },
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
+  { value: 'critical', label: 'Aad u Degdeg Badan' },
+  { value: 'high', label: 'Sare / Degdeg' },
+  { value: 'medium', label: 'Dhexdhexaad' },
+  { value: 'low', label: 'Hoose' },
 ];
+
+const priorityLabels = {
+  critical: 'Aad u Degdeg Badan',
+  high: 'Sare / Degdeg',
+  medium: 'Dhexdhexaad',
+  low: 'Hoose',
+};
 
 const priorityTone = {
   critical: 'critical',
@@ -118,72 +126,71 @@ function CaseListContent() {
     } catch (err) {
       console.error(err);
       setCases([]);
-      setLoadError(err.response?.data?.message || 'Cases-ka lama soo akhrin karin. Fadlan dib u cusboonaysii bogga.');
+      setLoadError(err.response?.data?.message || 'Kiisaska lama soo sharixi karo.');
     } finally {
       setLoading(false);
     }
   }, [filters]);
 
   useEffect(() => {
-    if (!authLoading && canRead) {
+    if (user && canRead) {
       fetchCases(1, pagination.pageSize, filters);
-    } else if (!authLoading) {
-      setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id, filters, canRead]);
+  }, [fetchCases, user, canRead]);
 
   useEffect(() => {
-    const loadStations = async () => {
-      try {
-        const res = await api.get('/stations');
-        setStations(res.data.data || []);
-      } catch {
-        setStations([]);
-      }
-    };
-    if (user) loadStations();
-  }, [user]);
+    api
+      .get('/stations')
+      .then((res) => {
+        const payload = Array.isArray(res.data) ? res.data : res.data?.data || [];
+        setStations(payload);
+      })
+      .catch(() => setStations([]));
+  }, []);
 
-  const handleTableChange = (pager) => {
-    fetchCases(pager.current, pager.pageSize, filters);
+  const handleTableChange = (pag) => {
+    fetchCases(pag.current, pag.pageSize, filters);
   };
 
   const applySearch = () => {
-    setFilters((prev) => ({ ...prev, search: searchInput.trim() }));
+    const nextFilters = { ...filters, search: searchInput.trim() };
+    setFilters(nextFilters);
+    fetchCases(1, pagination.pageSize, nextFilters);
   };
 
   const columns = [
     {
-      title: 'Nambarka Kiiska',
+      title: 'Lambarka Kiiska',
       dataIndex: 'case_number',
       key: 'case_number',
       render: (text, record) => (
-        <Typography.Text strong>{text || record.ob_number || '—'}</Typography.Text>
+        <Link href={`/cases/${record.id}`}>
+          <Text strong style={{ color: '#0284c7' }}>
+            {text}
+          </Text>
+        </Link>
       ),
-    },
-    {
-      title: 'Nambarka OB-da',
-      dataIndex: 'ob_number',
-      key: 'ob_number',
     },
     {
       title: 'Cinwaanka Dacwadda',
       dataIndex: 'title',
       key: 'title',
-      ellipsis: true,
+      render: (t, r) => (
+        <div>
+          <div>{t || r.case_title || '—'}</div>
+          {r.ob_number && (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              OB: {r.ob_number}
+            </Text>
+          )}
+        </div>
+      ),
     },
     {
-      title: 'Nooca Dambiga',
-      dataIndex: 'incident_type',
-      key: 'incident_type',
-      render: (text, record) => text || record.case_type || '—',
-    },
-    {
-      title: 'Saldhigga',
+      title: 'Goobta / Saldhigga',
       dataIndex: 'station_name',
       key: 'station_name',
-      render: (text) => text || '—',
+      render: (s, r) => s || r.district_name || r.incident_location || '—',
     },
     {
       title: 'Xaaladda',
@@ -192,23 +199,23 @@ function CaseListContent() {
       render: (status) => <CaseStatusTag status={status} />,
     },
     {
-      title: 'Heerka Ahmiyadda',
+      title: 'Mudnaanta',
       dataIndex: 'priority',
       key: 'priority',
       render: (p) => (
         <Tag className={`status-tag status-tag--${priorityTone[p] || 'neutral'}`}>
-          {p || '—'}
+          {priorityLabels[p] || p || '—'}
         </Tag>
       ),
     },
     {
-      title: 'Taariikhda',
+      title: 'Taariikhda Diiwaangelinta',
       dataIndex: 'created_at',
       key: 'created_at',
       render: (date) => (date ? dayjs(date).format('DD/MM/YYYY') : '—'),
     },
     {
-      title: 'Ficilka',
+      title: 'Hawlaha',
       key: 'action',
       render: (_, record) => (
         <Link href={`/cases/${record.id}`}>
@@ -223,22 +230,22 @@ function CaseListContent() {
   return (
     <ProtectedRoute allowedRoles={CASE_READ_ROLES} requiredPermissions={['cases.view', 'cases.investigate']}>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <Breadcrumb items={[{ title: 'Bogga Hore' }, { title: 'Galal-kiiseedka (Cases)' }]} />
+        <Breadcrumb items={[{ title: 'Bogga Hore' }, { title: 'Kiisaska Dacwadaha' }]} />
 
         <div className="standard-dashboard-hero" style={{ marginBottom: 0 }}>
           <div>
             <Text className="dashboard-eyebrow">Maamulka Kiisaska Booliska</Text>
-            <Title level={2} style={{ fontSize: 20, fontWeight: 500, margin: '4px 0' }}>
-              Galal-kiiseedka (Cases)
+            <Title level={2} style={{ fontSize: 20, fontWeight: 600, margin: '4px 0' }}>
+              Kiisaska Dacwadaha (Cases)
             </Title>
             <Text type="secondary" style={{ fontSize: 13 }}>
-              Duhay, kala-sifeey, oo fur dhammaan galal-kiiseedka dambiyada ee deegaankaaga.
+              Duhay, shaandhee, oo maamul dhammaan galalka kiisaska dambiyada ee deegaankaaga.
             </Text>
           </div>
           {canCreate && (
             <Link href="/cases/new">
               <Button type="primary" icon={<PlusOutlined />}>
-                Dhal Kiis Cusub
+                Diiwaangeli Kiis Cusub
               </Button>
             </Link>
           )}
@@ -255,9 +262,9 @@ function CaseListContent() {
           )}
           <Space style={{ marginBottom: 16 }} wrap>
             <Input
-              placeholder="Search case, OB, or location..."
+              placeholder="Raadi kiis, lambarka OB, goobta..."
               prefix={<SearchOutlined />}
-              style={{ width: 260 }}
+              style={{ width: 280 }}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onPressEnter={applySearch}
@@ -267,26 +274,26 @@ function CaseListContent() {
                 setFilters((prev) => ({ ...prev, search: '' }));
               }}
             />
-            <Button onClick={applySearch}>Search</Button>
+            <Button onClick={applySearch} type="primary">Raadi</Button>
             <Select
-              placeholder="Status"
-              style={{ width: 180 }}
+              placeholder="Xaaladda Kiiska"
+              style={{ width: 200 }}
               allowClear
               options={STATUS_OPTIONS}
               value={filters.status}
               onChange={(v) => setFilters((prev) => ({ ...prev, status: v }))}
             />
             <Select
-              placeholder="Priority"
-              style={{ width: 140 }}
+              placeholder="Heerka Mudnaanta"
+              style={{ width: 180 }}
               allowClear
               options={PRIORITY_OPTIONS}
               value={filters.priority}
               onChange={(v) => setFilters((prev) => ({ ...prev, priority: v }))}
             />
             <Select
-              placeholder="Station"
-              style={{ width: 200 }}
+              placeholder="Saldhigga Booliska"
+              style={{ width: 220 }}
               allowClear
               showSearch
               optionFilterProp="label"
@@ -312,7 +319,7 @@ function CaseListContent() {
               showSizeChanger: true,
               pageSizeOptions: ['10', '20', '50'],
               showTotal: (total, range) =>
-                `${range[0]}–${range[1]} of ${total} (page ${pagination.current}/${pagination.pages || 1})`,
+                `${range[0]}–${range[1]} ee ${total} kiis (Bogga ${pagination.current}/${pagination.pages || 1})`,
             }}
             onChange={handleTableChange}
           />

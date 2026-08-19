@@ -52,12 +52,30 @@ const allowedRoles = [
   'cid_officer',
 ];
 
+const STATUS_LABELS = {
+  draft: 'Qabyo',
+  pending: 'Sugaya',
+  issued: 'La Soo Saaray',
+  executed: 'La Fuliyay',
+  expired: 'Waqtigu Ka Dhacay',
+  cancelled: 'La Laalay',
+};
+
+const STATUS_COLORS = {
+  draft: 'default',
+  pending: 'gold',
+  issued: 'blue',
+  executed: 'green',
+  expired: 'red',
+  cancelled: 'default',
+};
+
 const WARRANT_TYPES = [
-  { value: 'arrest', label: 'Garan Soo-qabasho (Arrest Warrant)' },
-  { value: 'search', label: 'Garan Baaris (Search Warrant)' },
+  { value: 'arrest', label: 'Waaran Qabasho (Arrest Warrant)' },
+  { value: 'search', label: 'Waaran Baaris (Search Warrant)' },
   { value: 'court_summons', label: 'Waraaqda U-yeeridda Maxkamadda (Court Summons)' },
-  { value: 'detention', label: 'Garan Xirnaansho (Detention Warrant)' },
-  { value: 'other_court_order', label: 'Amarda Kale ee Maxkamadda (Other Court Order)' },
+  { value: 'detention', label: 'Waaran Xabsiga Ku Haynta (Detention Warrant)' },
+  { value: 'other_court_order', label: 'Amarka Kale ee Maxkamadda' },
 ];
 
 export default function WarrantsPage() {
@@ -193,7 +211,6 @@ export default function WarrantsPage() {
               onClick={() => {
                 form.resetFields();
                 form.setFieldsValue({
-                  warrant_type: 'arrest',
                   status: 'issued',
                   issue_date: dayjs(),
                   expiry_date: dayjs().add(30, 'day'),
@@ -201,7 +218,7 @@ export default function WarrantsPage() {
                 setOpen(true);
               }}
             >
-              Bixi Garan Cusub (Create Warrant)
+              Bixi Waaran Cusub
             </Button>
           )}
         </div>
@@ -210,25 +227,25 @@ export default function WarrantsPage() {
           <Space wrap style={{ marginBottom: 16 }}>
             <Select
               allowClear
-              placeholder="Filter by Status"
-              style={{ width: 160 }}
-              options={['draft', 'pending', 'issued', 'executed', 'expired', 'cancelled'].map((v) => ({
-                value: v,
-                label: v.toUpperCase(),
+              placeholder="Xaaladda Waaranka"
+              style={{ width: 180 }}
+              options={Object.entries(STATUS_LABELS).map(([value, label]) => ({
+                value,
+                label,
               }))}
               onChange={(v) => setFilter((f) => ({ ...f, status: v }))}
             />
             <Select
               allowClear
-              placeholder="Filter by Type"
-              style={{ width: 220 }}
+              placeholder="Nooca Waaranka"
+              style={{ width: 260 }}
               options={WARRANT_TYPES}
               onChange={(v) => setFilter((f) => ({ ...f, type: v }))}
             />
             <Input.Search
               allowClear
-              placeholder="Search OB / Case number or subject..."
-              style={{ width: 300 }}
+              placeholder="Raadi lambarka kiiska / OB ama eedeysanaha..."
+              style={{ width: 320 }}
               onSearch={(v) => setFilter((f) => ({ ...f, case_number: v }))}
             />
           </Space>
@@ -238,34 +255,34 @@ export default function WarrantsPage() {
             loading={loading}
             dataSource={rows}
             pagination={{ pageSize: 15 }}
-            locale={{ emptyText: 'Welii wax garan ah lagu ma darin.' }}
+            locale={{ emptyText: 'Weli wax waaran ah lama diiwaangelin.' }}
             columns={[
               {
-                title: 'Warrant #',
+                title: 'Lambarka Waaranka',
                 dataIndex: 'warrant_number',
-                render: (v) => <Text strong>{v}</Text>,
+                render: (v) => <Text strong style={{ color: '#0284c7' }}>{v}</Text>,
               },
               {
-                title: 'Type',
+                title: 'Nooca Waaranka',
                 dataIndex: 'warrant_type',
-                render: (v) => <Tag color="blue">{String(v).toUpperCase().replace('_', ' ')}</Tag>,
+                render: (v) => <Tag color="blue">{WARRANT_TYPES.find(t => t.value === v)?.label || String(v).replace('_', ' ')}</Tag>,
               },
               {
-                title: 'Case / OB Number',
+                title: 'Kiiska / OB-da',
                 render: (_, r) => r.case_number || r.ob_number || '—',
               },
               {
-                title: 'Eedaysanaha / Subject',
+                title: 'Eedeysanaha',
                 dataIndex: 'suspect_name',
                 render: (v) => <Text strong>{v || '—'}</Text>,
               },
               {
-                title: 'Xaakimka / Judge',
+                title: 'Garsooraha Bixiyay',
                 dataIndex: 'judge_name',
                 render: (v) => v || '—',
               },
               {
-                title: 'Saldhigga / Station',
+                title: 'Saldhigga Booliska',
                 render: (_, r) => (
                   <Space orientation="vertical" size={0}>
                     <Text>{r.police_station || '—'}</Text>
@@ -274,40 +291,40 @@ export default function WarrantsPage() {
                 ),
               },
               {
-                title: 'Issue Date',
+                title: 'Taariikhda Bixinta',
                 dataIndex: 'issue_date',
-                render: (v) => (v ? dayjs(v).format('DD MMM YYYY') : '—'),
+                render: (v) => (v ? dayjs(v).format('DD/MM/YYYY') : '—'),
               },
               {
-                title: 'Expiry Date',
+                title: 'Dhicitaanka',
                 dataIndex: 'expiry_date',
-                render: (v) => (v ? dayjs(v).format('DD MMM YYYY') : '—'),
+                render: (v) => (v ? dayjs(v).format('DD/MM/YYYY') : '—'),
               },
               {
-                title: 'Status',
+                title: 'Xaaladda',
                 dataIndex: 'status',
                 render: (v) => (
-                  <Tag color={v === 'executed' ? 'green' : v === 'expired' || v === 'cancelled' ? 'red' : 'blue'}>
-                    {String(v).toUpperCase()}
+                  <Tag color={STATUS_COLORS[v] || 'blue'}>
+                    {STATUS_LABELS[v] || String(v).toUpperCase()}
                   </Tag>
                 ),
               },
               {
-                title: 'Ficil',
+                title: 'Hawlaha',
                 key: 'actions',
                 render: (_, r) => (
                   <Space>
                     {canPrint && <Button size="small" icon={<PrinterOutlined />} onClick={() => printDocument(r.id)}>
-                      Print
+                      Daabac
                     </Button>}
                     {canExecute && ['issued', 'pending'].includes(r.status) && (
-                      <Button size="small" icon={<CheckOutlined />} onClick={() => handleAction(r.id, 'execute')}>
-                        Execute
+                      <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => handleAction(r.id, 'execute')}>
+                        Fuliyey
                       </Button>
                     )}
                     {canCancel && !['executed', 'cancelled'].includes(r.status) && (
                       <Button size="small" danger icon={<CloseOutlined />} onClick={() => handleAction(r.id, 'cancel')}>
-                        Cancel
+                        Laal
                       </Button>
                     )}
                     {!canPrint && !canExecute && !canCancel && <Text type="secondary">-</Text>}
@@ -319,7 +336,7 @@ export default function WarrantsPage() {
         </Card>
 
         <Modal
-          title="Bixi Garan Cusub (Create Warrant)"
+          title="Bixi Waaran Cusub"
           open={open}
           onCancel={() => setOpen(false)}
           onOk={handleCreate}

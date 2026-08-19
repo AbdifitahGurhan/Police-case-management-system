@@ -37,11 +37,13 @@ async function validateAssignment(connection, officerId, toAssignmentType, toAss
 
   // XEERKA 5: ADMIN_SUB requires valid user
   if (toAssignmentType === 'Sub-Admin' && assignmentCategory === 'ADMIN') {
-    const [[user]] = await connection.query('SELECT id, is_active FROM users WHERE id = ?', [toAssignmentId]);
-    if (!user) {
-      const err = new Error('User-ka loo qoondeeyay ma jiro.');
-      err.statusCode = 404;
-      throw err;
+    if (toAssignmentId) {
+      const [[user]] = await connection.query('SELECT id, is_active FROM users WHERE id = ?', [toAssignmentId]);
+      if (!user) {
+        const err = new Error('User-ka loo qoondeeyay ma jiro.');
+        err.statusCode = 404;
+        throw err;
+      }
     }
   }
 
@@ -77,12 +79,12 @@ async function getOfficerAssignmentsGrouped(officerId) {
     const category = item.assignment_category || determineCategory(item.assignment_type);
     let displayName = item.assignment_type === 'District User Link'
       ? 'Operational Account'
-      : item.assignment_type;
+      : (item.assignment_type === 'Sub-Admin' ? 'Sub-Admin (Maamul Hoose)' : item.assignment_type);
     if (item.state_name) displayName += `: ${item.state_name}`;
     else if (item.region_name) displayName += `: ${item.region_name}`;
     else if (item.district_name) displayName += `: ${item.district_name}`;
     else if (item.user_district_name) displayName += `: ${item.user_district_name}`;
-    else if (item.username) displayName += ` (User: ${item.username})`;
+    if (item.username) displayName += ` (User: ${item.username})`;
 
     const obj = {
       id: item.id,

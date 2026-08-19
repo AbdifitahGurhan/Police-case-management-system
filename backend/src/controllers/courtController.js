@@ -412,6 +412,22 @@ const orderRemandInvestigation = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'sent_to_role must be station or cid.' });
     }
 
+    if (deadline_date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dDate = new Date(deadline_date);
+      dDate.setHours(0, 0, 0, 0);
+      const maxDate = new Date();
+      maxDate.setDate(maxDate.getDate() + 45);
+      maxDate.setHours(23, 59, 59, 999);
+      if (dDate < today) {
+        return res.status(400).json({ success: false, message: 'Deadline taariikh la soo dhaafay ma noqon karto.' });
+      }
+      if (dDate > maxDate) {
+        return res.status(400).json({ success: false, message: 'Deadline-ku waa inuu ku guda jiro ugu badnaan 45 maalmood.' });
+      }
+    }
+
     const result = await withTransaction(async (connection) => {
       const [[courtCase]] = await connection.query(
         `SELECT cc.id, cc.police_case_id, cc.status, c.district_id
@@ -455,6 +471,17 @@ const orderRemandInvestigation = async (req, res, next) => {
 
       await connection.query("UPDATE court_cases SET status = 'remanded_to_investigator' WHERE id = ?", [req.params.id]);
       await connection.query("UPDATE cases SET status = 'under_investigation' WHERE id = ?", [courtCase.police_case_id]);
+      
+      // Auto-complete previous court referral so that subsequent referral back to court is allowed
+      await connection.query(
+        `UPDATE referrals
+            SET status = 'completed',
+                responded_at = COALESCE(responded_at, NOW()),
+                response = COALESCE(response, 'Remanded for additional investigation by court')
+          WHERE case_id = ? AND referred_to_role = 'court' AND status IN ('pending', 'accepted')`,
+        [courtCase.police_case_id]
+      );
+
       if (targetRole === 'cid') {
         await ensureCidCaseForPoliceCase(courtCase.police_case_id, actor(req), connection, { force: true });
       }

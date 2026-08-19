@@ -34,10 +34,11 @@ const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system', executor =
     if (['closed', 'archived'].includes(existing.status)) {
       return { ...existing, alreadyExists: true, terminal: true };
     }
+    const nextStatus = existing.status === 'remanded_to_investigator' ? 'returned_from_remand' : existing.status;
     await executor.query(
       `UPDATE court_cases
        SET police_case_number = ?, ob_number = ?, case_title = ?, crime_category = ?,
-           case_description = ?, source_status = ?, updated_at = CURRENT_TIMESTAMP
+           case_description = ?, source_status = ?, status = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
         policeCase.case_number,
@@ -46,10 +47,19 @@ const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system', executor =
         policeCase.case_type || policeCase.incident_type || 'General',
         policeCase.description || null,
         policeCase.status,
+        nextStatus,
         existing.id,
       ]
     );
-    return { ...existing, alreadyExists: true };
+    if (existing.status === 'remanded_to_investigator') {
+      await executor.query(
+        `UPDATE court_remands
+         SET status = 'returned', returned_at = COALESCE(returned_at, NOW()), return_notes = COALESCE(return_notes, 'Kiiska dib ayaa loogu gudbiyey maxkamadda.')
+         WHERE court_case_id = ? AND status = 'pending'`,
+        [existing.id]
+      );
+    }
+    return { ...existing, status: nextStatus, alreadyExists: true };
   }
 
   const courtCaseNumber = await generateCourtCaseNumber(executor);
@@ -80,4 +90,8 @@ const ensureCourtCaseForPoliceCase = async (caseId, actor = 'system', executor =
   return { id: result.insertId, court_case_number: courtCaseNumber, alreadyExists: false };
 };
 
-module.exports = { COURT_READY_STATUSES, isCourtReadyStatus, ensureCourtCaseForPoliceCase };
+module.exports = {
+  isCourtReadyStatus,
+  generateCourtCaseNumber,
+  ensureCourtCaseForPoliceCase,
+};

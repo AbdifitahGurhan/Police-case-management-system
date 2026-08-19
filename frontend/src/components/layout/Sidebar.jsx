@@ -64,8 +64,8 @@ const Sidebar = ({ collapsed }) => {
   const dashboardPath = dashboardPathMap[role] || '/cases';
 
   const roleNames = {
-    admin: 'Dawladda Dhexe',
-    sub_admin: 'Maamule Hoosaad',
+    admin: 'Dawladda Dhexe (Taliska Guud)',
+    sub_admin: 'Maamul Hoose (Sub-Admin)',
     personnel_registry: 'Diiwaanka Ciidanka',
     investigator: 'Baare',
     station_jail: 'Xabsiga Saldhigga',
@@ -79,7 +79,7 @@ const Sidebar = ({ collapsed }) => {
     judge: 'Garsoore',
     prosecutor: 'Xeer-ilaaliye',
     prosecutor_liaison: 'Liaison-ka Xeer-ilaalinta',
-    court_clerk: 'Kalaarkha Maxkamadda',
+    court_clerk: 'Kaaliyaha Maxkamadda',
     jail: 'Maamulka Xabsiga Dhexe',
     state_admin: 'Maamulaha Dawlad Goboleedka',
     region_admin: 'Maamulaha Gobolka',
@@ -97,23 +97,11 @@ const Sidebar = ({ collapsed }) => {
     if (!role) return [];
     const hasPermission = key => role === 'admin' || (user?.permissions || []).includes('*') || (user?.permissions || []).includes(key);
 
-    const stationOperationRoles = ['district_admin'];
-    const commanderRoles = ['state_commander', 'region_commander', 'district_commander', 'police_station_commander'];
-    const stationWorkflowRoles = ['ob_staff', 'staff', 'officer', 'investigator', 'district_admin', 'region_commander', 'district_commander', 'police_station_commander', 'cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const courtRoles = ['court', 'court_admin', 'judge', 'prosecutor', 'prosecutor_liaison', 'court_clerk'];
-    const cidRoles = ['cid', 'cid_director', 'cid_supervisor', 'cid_officer'];
     const isCourtRole = courtRoles.includes(role);
-    // Role visibility aligned to Part 5 permission matrix
     const canViewOffenders = hasPermission('suspects.view') || hasPermission('suspects.manage');
     const canViewReports = hasPermission('reports.view') || hasPermission('reports.export');
     const canViewStations = hasPermission('stations.view') || hasPermission('stations.manage');
-
-    const caseReadRoles = [
-      'admin', 'sub_admin', 'officer', 'staff', 'investigator', 'station_jail', 'region_admin', 'district_admin',
-      'cid', 'cid_director', 'cid_supervisor', 'cid_officer',
-      'state_commander', 'region_commander', 'district_commander', 'police_station_commander',
-      'prosecutor', 'judge', 'court_clerk', 'jail',
-    ];
     const canViewCases = hasPermission('cases.view') || hasPermission('cases.investigate');
     const canViewOb = hasPermission('ob.view') || hasPermission('ob.create') || hasPermission('ob.update') || hasPermission('ob.print');
     const canViewStationJail = hasPermission('station_jail.view') || hasPermission('station_jail.intake') || hasPermission('station_jail.assign_cell');
@@ -123,7 +111,7 @@ const Sidebar = ({ collapsed }) => {
       ...(role !== 'personnel_registry' && role !== 'sub_admin' && dashboardPath !== '/cases' ? [{
         key: dashboardPath,
         icon: dashboardPath === '/ob-register' ? <DatabaseOutlined /> : <DashboardOutlined />,
-        label: role === 'investigator' ? 'Hawlaha Baaraha' : (isCourtRole ? 'Dashboard-ka Maxkamadda' : (dashboardPath === '/ob-register' ? 'Diiwaanka OB-da' : 'Dashboard-ka Guud')),
+        label: role === 'investigator' ? 'Hawlaha Baaraha' : (isCourtRole ? 'Dashboard-ka Maxkamadda' : (dashboardPath === '/ob-register' ? 'Diiwaanka OB-da' : 'Bogga Hore ee Hawlgalka')),
       }] : []),
       ...(role === 'district_admin' && hasPermission('cases.view') && dashboardPath !== '/dashboard/cid' ? [{
         key: '/dashboard/cid',
@@ -155,18 +143,18 @@ const Sidebar = ({ collapsed }) => {
         icon: <SafetyCertificateOutlined />,
         label: 'Xabsiga Dhexe',
         children: [
-          { key: 'central_jail_incoming_transfers', path: '/dashboard/central-jail', label: 'Incoming Transfers' },
+          { key: 'central_jail_incoming_transfers', path: '/dashboard/central-jail', label: 'Maxaabiista la Soo Wareejiyey' },
         ],
       }] : []),
       ...(canViewCases ? [{
         key: '/search',
         icon: <SearchOutlined />,
-        label: 'Raadinta Kiisaska',
+        label: 'Raadinta Guud ee Kiisaska',
       }] : []),
       ...(canViewCases ? [{
         key: '/cases',
         icon: <FileSearchOutlined />,
-        label: 'Galal-kiiseedka (Cases)',
+        label: 'Kiisaska Dacwadaha',
       }] : []),
       ...(canViewOb && dashboardPath !== '/ob-register' ? [{
         key: '/ob-register',
@@ -176,12 +164,12 @@ const Sidebar = ({ collapsed }) => {
       ...(canViewOffenders && dashboardPath !== '/offenders' ? [{
         key: '/offenders',
         icon: <IdcardOutlined />,
-        label: 'Dambiilayaasha & Eedeysanayaasha',
+        label: 'Eedeysanayaasha & Dambiilayaasha',
       }] : []),
       ...(hasPermission('warrants.view') ? [{
         key: '/warrants',
         icon: <FileDoneOutlined />,
-        label: 'Waraaqaha Qabashada (Warrants)',
+        label: 'Waaranada Qabashada & Baarista',
       }] : []),
     ];
 
@@ -189,11 +177,11 @@ const Sidebar = ({ collapsed }) => {
 
     if (hasPermission('users.manage')) adminMenus.push({ key: '/users', icon: <UserOutlined />, label: 'Maamulka Isticmaalayaasha' });
     if (hasPermission('permissions.manage') || hasPermission('roles.manage')) adminMenus.push({ key: '/permissions', icon: <SafetyCertificateOutlined />, label: 'Maamulka Awoodaha' });
-    if (hasPermission('audit_logs.view')) adminMenus.push({ key: '/audit-logs', icon: <FileDoneOutlined />, label: 'Diiwaanka Hawlaha' });
+    if (hasPermission('audit_logs.view')) adminMenus.push({ key: '/audit-logs', icon: <FileDoneOutlined />, label: 'Diiwaanka Raadraaca Hawlaha' });
     if (hasPermission('ranks.manage') || hasPermission('ranks.assign')) adminMenus.push({ key: '/ranks', icon: <StarOutlined />, label: 'Darajooyinka Booliska' });
     if (hasPermission('officers.view') || hasPermission('officers.create') || hasPermission('officers.approve')) adminMenus.push({ key: '/police-officers', icon: <TeamOutlined />, label: 'Saraakiisha Booliska' });
-    if (canViewStations && !['region_admin', 'region_commander'].includes(role)) adminMenus.push({ key: '/stations', icon: <BankOutlined />, label: 'Xarumaha Boliiska' });
-    if (role === 'admin') { adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Garsoorayaasha & Xeer-ilaaliyaasha' }); adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'Maamul-goboleedyada' }); }
+    if (canViewStations && !['region_admin', 'region_commander'].includes(role)) adminMenus.push({ key: '/stations', icon: <BankOutlined />, label: 'Saldhigyada Booliska' });
+    if (role === 'admin') { adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Garsoorayaasha & Xeer-ilaaliyaasha' }); adminMenus.push({ key: '/state-administrations', icon: <BankOutlined />, label: 'Dawlad Goboleedyada' }); }
     if (['court','court_admin'].includes(role)) {
       adminMenus.push({ key: '/legal-personnel', icon: <TeamOutlined />, label: 'Garsoorayaasha & Xeer-ilaaliyaasha' });
     }
@@ -202,9 +190,9 @@ const Sidebar = ({ collapsed }) => {
       adminMenus.push({
         key: 'reports_menu',
         icon: <BarChartOutlined />,
-        label: 'Warbixinada Rasmiga Ah',
+        label: 'Warbixinnada Rasmiga ah',
         children: [
-          { key: '/reports', label: 'Dhammaan Warbixinada' },
+          { key: '/reports', label: 'Dhammaan Warbixinnada' },
         ],
       });
     }
@@ -216,8 +204,8 @@ const Sidebar = ({ collapsed }) => {
         label: 'Saldhigyada Booliska',
         children: [
           { key: '/districts', label: 'Degmooyinka' },
-          ...(canViewStations ? [{ key: '/stations', label: 'Xarumaha Boliiska' }] : []),
-          { key: '/reports?section=station-performance', label: 'Warbixinada Saldhigga' },
+          ...(canViewStations ? [{ key: '/stations', label: 'Saldhigyada Booliska' }] : []),
+          { key: '/reports?section=station-performance', label: 'Waxqabadka Saldhigga' },
         ],
       });
     }
@@ -231,8 +219,8 @@ const Sidebar = ({ collapsed }) => {
     }
 
     return [
-      ...(primaryItems.length ? [{ key: 'main', title: 'Nidaamka Waaweyn', items: primaryItems }] : []),
-      ...(adminMenus.length ? [{ key: 'administration', title: 'Maamulka & Hantida', items: adminMenus }] : []),
+      ...(primaryItems.length ? [{ key: 'main', title: 'Qaybaha Hawlgalka', items: primaryItems }] : []),
+      ...(adminMenus.length ? [{ key: 'administration', title: 'Maamulka & Nidaamka', items: adminMenus }] : []),
     ];
   }, [dashboardPath, role, user]);
 
@@ -307,42 +295,44 @@ const Sidebar = ({ collapsed }) => {
           </div>
           {!collapsed && (
             <div className="police-sidebar-brand-copy">
-              <span>Somali Police Force</span>
-              <small>Case Management System</small>
+              <span>Ciidanka Booliska</span>
+              <small>Nidaamka Maamulka Dacwadaha</small>
             </div>
           )}
         </div>
 
         <div className="police-sidebar-search">
           {collapsed ? (
-            <Tooltip title="Search menu" placement="right">
+            <Tooltip title="Raadi qaybaha" placement="right">
               <div className="police-sidebar-search-icon">
                 <SearchOutlined />
               </div>
             </Tooltip>
           ) : (
             <Input
-              prefix={<SearchOutlined />}
-              placeholder="Search menu..."
-              variant="borderless"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Raadi qaybaha menu-ga..."
+              prefix={<SearchOutlined />}
               allowClear
+              className="police-sidebar-search-input"
             />
           )}
         </div>
 
-        <div className="police-sidebar-menu">
+        <div className="police-sidebar-nav">
           {filteredSections.map((section) => (
-            <div className="police-sidebar-section" key={section.key}>
-              {!collapsed && <div className="police-sidebar-section-title">{section.title}</div>}
+            <div key={section.key} className="police-sidebar-section">
+              {!collapsed && section.title && (
+                <div className="police-sidebar-section-title">{section.title}</div>
+              )}
               <Menu
-                theme="dark"
                 mode="inline"
-                inlineCollapsed={collapsed}
                 selectedKeys={[selectedKey]}
-                items={section.items}
                 onClick={handleMenuClick}
+                items={section.items}
+                className="police-sidebar-menu"
+                inlineIndent={16}
               />
             </div>
           ))}
@@ -350,22 +340,25 @@ const Sidebar = ({ collapsed }) => {
 
         <div className="police-sidebar-footer">
           <div className="police-sidebar-user">
-            <Avatar className="police-sidebar-avatar">
-              {(user?.full_name || user?.username || 'U').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}
-            </Avatar>
+            <Avatar icon={<UserOutlined />} className="police-sidebar-user-avatar" />
             {!collapsed && (
               <div className="police-sidebar-user-copy">
-                <strong>{user?.full_name || user?.username || 'Isticmaale'}</strong>
-                <span>{roleLabel}</span>
+                <span className="police-sidebar-user-name">
+                  {user.fullName || user.username}
+                </span>
+                <span className="police-sidebar-user-role">{roleLabel}</span>
               </div>
             )}
           </div>
-          <Tooltip title={collapsed ? 'Logout' : ''} placement="right">
-            <button type="button" className="police-sidebar-logout" onClick={logout}>
-              <LogoutOutlined />
-              {!collapsed && <span>Logout</span>}
-            </button>
-          </Tooltip>
+          <button
+            type="button"
+            className="police-sidebar-logout"
+            onClick={logout}
+            title="Ka bax nidaamka"
+          >
+            <LogoutOutlined />
+            {!collapsed && <span>Ka Bax</span>}
+          </button>
         </div>
       </div>
     </Sider>

@@ -646,13 +646,10 @@ export default function OffendersPage() {
         notes: 'Release certificate generated after full approval workflow.',
       });
       message.success(res.data.message || 'Release certificate generated.');
-      if (res.data.certificate) printReleaseCertificate(res.data.certificate);
-      await refreshSelectedProfile();
-      fetchOffenders();
       fetchSentenceAlerts();
     } catch (err) {
       console.error(err);
-      message.error(err.response?.data?.message || 'Failed to generate release certificate.');
+      message.error(err.response?.data?.message || 'Release failed.');
     } finally {
       setSaving(false);
     }
@@ -692,14 +689,14 @@ export default function OffendersPage() {
         <td>${item.gender || ''}</td>
         <td>${item.nationality || ''}</td>
         <td>${item.case_count || 0}</td>
-        <td>${Number(item.is_arrested) === 1 ? 'Arrested' : 'Open'}</td>
+        <td>${Number(item.is_arrested) === 1 ? 'Gacanta lagu hayaa' : 'Lama hayo'}</td>
       </tr>
     `).join('');
     const win = window.open('', '_blank');
     win.document.write(`
-      <html><head><title>Offender Register</title>
+      <html><head><title>Diiwaanka Eedeysanayaasha</title>
       <style>body{font-family:Arial;padding:28px;color:#111827}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d9e2ef;padding:10px;text-align:left}th{background:#eef6ff}h1{margin-bottom:4px}</style>
-      </head><body><h1>Somali Police Force</h1><h2>Offender Register</h2><p>Generated ${dayjs().format('YYYY-MM-DD HH:mm')}</p><table><thead><tr><th>Name</th><th>Alias</th><th>Gender</th><th>Nationality</th><th>Cases</th><th>Status</th></tr></thead><tbody>${htmlRows}</tbody></table></body></html>
+      </head><body><h1>Ciidanka Booliska Soomaaliyeed</h1><h2>Diiwaanka Eedeysanayaasha</h2><p>La soo saaray ${dayjs().format('YYYY-MM-DD HH:mm')}</p><table><thead><tr><th>Magaca</th><th>Naaneysta</th><th>Jinsiga</th><th>Dhalashada</th><th>Kiisaska</th><th>Xaaladda</th></tr></thead><tbody>${htmlRows}</tbody></table></body></html>
     `);
     win.document.close();
     win.print();
@@ -707,7 +704,7 @@ export default function OffendersPage() {
 
   const columns = [
     {
-      title: 'Offender',
+      title: 'Eedeysanaha / Dambiilaha',
       dataIndex: 'full_name',
       width: 260,
       render: (name, row) => (
@@ -719,31 +716,39 @@ export default function OffendersPage() {
           )}
           <div className="offender-identity-copy">
             <Text strong>{name}</Text>
-            <Text type="secondary">{row.alias || 'No alias'}</Text>
+            <Text type="secondary">{row.alias || 'Naaneys ma leh'}</Text>
           </div>
         </Space>
       ),
     },
-    { title: 'Gender', dataIndex: 'gender', width: 110, render: (value) => <Tag>{value || 'N/A'}</Tag> },
-    { title: 'Age', dataIndex: 'age', width: 80 },
-    { title: 'Nationality', dataIndex: 'nationality', width: 140, ellipsis: { showTitle: false } },
-    { title: 'Phone', dataIndex: 'phone', width: 150, ellipsis: { showTitle: false } },
-    { title: 'Cases', dataIndex: 'case_count', width: 110, align: 'center', render: (value) => <Tag color={value > 1 ? 'red' : 'blue'}>{value || 0}</Tag> },
-    { title: 'Status', dataIndex: 'is_arrested', width: 130, render: (value) => Number(value) === 1 ? <Tag color="red">Arrested</Tag> : <Tag color="green">Not Arrested</Tag> },
     {
-      title: 'Ficillada',
+      title: 'Jinsiga',
+      dataIndex: 'gender',
+      width: 110,
+      render: (value) => {
+        const norm = String(value || '').toLowerCase();
+        return <Tag>{norm === 'male' || norm === 'lab' ? 'Lab' : norm === 'female' || norm === 'dhedig' ? 'Dhedig' : '—'}</Tag>;
+      },
+    },
+    { title: 'Da\'da', dataIndex: 'age', width: 80 },
+    { title: 'Dhalashada', dataIndex: 'nationality', width: 140, ellipsis: { showTitle: false } },
+    { title: 'Telefoonka', dataIndex: 'phone', width: 150, ellipsis: { showTitle: false } },
+    { title: 'Kiisaska Ku Xiran', dataIndex: 'case_count', width: 130, align: 'center', render: (value) => <Tag color={value > 1 ? 'red' : 'blue'}>{value || 0} kiis</Tag> },
+    { title: 'Xaaladda Xarigga', dataIndex: 'is_arrested', width: 140, render: (value) => Number(value) === 1 ? <Tag color="red">Gacanta lagu hayaa</Tag> : <Tag color="green">Lama hayo</Tag> },
+    {
+      title: 'Hawlaha',
       key: 'actions',
       width: 240,
       render: (_, row) => (
         <Space wrap size="small">
-          {canUpdateOffenders && <Button size="small" onClick={() => openEdit(row)}>Edit</Button>}
-          <Button size="small" icon={<HistoryOutlined />} onClick={() => openHistory(row)}>History</Button>
+          {canUpdateOffenders && <Button size="small" onClick={() => openEdit(row)}>Wax ka beddel</Button>}
+          <Button size="small" icon={<HistoryOutlined />} onClick={() => openHistory(row)}>Taariikhda</Button>
           {canReleaseOffenders && Number(row.is_arrested) === 1 && (
             <Button size="small" type="primary" icon={<UnlockOutlined />} onClick={() => openRelease(row)}>
-              Release
+              Sii-deyn
             </Button>
           )}
-          {!canUpdateOffenders && !(canReleaseOffenders && Number(row.is_arrested) === 1) && <Tag color="blue">View Only</Tag>}
+          {!canUpdateOffenders && !(canReleaseOffenders && Number(row.is_arrested) === 1) && <Tag color="blue">Akhris Keliya</Tag>}
         </Space>
       ),
     },
@@ -757,7 +762,7 @@ export default function OffendersPage() {
             style={{ marginBottom: 16 }}
             type="error"
             showIcon
-            title="Offenders could not be loaded"
+            title="Xogta eedeysanayaasha lama soo sharixi karo"
             description={loadError}
           />
         )}
@@ -768,39 +773,39 @@ export default function OffendersPage() {
             type="warning"
             showIcon
             icon={<WarningOutlined />}
-            title={`${sentenceAlerts.length} prisoner(s) have completed the expected sentence period and need release review.`}
+            title={`${sentenceAlerts.length} maxbuus ayaa dhammeystay muddadii xabsiga waxaana loo baahan yahay dib-u-eegis sii-deyn.`}
             description={sentenceAlerts.slice(0, 3).map((alert) => alert.message).join(' ')}
           />
         )}
 
         <div className="offenders-hero">
           <div>
-            <Text className="dashboard-eyebrow">Record Management</Text>
-            <Title level={2}>Offender Registry</Title>
-            <Text className="offenders-hero-subtitle">Manage identity, photos, biometrics, search, and repeat offender analysis.</Text>
+            <Text className="dashboard-eyebrow">Diiwaanka Dambi-baarista</Text>
+            <Title level={2}>Eedeysanayaasha & Dambiilayaasha</Title>
+            <Text className="offenders-hero-subtitle">Maamul aqoonsiga, sawirrada, baaritaanka faraha, iyo taariikhda dambiyada hore.</Text>
           </div>
           <Space className="offenders-hero-actions" wrap>
-            <Button icon={<PrinterOutlined />} onClick={printList}>Print</Button>
-            <Button icon={<DownloadOutlined />} onClick={exportCsv}>Export CSV</Button>
-            {canCreateOffenders && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Register Offender</Button>}
+            <Button icon={<PrinterOutlined />} onClick={printList}>Daabac</Button>
+            <Button icon={<DownloadOutlined />} onClick={exportCsv}>Soo Dejiso (CSV)</Button>
+            {canCreateOffenders && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Diiwaangeli Eedeysane</Button>}
           </Space>
         </div>
 
         <Row className="offenders-kpi-row" gutter={[14, 14]}>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Total Offenders" value={stats.total} prefix={<TeamOutlined />} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Repeat Offenders" value={stats.repeat} prefix={<IdcardOutlined />} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Arrested" value={stats.arrested} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="With Photos" value={stats.withPhotos} prefix={<FileImageOutlined />} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Wadarta Eedeysanayaasha" value={stats.total} prefix={<TeamOutlined />} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Dambiyada Soo Laalaabtay" value={stats.repeat} prefix={<IdcardOutlined />} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Gacanta Lagu Hayo" value={stats.arrested} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card variant="none" className="offender-kpi-card"><Statistic title="Kuwa Sawirrada Leh" value={stats.withPhotos} prefix={<FileImageOutlined />} /></Card></Col>
         </Row>
 
         <Card variant="none" className="offenders-panel">
           <Row className="offenders-filter-row" gutter={[12, 12]}>
             <Col xs={24} lg={10}>
-              <Input prefix={<SearchOutlined />} placeholder="Search name, alias, ID, phone, or address" value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} allowClear />
+              <Input prefix={<SearchOutlined />} placeholder="Raadi magac, naaneys, lambar aqoonsi, telefoon, ama cinwaan..." value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} allowClear />
             </Col>
-            <Col xs={12} lg={4}><Select placeholder="Gender" value={filters.gender} onChange={(value) => setFilters((prev) => ({ ...prev, gender: value }))} allowClear style={{ width: '100%' }} options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }]} /></Col>
-            <Col xs={12} lg={4}><Select placeholder="Status" value={filters.arrested} onChange={(value) => setFilters((prev) => ({ ...prev, arrested: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Arrested' }, { value: '0', label: 'Not Arrested' }]} /></Col>
-            <Col xs={24} lg={4}><Select placeholder="Repeat" value={filters.repeat} onChange={(value) => setFilters((prev) => ({ ...prev, repeat: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Repeat' }]} /></Col>
+            <Col xs={12} lg={4}><Select placeholder="Jinsiga" value={filters.gender} onChange={(value) => setFilters((prev) => ({ ...prev, gender: value }))} allowClear style={{ width: '100%' }} options={[{ value: 'male', label: 'Lab' }, { value: 'female', label: 'Dhedig' }]} /></Col>
+            <Col xs={12} lg={4}><Select placeholder="Xaaladda" value={filters.arrested} onChange={(value) => setFilters((prev) => ({ ...prev, arrested: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Gacanta Lagu Hayo' }, { value: '0', label: 'Lama hayo' }]} /></Col>
+            <Col xs={24} lg={4}><Select placeholder="Dambiyada soo laalaabtay" value={filters.repeat} onChange={(value) => setFilters((prev) => ({ ...prev, repeat: value }))} allowClear style={{ width: '100%' }} options={[{ value: '1', label: 'Haa' }]} /></Col>
           </Row>
           <Table className="offenders-table" columns={columns} dataSource={offenders} rowKey="id" loading={loading} scroll={{ x: 1200 }} />
         </Card>

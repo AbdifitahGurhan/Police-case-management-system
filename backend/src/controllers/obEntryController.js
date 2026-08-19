@@ -229,7 +229,6 @@ const getDeployedOfficersForLocation = async (req, res, next) => {
        WHERE LOWER(po.email) = LOWER(?) OR LOWER(po.full_name) = LOWER(?) OR po.force_number = ? LIMIT 1`,
       [req.user.email || '', req.user.fullName || '', req.user.username || '']
     );
-
     let officerList = [...rows];
     if (userOfficer && !officerList.some(o => o.id === userOfficer.id)) {
       officerList.unshift(userOfficer);
@@ -256,7 +255,8 @@ const createObEntry = async (req, res, next) => {
       registered_by_name, registered_by_rank } = req.body;
     const victims = parseList(req.body.victims, 'victims').filter(v => Object.values(v || {}).some(value => value !== undefined && value !== null && String(value).trim() !== ''));
     const accused = parseList(req.body.accused, 'accused').filter(a => Object.entries(a || {}).some(([key,value]) => !['custody_state','status'].includes(key) && value !== undefined && value !== null && String(value).trim() !== ''));
-    if (!case_title || !case_type || !incident_type || !incident_location || !incident_datetime || !description || !reported_by || !reporter_phone) {
+    const resolvedCaseType = case_type || incident_type || 'General';
+    if (!case_title || !incident_type || !incident_location || !incident_datetime || !description || !reported_by || !reporter_phone) {
       return res.status(400).json({ success: false, message: 'Complaint, incident, description, complainant name and phone fields are required.' });
     }
     if (!validPhone(reporter_phone) || victims.some(v => !validPhone(v.phone)) || accused.some(a => !validPhone(a.phone))) return res.status(400).json({ success:false, message:'One or more phone numbers are invalid.' });
@@ -266,10 +266,6 @@ const createObEntry = async (req, res, next) => {
     if (new Set(duplicateKeys).size !== duplicateKeys.length) return res.status(409).json({ success:false, message:'Duplicate accused persons are not allowed under the same OB.' });
     const dateError = validateObDates({ incidentDate: incident_datetime, registrationDate: new Date().toISOString().slice(0, 10) });
     if (dateError) return res.status(400).json({ success: false, message: dateError });
-    if (claim_value !== undefined && claim_value !== '' && (!/^\d+(\.\d{1,2})?$/.test(String(claim_value)) || Number(claim_value) < 0)) {
-      return res.status(400).json({ success: false, message: 'Amount must be a non-negative USD value with no more than two decimal places.' });
-    }
-
     const location = await getUserLocation(req.user);
     if (normalizeRole(req.user.role) !== 'admin' && !location.state_administration_id && !location.region_id && !location.district_id) {
       return res.status(400).json({ success: false, message: 'Your account has no assigned administrative location.' });
@@ -295,7 +291,7 @@ const createObEntry = async (req, res, next) => {
              registration_date, registration_time, status, updated_by)
            VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REGISTERED', ?)`,
           [
-            obNumber, case_title, case_type, case_level || 'normal', incident_type, incident_location,
+            obNumber, case_title, resolvedCaseType, case_level || 'normal', incident_type, incident_location,
             formatDateForDb(incident_datetime), claim_value || null, description || null, reported_by, reporter_phone || null,
             reporter_gender || null, reporter_id_type || null, reporter_id_number || null, reporter_email || null, reporter_address || null,
             respondent_name || null, respondent_id_type || null, respondent_id_number || null, respondent_phone || null,
@@ -341,19 +337,21 @@ const createObEntry = async (req, res, next) => {
     [caseResult] = await connection.query(`INSERT INTO cases
       (case_number,case_title,title,case_type,case_level,ob_number,ob_entry_id,original_ob_staff_id,original_ob_staff_name,incident_type,incident_date,claim_value,description,incident_location,status,priority,state_administration_id,region_id,district_id,created_by,complainant_name,complainant_phone,complainant_id_type,complainant_id_number,complainant_address)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[
-      caseNumber,case_title,case_title,case_type,case_level||'normal',obNumber,result.insertId,req.user.id,
+      caseNumber,case_title,case_title,resolvedCaseType,case_level||'normal',obNumber,result.insertId,req.user.id,
       registered_by_name||req.user.fullName||req.user.username,incident_type,incident_datetime,claim_value||null,description,incident_location,
       'under_investigation','medium',location.state_administration_id||null,location.region_id||null,location.district_id||null,
       req.user.username,reported_by,reporter_phone,reporter_id_type==='Aqoonsiga Qaranka'?'National ID':reporter_id_type==='Baasaboor'?'Passport':(['National ID','Passport'].includes(reporter_id_type)?reporter_id_type:null),reporter_id_number||null,reporter_address||null]);
-    for(const victim of victims){
-      const [vr]=await connection.query('INSERT INTO victims(full_name,phone,address,injury_description) VALUES(?,?,?,?)',[victim.full_name,victim.phone||null,victim.address||null,victim.details]);
-      await connection.query('INSERT INTO case_victims(case_id,victim_id,notes,added_by) VALUES(?,?,?,?)',[caseResult.insertId,vr.insertId,'Waxaa laga soo wareejiyey OB-ga asalka ah.',req.user.username]);
+    for (const victim of victims) {
+      const [vr] = await connection.query('INSERT INTO victims(full_name,phone,address,injury_description) VALUES(?,?,?,?)', [victim.full_name, victim.phone || null, victim.address || null, victim.details]);
+      await connection.query('INSERT INTO case_victims(case_id,victim_id,notes,added_by) VALUES(?,?,?,?)', [caseResult.insertId, vr.insertId, 'Waxaa laga soo wareejiyey OB-ga asalka ah.', req.user.username]);
     }
-    const [obPeople]=await connection.query('SELECT * FROM ob_accused WHERE ob_entry_id=?',[result.insertId]);
-    for(const person of obPeople){
-      const [cr]=await connection.query(`INSERT INTO criminals(full_name,gender,id_type,id_number,phone,address,description,arrest_status,is_arrested) VALUES(?,?,?,?,?,?,?,?,?)`,[person.full_name,String(person.gender||'male').toLowerCase()==='female'?'female':'male',person.id_type,person.id_number,person.phone,person.address,[person.description,person.identifying_information].filter(Boolean).join('\n'),person.status==='ARRESTED'?'arrested':'wanted',person.status==='ARRESTED'?1:0]);
-      await connection.query('INSERT INTO case_criminals(case_id,criminal_id,linked_by_user_id,role_in_case,notes,added_by) VALUES(?,?,?,?,?,?)',[caseResult.insertId,cr.insertId,req.user.username,'Eedaysane','Waxaa laga soo wareejiyey OB-ga asalka ah.',req.user.username]);
-      if(person.status==='ARRESTED')await connection.query('INSERT INTO arrests(case_id,suspect_id,police_station_id,arrested_by,arrest_date,arrest_location,notes) VALUES(?,?,?,?,?,?,?)',[caseResult.insertId,cr.insertId,location.district_id||null,person.arresting_officer,person.arrest_date,person.arrest_location,'Waxaa lagu diiwaangeliyey OB-ga asalka ah.']);
+    const [obPeople] = await connection.query('SELECT * FROM ob_accused WHERE ob_entry_id = ?', [result.insertId]);
+    for (const person of obPeople) {
+      const [cr] = await connection.query(`INSERT INTO criminals(full_name,gender,id_type,id_number,phone,address,description,arrest_status,is_arrested) VALUES(?,?,?,?,?,?,?,?,?)`, [person.full_name, String(person.gender || 'male').toLowerCase() === 'female' ? 'female' : 'male', person.id_type, person.id_number, person.phone, person.address, [person.description, person.identifying_information].filter(Boolean).join('\n'), person.status === 'ARRESTED' ? 'arrested' : 'wanted', person.status === 'ARRESTED' ? 1 : 0]);
+      await connection.query('INSERT INTO case_criminals(case_id,criminal_id,linked_by_user_id,role_in_case,notes,added_by) VALUES(?,?,?,?,?,?)', [caseResult.insertId, cr.insertId, req.user.username, 'Eedaysane', 'Waxaa laga soo wareejiyey OB-ga asalka ah.', req.user.username]);
+      if (person.status === 'ARRESTED') {
+        await connection.query('INSERT INTO arrests(case_id,suspect_id,police_station_id,arrested_by,arrest_date,arrest_location,notes) VALUES(?,?,?,?,?,?,?)', [caseResult.insertId, cr.insertId, location.district_id || null, person.arresting_officer, person.arrest_date, person.arrest_location, 'Waxaa lagu diiwaangeliyey OB-ga asalka ah.']);
+      }
     }
     await connection.query(`INSERT INTO referrals(case_id,referred_by,referred_to_role,reason,status) VALUES(?,?,'investigator','Si toos ah ayaa looga abuuray OB-ga','pending')`,[caseResult.insertId,req.user.username]);
     await connection.query(`INSERT INTO case_actions(case_id,performed_by,action_type,description,status_after) VALUES(?,?,'CASE_AUTO_CREATED_FROM_OB',?,'under_investigation')`,[caseResult.insertId,req.user.username,`Kiiska si toos ah ayaa looga abuuray ${obNumber}.`]);

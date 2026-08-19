@@ -1,36 +1,40 @@
 // src/components/shared/CaseStatusTag.jsx
+import React from 'react';
 import { Tag } from 'antd';
 
 const statusMap = {
-  draft: { tone: 'neutral', label: 'Draft' },
-  registered: { tone: 'open', label: 'Registered' },
-  CASE_REGISTERED: { tone: 'open', label: 'Registered' },
-  pending_commander_review: { tone: 'pending', label: 'Pending review' },
-  returned_for_correction: { tone: 'warning', label: 'Needs revision' },
-  confirmed_by_ward_commander: { tone: 'open', label: 'Approved' },
-  confirmed_by_commander: { tone: 'open', label: 'Approved' },
-  CONFIRMED_BY_COMMANDER: { tone: 'open', label: 'Approved' },
-  under_investigation: { tone: 'pending', label: 'Baaritaan' },
-  referred_cid: { tone: 'pending', label: 'Baaritaan' },
-  referred_to_cid: { tone: 'pending', label: 'Baaritaan' },
-  transferred: { tone: 'neutral', label: 'Transferred' },
-  reassigned: { tone: 'neutral', label: 'Reassigned' },
-  ready_for_court: { tone: 'open', label: 'Maxkamad loo gudbiyey' },
-  forwarded_to_court: { tone: 'open', label: 'Maxkamad loo gudbiyey' },
-  referred_to_court: { tone: 'open', label: 'Maxkamad loo gudbiyey' },
-  approved_for_court: { tone: 'open', label: 'Maxkamad loo gudbiyey' },
-  court_decided: { tone: 'closed', label: 'Go\'aan maxkamadeed' },
-  returned_evidence: { tone: 'warning', label: 'Evidence returned' },
-  rejected: { tone: 'critical', label: 'Rejected' },
-  closed: { tone: 'closed', label: 'Closed' },
-  dismissed: { tone: 'critical', label: 'Dismissed' },
-  archived: { tone: 'neutral', label: 'Archived' },
+  draft: { tone: 'neutral', label: 'Qabyo' },
+  registered: { tone: 'open', label: 'Diiwaangashan' },
+  CASE_REGISTERED: { tone: 'open', label: 'Kiis Furay' },
+  pending_commander_review: { tone: 'pending', label: 'Dib u Eegis Taliye' },
+  returned_for_correction: { tone: 'warning', label: 'U Baahan Sixid' },
+  confirmed_by_ward_commander: { tone: 'open', label: 'La Ansixiyey' },
+  confirmed_by_commander: { tone: 'open', label: 'La Ansixiyey' },
+  CONFIRMED_BY_COMMANDER: { tone: 'open', label: 'La Ansixiyey' },
+  under_investigation: { tone: 'pending', label: 'Baaris ku Socota' },
+  referred_cid: { tone: 'pending', label: 'Loo Gudbiyey CID' },
+  referred_to_cid: { tone: 'pending', label: 'Loo Gudbiyey CID' },
+  transferred: { tone: 'neutral', label: 'La Wareejiyey' },
+  reassigned: { tone: 'neutral', label: 'Dib loo Qoondeeyay' },
+  ready_for_court: { tone: 'open', label: 'Maxkamadda loo Gudbiyey' },
+  forwarded_to_court: { tone: 'open', label: 'Maxkamadda loo Gudbiyey' },
+  referred_to_court: { tone: 'open', label: 'Maxkamadda loo Gudbiyey' },
+  approved_for_court: { tone: 'open', label: 'Maxkamadda loo Gudbiyey' },
+  court_decided: { tone: 'closed', label: 'Maxkamaddu Go\'aamisay' },
+  remand_investigation: { tone: 'warning', label: 'Baaris Dheeraad ah' },
+  remanded_to_investigator: { tone: 'warning', label: 'Baaris Dheeraad ah' },
+  returned_from_remand: { tone: 'open', label: 'Baaris Dheeraad Soo Noqotay' },
+  returned_evidence: { tone: 'warning', label: 'Caddeymo Dib loo Soo Celiyay' },
+  rejected: { tone: 'critical', label: 'La Diiday' },
+  closed: { tone: 'closed', label: 'La Soo Gabagabeeyay' },
+  dismissed: { tone: 'critical', label: 'La Laalay' },
+  archived: { tone: 'neutral', label: 'La Kaydiyey (Archived)' },
 };
 
 const CaseStatusTag = ({ status }) => {
   const config = statusMap[status] || {
     tone: 'neutral',
-    label: String(status || 'Unknown').replace(/_/g, ' '),
+    label: String(status || 'Aan La Aqoon').replace(/_/g, ' '),
   };
   return (
     <Tag className={`status-tag status-tag--${config.tone}`}>

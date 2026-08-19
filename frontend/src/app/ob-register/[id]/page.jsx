@@ -471,8 +471,7 @@ export default function ObDetailPage() {
             <Card className="ob-modal-card" size="small" title="Xogta Dacwadda" style={{ marginBottom: 16 }}>
               <Row gutter={16}>
                 <Col xs={24} md={12}><Form.Item name="case_title" label="Cinwaanka Dacwadda" rules={[{ required: true, message: 'Cinwaanka geli.' }]}><Input /></Form.Item></Col>
-                <Col xs={12} md={6}><Form.Item name="case_type" label="Nooca Dacwadda" rules={[{ required: true, message: 'Nooca dacwadda qor.' }]}><Input /></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item name="incident_type" label="Nooca Dhacdada" rules={[{ required: true, message: 'Nooca dhacdada geli.' }]}><Input /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="incident_type" label="Nooca Dhacdada" rules={[{ required: true, message: 'Nooca dhacdada geli.' }]}><Input /></Form.Item></Col>
                 <Col xs={24} md={8}><Form.Item name="incident_location" label="Goobta Dhacdada" rules={[{ required: true, message: 'Goobta geli.' }]}><Input /></Form.Item></Col>
                 <Col xs={24} md={8}><Form.Item name="incident_datetime" label="Taariikhda iyo Waqtiga Dhacdada" rules={[{ required: true, message: 'Taariikhda geli.' }]}><DatePicker showTime style={{ width: '100%' }} disabledDate={(date) => date?.isAfter(new Date(), 'day')} /></Form.Item></Col>
                 <Col span={24}><Form.Item name="description" label="Sharaxaadda Dacwadda" rules={[{ required: true, min: 10, message: 'Sharaxaad ugu yaraan 10 xaraf ah geli.' }]}><Input.TextArea rows={4} /></Form.Item></Col>

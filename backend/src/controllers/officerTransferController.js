@@ -1,5 +1,6 @@
 'use strict';
 const db = require('../config/database');
+const bcrypt = require('bcryptjs');
 const { writeAuditLog } = require('../utils/auditLogger');
 
 const STATE_ADMIN_RANK_CODES = new Set(['AL', 'SA', 'XDH', 'LXDH', 'LA', 'SXD']);
@@ -9,7 +10,7 @@ exports.transferOfficer = async (req, res, next) => {
   try {
     await connection.beginTransaction();
 
-    let { officer_id, to_assignment_type, to_assignment_id, transfer_reason, remarks } = req.body;
+    let { officer_id, to_assignment_type, to_assignment_id, transfer_reason, remarks, username, password } = req.body;
     transfer_reason = transfer_reason || 'Hawlgelin / Deployment';
 
     if (!officer_id || !to_assignment_type) {
@@ -55,14 +56,17 @@ exports.transferOfficer = async (req, res, next) => {
     let targetLocation = { state_administration_id: null, region_id: null, district_id: null };
     let targetUser = null;
     let previousLinkedOfficerId = null;
-    if (to_assignment_type === 'State Administration') {
+
+    if (to_assignment_type === 'Sub-Admin') {
+      // Sub-Admin deployment directly to officer without username/password prompts
+      to_assignment_id = to_assignment_id || officer_id;
+      targetLocation = { state_administration_id: null, region_id: null, district_id: null };
+    } else if (to_assignment_type === 'State Administration') {
       const [[sa]] = await connection.query('SELECT id FROM state_administrations WHERE id = ?', [to_assignment_id]);
       if (sa) targetLocation.state_administration_id = sa.id;
       else targetLocation = null;
-    } else if (['Sub-Admin', 'District User Link'].includes(to_assignment_type)) {
-      const allowedTargetRoles = to_assignment_type === 'Sub-Admin'
-        ? ['sub_admin']
-        : ['personnel_registry', 'ob_staff', 'investigator', 'station_jail'];
+    } else if (to_assignment_type === 'District User Link') {
+      const allowedTargetRoles = ['personnel_registry', 'ob_staff', 'investigator', 'station_jail'];
       const subAdminParams = [to_assignment_id, ...allowedTargetRoles];
       let subAdminScopeWhere = '';
       if (req.user.role === 'district_admin') {
@@ -133,13 +137,105 @@ exports.transferOfficer = async (req, res, next) => {
       return res.status(valErr.statusCode || 400).json({ success: false, message: valErr.message });
     }
 
-    // 2. Move the officer from the old current assignment in this category to the new one.
+    const tableMap = {
+      'State Administration': 'state_administrations',
+      'Region': 'regions',
+      'District': 'districts'
+    };
+
+    // 2. UNASSIGN PREVIOUS OFFICER(S) WHO CURRENTLY HOLD THIS TARGET ROLE / CENTER
+    const displacedOfficerIds = new Set();
+
+    if (to_assignment_type === 'Sub-Admin') {
+      const [assignedOfficers] = await connection.query(
+        `SELECT DISTINCT officer_id FROM officer_assignments
+         WHERE assignment_type = 'Sub-Admin' AND is_current = 1 AND officer_id <> ?`,
+        [officer_id]
+      );
+      for (const row of assignedOfficers) {
+        if (row.officer_id) displacedOfficerIds.add(Number(row.officer_id));
+      }
+    } else if (to_assignment_id) {
+      // A. Check officers who have this active assignment in officer_assignments
+      const [assignedOfficers] = await connection.query(
+        `SELECT DISTINCT officer_id FROM officer_assignments
+         WHERE assignment_type = ? AND assignment_id = ? AND is_current = 1 AND officer_id <> ?`,
+        [to_assignment_type, to_assignment_id, officer_id]
+      );
+      for (const row of assignedOfficers) {
+        if (row.officer_id) displacedOfficerIds.add(Number(row.officer_id));
+      }
+
+      // B. If commander target center
+      if (tableMap[to_assignment_type] && assignmentCategory === 'ADMIN') {
+        const table = tableMap[to_assignment_type];
+        const [[centerRow]] = await connection.query(`SELECT commander_officer_id FROM ${table} WHERE id = ?`, [to_assignment_id]);
+        if (centerRow?.commander_officer_id && Number(centerRow.commander_officer_id) !== Number(officer_id)) {
+          displacedOfficerIds.add(Number(centerRow.commander_officer_id));
+        }
+      }
+
+      // C. If user account link
+      if (previousLinkedOfficerId && Number(previousLinkedOfficerId) !== Number(officer_id)) {
+        displacedOfficerIds.add(Number(previousLinkedOfficerId));
+      }
+    }
+
+    // Process displacement for all previous holders
+    for (const dispOfficerId of displacedOfficerIds) {
+      // Close their current assignment at this target
+      await connection.query(
+        `UPDATE officer_assignments
+         SET is_current = 0
+         WHERE officer_id = ? AND (
+           (assignment_type = ? AND assignment_id = ?) OR
+           (assignment_type = 'Sub-Admin' AND ? = 'Sub-Admin') OR
+           (assignment_id = ? AND assignment_type IN ('Sub-Admin', 'District User Link'))
+         ) AND is_current = 1`,
+        [dispOfficerId, to_assignment_type, to_assignment_id, to_assignment_type, to_assignment_id]
+      );
+
+      // Record transfer in history for displaced officer
+      await connection.query(
+        `INSERT INTO officer_transfers (officer_id, from_assignment_type, from_assignment_id, to_assignment_type, to_assignment_id, transfer_reason, transferred_by, remarks)
+         VALUES (?, ?, ?, 'Unassigned', NULL, 'Xil-wareejin / Beddel', ?, ?)`,
+        [dispOfficerId, to_assignment_type, to_assignment_id, req.user.username, `Waxaa xilka/goobta shaqada kala wareegay sarkaal cusub (#${officer_id})`]
+      );
+
+      // Clear commander seat if held by displaced officer
+      if (tableMap[to_assignment_type]) {
+        const table = tableMap[to_assignment_type];
+        await connection.query(`UPDATE ${table} SET commander_officer_id = NULL WHERE id = ? AND commander_officer_id = ?`, [to_assignment_id, dispOfficerId]);
+      }
+
+      // Clear user account link if held by displaced officer
+      if (targetUser) {
+        await connection.query(`UPDATE users SET police_officer_id = NULL WHERE id = ? AND police_officer_id = ?`, [targetUser.id, dispOfficerId]);
+      }
+
+      // Check if displaced officer still has any other active assignment
+      const [remainingAssignments] = await connection.query(
+        `SELECT id FROM officer_assignments WHERE officer_id = ? AND is_current = 1 LIMIT 1`,
+        [dispOfficerId]
+      );
+      if (remainingAssignments.length === 0) {
+        // Displaced officer has no other active assignments -> clear location to make fully Unassigned
+        await connection.query(
+          `UPDATE police_officers
+           SET state_administration_id = NULL, region_id = NULL, district_id = NULL
+           WHERE id = ?`,
+          [dispOfficerId]
+        );
+      }
+    }
+
+    // 3. Move the incoming officer from their old current assignment in this category to the new one.
     await connection.query(
       'UPDATE officer_assignments SET is_current = 0 WHERE officer_id = ? AND assignment_category = ?',
       [officer_id, assignmentCategory]
     );
 
-    // 3. Clear this officer from being commander of any other center if assigning a new commander role
+    // 4. Clear incoming officer from being commander of any other center if assigning a new commander role
     if (to_assignment_type === 'District' && assignmentCategory === 'ADMIN') {
       await connection.query('UPDATE districts SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
     } else if (to_assignment_type === 'Region' && assignmentCategory === 'ADMIN') {
@@ -148,7 +244,7 @@ exports.transferOfficer = async (req, res, next) => {
       await connection.query('UPDATE state_administrations SET commander_officer_id = NULL WHERE commander_officer_id = ?', [officer_id]);
     }
 
-    // 4. Insert new assignment with category
+    // 5. Insert new assignment with category for incoming officer
     await connection.query(
       `INSERT INTO officer_assignments (officer_id, assignment_type, assignment_id, assignment_category, is_current, assigned_by, remarks)
        VALUES (?, ?, ?, ?, 1, ?, ?)`,
@@ -157,12 +253,17 @@ exports.transferOfficer = async (req, res, next) => {
 
     await connection.query(
       `UPDATE police_officers
-       SET state_administration_id = COALESCE(?, state_administration_id),
-           region_id = COALESCE(?, region_id),
-           district_id = COALESCE(?, district_id)
+       SET state_administration_id = ?,
+           region_id = ?,
+           district_id = ?
        WHERE id = ?`,
       [targetLocation.state_administration_id, targetLocation.region_id, targetLocation.district_id, officer_id]
     );
+
+    if (to_assignment_id && tableMap[to_assignment_type] && assignmentCategory === 'ADMIN') {
+      const table = tableMap[to_assignment_type];
+      await connection.query(`UPDATE ${table} SET commander_officer_id = ? WHERE id = ?`, [officer_id, to_assignment_id]);
+    }
 
     if (targetUser) {
       const [[deployedOfficer]] = await connection.query(
@@ -173,17 +274,6 @@ exports.transferOfficer = async (req, res, next) => {
         [officer_id]
       );
       if (deployedOfficer) {
-        if (previousLinkedOfficerId && Number(previousLinkedOfficerId) !== Number(officer_id)) {
-          await connection.query(
-            `UPDATE officer_assignments
-             SET is_current = 0
-             WHERE officer_id = ?
-               AND assignment_type = 'District User Link'
-               AND assignment_id = ?
-               AND is_current = 1`,
-            [previousLinkedOfficerId, targetUser.id]
-          );
-        }
         await connection.query('UPDATE users SET police_officer_id = NULL WHERE police_officer_id = ? AND id <> ?', [officer_id, targetUser.id]);
         await connection.query(
           `UPDATE users
@@ -203,7 +293,7 @@ exports.transferOfficer = async (req, res, next) => {
       }
     }
 
-    // 5. Record transfer in history
+    // 6. Record transfer in history
     await connection.query(
       `INSERT INTO officer_transfers (officer_id, from_assignment_type, from_assignment_id, to_assignment_type, to_assignment_id, transfer_reason, transferred_by, remarks)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -218,18 +308,6 @@ exports.transferOfficer = async (req, res, next) => {
         remarks
       ]
     );
-
-    // 6. Assign commander on target center if ADMIN category commander type
-    const tableMap = {
-      'State Administration': 'state_administrations',
-      'Region': 'regions',
-      'District': 'districts'
-    };
-
-    if (to_assignment_id && tableMap[to_assignment_type] && assignmentCategory === 'ADMIN') {
-      const table = tableMap[to_assignment_type];
-      await connection.query(`UPDATE ${table} SET commander_officer_id = ? WHERE id = ?`, [officer_id, to_assignment_id]);
-    }
 
     await writeAuditLog({
       userId: req.user.username,

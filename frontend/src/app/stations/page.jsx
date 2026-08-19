@@ -216,7 +216,7 @@ export default function StationManagementPage() {
               <span className="station-admin-code">{station.code || 'Code laaan'}</span>
             </div>
             <Tag className={active ? 'station-admin-status station-admin-status-success' : 'station-admin-status station-admin-status-error'}>
-              {active ? 'ACTIVE' : 'INACTIVE'}
+              {active ? 'Shaqeynaya' : 'Aan Shaqeyn'}
             </Tag>
           </div>
 
@@ -233,9 +233,10 @@ export default function StationManagementPage() {
               <Space onClick={(event) => event.stopPropagation()}>
                 <Button icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); handleOpenModal(station); }} />
                 <Popconfirm
-                  title="Delete station?"
-                  description="Only stations without active cases or assigned officers can be deleted."
-                  okText="Delete"
+                  title="Ma hubtaa inaad tirtirto saldhiggan?"
+                  description="Keliya saldhigyada aan lahayn kiisas furan ama saraakiil ayaa la tirtiri karaa."
+                  okText="Tirtir"
+                  cancelText="Maya"
                   okButtonProps={{ danger: true }}
                   onConfirm={() => handleDelete(station)}
                 >

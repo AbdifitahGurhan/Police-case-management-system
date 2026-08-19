@@ -52,24 +52,24 @@ export default function SearchMatchingPage() {
 
   const columns = [
     {
-      title: 'Person',
+      title: 'Qofka / Eedeysanaha',
       dataIndex: 'full_name',
       render: (value, row) => (
         <Space orientation="vertical" size={0}>
           <Text strong>{value}</Text>
-          <Text type="secondary">Mother: {row.mother_name || 'N/A'}</Text>
+          <Text type="secondary">Hooyada: {row.mother_name || '—'}</Text>
         </Space>
       ),
     },
-    { title: 'Phone', dataIndex: 'phone', render: (value) => value || 'N/A' },
-    { title: 'National ID', dataIndex: 'id_number', render: (value) => value || 'N/A' },
-    { title: 'DOB', dataIndex: 'date_of_birth', render: (value) => value ? dayjs(value).format('YYYY-MM-DD') : 'N/A' },
-    { title: 'Previous Cases', dataIndex: 'previous_case_numbers', render: (value) => value || 'N/A' },
-    { title: 'Police Station', dataIndex: 'police_stations', render: (value) => value || 'N/A' },
-    { title: 'Cases', dataIndex: 'case_count', align: 'center' },
-    { title: 'Arrests', dataIndex: 'arrest_count', align: 'center' },
+    { title: 'Telefoonka', dataIndex: 'phone', render: (value) => value || '—' },
+    { title: 'Aqoonsiga Qaranka', dataIndex: 'id_number', render: (value) => value || '—' },
+    { title: 'Dhalashada', dataIndex: 'date_of_birth', render: (value) => value ? dayjs(value).format('DD/MM/YYYY') : '—' },
+    { title: 'Kiisaskii Hore', dataIndex: 'previous_case_numbers', render: (value) => value || '—' },
+    { title: 'Saldhigga Booliska', dataIndex: 'police_stations', render: (value) => value || '—' },
+    { title: 'Kiisaska', dataIndex: 'case_count', align: 'center' },
+    { title: 'Xarigga', dataIndex: 'arrest_count', align: 'center' },
     {
-      title: 'Match',
+      title: 'Is-waafaqidda',
       dataIndex: 'match_reasons',
       render: (items = []) => <Space wrap>{items.map((item) => <Tag color="blue" key={item}>{item}</Tag>)}</Space>,
     },
@@ -90,9 +90,9 @@ export default function SearchMatchingPage() {
       }
       const res = await api.get('/search', { params });
       setGlobalResults(res.data.data || []);
-      message.success(`${res.data.data?.length || 0} result(s) found.`);
+      message.success(`${res.data.data?.length || 0} xog ah ayaa la helay.`);
     } catch (err) {
-      message.error(err.response?.data?.message || 'Global search failed.');
+      message.error(err.response?.data?.message || 'Raadinta way fashilantay.');
     } finally {
       setGlobalLoading(false);
     }
@@ -100,12 +100,12 @@ export default function SearchMatchingPage() {
 
   const globalColumns = [
     {
-      title: 'Type',
+      title: 'Nooca',
       dataIndex: 'result_type',
-      render: (value) => <Tag color={value === 'case' ? 'blue' : 'purple'}>{String(value).toUpperCase()}</Tag>,
+      render: (value) => <Tag color={value === 'case' ? 'blue' : 'purple'}>{value === 'case' ? 'KIIS' : 'OB'}</Tag>,
     },
     {
-      title: 'Record',
+      title: 'Cinwaanka & Lambarka',
       dataIndex: 'title',
       render: (value, row) => (
         <Space orientation="vertical" size={0}>
@@ -114,15 +114,15 @@ export default function SearchMatchingPage() {
         </Space>
       ),
     },
-    { title: 'Status', dataIndex: 'status', render: (value) => value ? <Tag>{String(value).replaceAll('_', ' ').toUpperCase()}</Tag> : 'N/A' },
-    { title: 'Priority', dataIndex: 'priority', render: (value) => value ? <Tag color={value === 'critical' ? 'red' : value === 'high' ? 'volcano' : 'blue'}>{String(value).toUpperCase()}</Tag> : 'N/A' },
-    { title: 'Station', dataIndex: 'station_name', render: (value) => value || 'N/A' },
-    { title: 'Location', dataIndex: 'incident_location', render: (value) => value || 'N/A' },
-    { title: 'Date', dataIndex: 'created_at', render: (value) => value ? dayjs(value).format('DD MMM YYYY') : 'N/A' },
+    { title: 'Xaaladda', dataIndex: 'status', render: (value) => value ? <Tag>{String(value).replaceAll('_', ' ')}</Tag> : '—' },
+    { title: 'Mudnaanta', dataIndex: 'priority', render: (value) => value ? <Tag color={value === 'critical' ? 'red' : value === 'high' ? 'volcano' : 'blue'}>{String(value)}</Tag> : '—' },
+    { title: 'Saldhigga', dataIndex: 'station_name', render: (value) => value || '—' },
+    { title: 'Goobta', dataIndex: 'incident_location', render: (value) => value || '—' },
+    { title: 'Taariikhda', dataIndex: 'created_at', render: (value) => value ? dayjs(value).format('DD/MM/YYYY') : '—' },
     {
-      title: 'Open',
+      title: 'Ficilka',
       dataIndex: 'href',
-      render: (href) => <Button type="link" href={href}>Open</Button>,
+      render: (href) => <Button type="link" href={href}>Fur Gal-kiiseedka</Button>,
     },
   ];
 
@@ -131,9 +131,9 @@ export default function SearchMatchingPage() {
       <div className="reports-page">
         <div className="reports-hero">
           <div>
-            <Text className="dashboard-eyebrow">Search and Matching</Text>
-            <Title level={2}>Person Matching</Title>
-            <Text type="secondary">Search offenders by identity, case history, station, or face image.</Text>
+            <Text className="dashboard-eyebrow">Xarunta Raadinta</Text>
+            <Title level={2}>Raadinta Guud & Is-waafajinta Xogta</Title>
+            <Text type="secondary">Ka raadi eedeysanayaasha iyo kiisaska adigoo adeegsanaya aqoonsiga, taariikhda kiiska, saldhigga, ama sawirka wajiga.</Text>
           </div>
         </div>
 

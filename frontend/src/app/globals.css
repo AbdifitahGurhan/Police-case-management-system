@@ -182,8 +182,16 @@ body {
   box-shadow: none !important;
 }
 
-.police-sidebar-shell { padding: 0 10px !important; }
+.police-sidebar-shell {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+  padding: 0 10px !important;
+}
 .police-sidebar-brand {
+  flex-shrink: 0 !important;
   min-height: 76px !important;
   padding: 13px 8px 12px !important;
   border-bottom: 0 !important;
@@ -200,6 +208,27 @@ body {
 .police-sidebar-brand-copy span { color: #fff !important; font-size: 13px !important; font-weight: 800 !important; }
 .police-sidebar-brand-copy small { color: #c9dbf8 !important; font-size: 9px !important; letter-spacing: .03em; }
 .police-sidebar-search { display: none !important; }
+.police-sidebar-nav {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 4px;
+}
+.police-sidebar-nav::-webkit-scrollbar {
+  width: 5px;
+}
+.police-sidebar-nav::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+.police-sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+}
+.police-sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
 .police-sidebar-menu { padding: 4px 0 16px !important; }
 .police-sidebar-section-title { display: none !important; }
 .police-sidebar-section + .police-sidebar-section { margin-top: 2px !important; padding-top: 2px !important; border-top: 0 !important; }
@@ -221,13 +250,45 @@ body {
   box-shadow: 0 5px 14px rgba(0,103,255,.3) !important;
 }
 .police-sidebar .ant-menu-item-selected::before { display: none !important; }
-.police-sidebar-footer { padding: 12px 6px 18px !important; border-top: 1px solid rgba(255,255,255,.15) !important; }
+.police-sidebar-footer {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  margin-top: auto !important;
+  padding: 12px 6px 18px !important;
+  border-top: 1px solid rgba(255,255,255,.15) !important;
+}
 .police-sidebar-user { display: flex; align-items: center; gap: 10px; padding: 2px 2px 13px; min-width: 0; }
 .police-sidebar-avatar { flex: 0 0 auto; background: #096fea !important; color: #fff !important; font-size: 12px !important; }
 .police-sidebar-user-copy { display: flex; min-width: 0; flex-direction: column; line-height: 1.35; }
 .police-sidebar-user-copy strong { overflow: hidden; color: #fff; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .police-sidebar-user-copy span { overflow: hidden; color: #a9c5ec; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.police-sidebar-logout { width: 100% !important; height: 38px !important; justify-content: flex-start !important; padding: 0 10px !important; color: #fff !important; border-radius: 7px !important; }
+.police-sidebar-logout {
+  width: 100% !important;
+  height: 38px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  padding: 0 12px !important;
+  color: #ffcccc !important;
+  border: 1px solid rgba(255, 77, 79, 0.25) !important;
+  background: rgba(255, 77, 79, 0.12) !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  font-size: 12.5px !important;
+  font-weight: 650 !important;
+  transition: all 0.2s ease !important;
+}
+.police-sidebar-logout:hover {
+  background: rgba(255, 77, 79, 0.25) !important;
+  border-color: rgba(255, 77, 79, 0.4) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+.police-sidebar.ant-layout-sider-collapsed .police-sidebar-logout {
+  justify-content: center !important;
+  padding: 0 !important;
+}
 
 .standard-dashboard { max-width: 1600px; margin: 0 auto; }
 .standard-dashboard-hero,
@@ -720,25 +781,9 @@ body {
 }
 
 .police-sidebar-menu {
-  flex: 1;
-  min-height: 0;
   width: 100%;
-  margin-top: 18px;
-  padding-right: 3px;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-.police-sidebar-menu::-webkit-scrollbar {
-  width: 4px;
-}
-
-.police-sidebar-menu::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.police-sidebar-menu::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  margin-top: 6px;
+  overflow: visible;
 }
 
 .police-sidebar .ant-menu {

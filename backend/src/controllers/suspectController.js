@@ -231,33 +231,89 @@ const canAccessCase = async (user, caseId) => {
 };
 
 const findMatchingSuspect = async ({ id_number, phone, full_name }) => {
-  if (id_number) {
-    const [[row]] = await db.query('SELECT * FROM criminals WHERE id_number = ? LIMIT 1', [id_number]);
+  const normId = id_number ? String(id_number).trim() : null;
+  const normPhone = phone ? String(phone).trim() : null;
+  const normName = full_name ? String(full_name).trim().toLowerCase() : null;
+
+  if (normId && normPhone) {
+    const [[row]] = await db.query(
+      'SELECT * FROM criminals WHERE id_number = ? AND phone = ? LIMIT 1',
+      [normId, normPhone]
+    );
+    if (row) return { row, matchReason: 'both' };
+  }
+
+  if (normId) {
+    const [[row]] = await db.query('SELECT * FROM criminals WHERE id_number = ? LIMIT 1', [normId]);
     if (row) return { row, matchReason: 'id_number' };
   }
-  if (phone && full_name) {
+
+  if (normPhone) {
+    const [[row]] = await db.query('SELECT * FROM criminals WHERE phone = ? LIMIT 1', [normPhone]);
+    if (row) return { row, matchReason: 'phone' };
+  }
+
+  if (normPhone && normName) {
     const [[row]] = await db.query(
-      'SELECT * FROM criminals WHERE phone = ? AND LOWER(full_name) = LOWER(?) LIMIT 1',
-      [phone, full_name]
+      'SELECT * FROM criminals WHERE phone = ? AND LOWER(full_name) = ? LIMIT 1',
+      [normPhone, normName]
     );
     if (row) return { row, matchReason: 'phone_and_name' };
   }
+
   return null;
 };
 
 const checkDuplicate = async (req, res, next) => {
   try {
-    const { id_type, id_number } = req.query;
-    if (!id_number) {
-      return res.status(400).json({ success: false, message: 'ID number is required.' });
+    const { id_type, id_number, phone } = req.query;
+    const cleanId = id_number ? String(id_number).trim() : '';
+    const cleanPhone = phone ? String(phone).trim() : '';
+
+    if (!cleanId && !cleanPhone) {
+      return res.json({ success: true, exists: false, message: 'Provide ID number or phone number to check.' });
     }
-    const [[row]] = await db.query(
-      'SELECT * FROM criminals WHERE LOWER(id_type) = LOWER(?) AND id_number = ? LIMIT 1',
-      [id_type || '', id_number]
-    );
+
+    let row = null;
+    let matchReason = null;
+
+    if (cleanId && cleanPhone) {
+      const [[bothMatch]] = await db.query(
+        'SELECT * FROM criminals WHERE id_number = ? AND phone = ? LIMIT 1',
+        [cleanId, cleanPhone]
+      );
+      if (bothMatch) {
+        row = bothMatch;
+        matchReason = 'both';
+      }
+    }
+
+    if (!row && cleanId) {
+      const [[idMatch]] = await db.query(
+        'SELECT * FROM criminals WHERE id_number = ? LIMIT 1',
+        [cleanId]
+      );
+      if (idMatch) {
+        row = idMatch;
+        matchReason = 'id_number';
+      }
+    }
+
+    if (!row && cleanPhone) {
+      const [[phoneMatch]] = await db.query(
+        'SELECT * FROM criminals WHERE phone = ? LIMIT 1',
+        [cleanPhone]
+      );
+      if (phoneMatch) {
+        row = phoneMatch;
+        matchReason = 'phone';
+      }
+    }
+
     if (row) {
-      return res.json({ success: true, exists: true, data: row });
+      return res.json({ success: true, exists: true, data: row, matchReason });
     }
+
     res.json({ success: true, exists: false });
   } catch (err) { next(err); }
 };
@@ -282,7 +338,8 @@ const getcriminals = async (req, res, next) => {
          JOIN case_criminals cs ON s.id = cs.criminal_id
          JOIN cases c_scope ON c_scope.id = cs.case_id
          WHERE ${scopeWhere}
-         GROUP BY s.id, cs.role_in_case, cs.notes`, scopeParams);
+         GROUP BY s.id, cs.role_in_case, cs.notes
+         ORDER BY s.id DESC`, scopeParams);
       return res.json({ success: true, data: rows });
     }
     let sql = `
@@ -304,7 +361,7 @@ const getcriminals = async (req, res, next) => {
     if (arrested !== undefined) { sql += ' AND s.is_arrested = ?'; params.push(arrested === 'true' || arrested === '1' ? 1 : 0); }
     sql += ' GROUP BY s.id';
     if (repeat === 'true' || repeat === '1') sql += ' HAVING case_count > 1';
-    const [rows] = await db.query(sql + ' ORDER BY case_count DESC, s.full_name ASC', params);
+    const [rows] = await db.query(sql + ' ORDER BY s.id DESC', params);
     const ids = rows.map((row) => row.id);
     if (ids.length) {
       const placeholders = ids.map(() => '?').join(',');

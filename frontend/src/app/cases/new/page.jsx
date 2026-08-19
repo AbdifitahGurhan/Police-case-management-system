@@ -77,6 +77,8 @@ function NewCaseWizardContent() {
   const [incidentData, setIncidentData] = useState(null);
   const [suspects, setSuspects] = useState([]);
   const [evidenceItems, setEvidenceItems] = useState([]);
+  const [editingSuspectKey, setEditingSuspectKey] = useState(null);
+  const [suspectDuplicateAlert, setSuspectDuplicateAlert] = useState(null);
 
   useEffect(() => {
     const fetchObData = async () => {
@@ -170,8 +172,6 @@ function NewCaseWizardContent() {
 
   const goBack = () => setCurrent((step) => Math.max(step - 1, 0));
 
-  const [editingSuspectKey, setEditingSuspectKey] = useState(null);
-
   const handleEditSuspectDraft = (record) => {
     setEditingSuspectKey(record._key);
     suspectDraftForm.setFieldsValue({
@@ -194,6 +194,63 @@ function NewCaseWizardContent() {
   const cancelEditSuspectDraft = () => {
     setEditingSuspectKey(null);
     suspectDraftForm.resetFields();
+    setSuspectDuplicateAlert(null);
+    setSuspectDuplicateAlert(null);
+  };
+
+  const handleSuspectDraftValuesChange = async (changedValues, allValues) => {
+    if (changedValues.date_of_birth) {
+      const dob = dayjs(changedValues.date_of_birth);
+      if (dob.isValid()) {
+        const calculatedAge = dayjs().diff(dob, 'year');
+        if (calculatedAge >= 0) {
+          suspectDraftForm.setFieldsValue({ age: calculatedAge });
+        }
+      }
+    }
+    if (changedValues.id_number !== undefined || changedValues.id_type !== undefined || changedValues.phone !== undefined) {
+      const idType = allValues.id_type;
+      const idNumber = allValues.id_number ? String(allValues.id_number).trim() : '';
+      const phone = allValues.phone ? String(allValues.phone).trim() : '';
+      if ((idNumber && idNumber.length >= 3) || (phone && phone.length >= 6)) {
+        try {
+          const res = await api.get('/criminals/check-duplicate', {
+            params: {
+              id_type: idType || undefined,
+              id_number: idNumber || undefined,
+              phone: phone || undefined,
+            }
+          });
+          if (res.data.exists) {
+            setSuspectDuplicateAlert({ ...res.data.data, matchReason: res.data.matchReason });
+          } else {
+            setSuspectDuplicateAlert(null);
+          }
+        } catch (err) {
+          console.error("Duplicate check failed", err);
+        }
+      } else {
+        setSuspectDuplicateAlert(null);
+      }
+    }
+  };
+
+  const handleLinkExistingSuspectDraft = (criminal) => {
+    suspectDraftForm.setFieldsValue({
+      full_name: criminal.full_name,
+      alias: criminal.alias || undefined,
+      gender: criminal.gender || 'male',
+      age: criminal.age || undefined,
+      date_of_birth: criminal.date_of_birth ? dayjs(criminal.date_of_birth) : undefined,
+      nationality: criminal.nationality || 'Somali',
+      id_type: criminal.id_type || 'National ID',
+      id_number: criminal.id_number || undefined,
+      phone: criminal.phone || undefined,
+      address: criminal.address || undefined,
+      description: criminal.description || undefined,
+    });
+    setSuspectDuplicateAlert(null);
+    message.success("Macluumaadka dambiilaha hore waa la soo qaatay!");
   };
 
   const addSuspectDraft = async () => {
@@ -494,19 +551,42 @@ function NewCaseWizardContent() {
                 form={suspectDraftForm}
                 layout="vertical"
                 requiredMark="optional"
-                onValuesChange={(changedValues) => {
-                  if (changedValues.date_of_birth) {
-                    const dob = dayjs(changedValues.date_of_birth);
-                    if (dob.isValid()) {
-                      const calculatedAge = dayjs().diff(dob, 'year');
-                      if (calculatedAge >= 0) {
-                        suspectDraftForm.setFieldsValue({ age: calculatedAge });
-                      }
-                    }
-                  }
-                }}
+                onValuesChange={handleSuspectDraftValuesChange}
               >
                 <Row gutter={16}>
+                  {suspectDuplicateAlert && (
+                    <Col span={24}>
+                      <Alert
+                        title="Dambiilahan horey ayaa loo diiwaan-geliyey!"
+                        description={
+                          <div>
+                            <div><strong>Magaca:</strong> {suspectDuplicateAlert.full_name} ({suspectDuplicateAlert.gender === 'female' ? 'Dheddig' : 'Lab'}, {suspectDuplicateAlert.age ? `${suspectDuplicateAlert.age} jir` : "Da'da lama hayo"})</div>
+                            <div style={{ marginTop: '2px' }}>
+                              {suspectDuplicateAlert.id_number && <span><strong>ID:</strong> {suspectDuplicateAlert.id_type ? `${suspectDuplicateAlert.id_type} - ` : ''}{suspectDuplicateAlert.id_number} &nbsp;|&nbsp; </span>}
+                              {suspectDuplicateAlert.phone && <span><strong>Tel:</strong> {suspectDuplicateAlert.phone}</span>}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}>
+                              {suspectDuplicateAlert.matchReason === 'both' && '✅ Waxaa lagu aqoonsaday Aqoonsiga Qaranka iyo Taleefanka labadaba.'}
+                              {suspectDuplicateAlert.matchReason === 'id_number' && '🔍 Waxaa lagu aqoonsaday Lambarka Aqoonsiga (National ID / Passport).'}
+                              {suspectDuplicateAlert.matchReason === 'phone' && '📞 Waxaa lagu aqoonsaday Lambarka Taleefanka.'}
+                            </div>
+                          </div>
+                        }
+                        type="warning"
+                        showIcon
+                        action={
+                          <Button
+                            size="small"
+                            type="primary"
+                            onClick={() => handleLinkExistingSuspectDraft(suspectDuplicateAlert)}
+                          >
+                            Isticmaal dambiilahan
+                          </Button>
+                        }
+                        style={{ marginBottom: 16 }}
+                      />
+                    </Col>
+                  )}
                   <Col xs={24} md={12}>
                     <Form.Item name="full_name" label="Magaca oo buuxa (Full Name)" rules={nameRules('Magaca eedaysanaha')}>
                       <Input placeholder="Full name" />

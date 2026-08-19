@@ -1,5 +1,7 @@
 // database/autoInitDb.js - Automatically initializes MySQL tables and seeds data if DB is empty
 'use strict';
+// database/autoInitDb.js - Automatically initializes MySQL tables and seeds data if DB is empty
+'use strict';
 
 const fs = require('fs');
 const path = require('path');
@@ -8,6 +10,8 @@ const db = require('../src/config/database');
 async function runMigrations() {
   const runObRegistrationMigration = require('./ob_registration_migration');
   await runObRegistrationMigration();
+  const runObCaseModuleMigration = require('./ob_case_module_migration');
+  await runObCaseModuleMigration();
   const runAssignmentCategoryMigration = require('./add_assignment_category_migration');
   await runAssignmentCategoryMigration();
   const runCaseInvestigationMigration = require('./case_investigation_migration');

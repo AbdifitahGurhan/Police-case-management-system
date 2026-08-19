@@ -45,7 +45,7 @@ function JailDashboardContent() {
   const selectedFacility = Form.useWatch('facility', form);
   const selectedArrestId = Form.useWatch('arrest_id', form);
   const [loading, setLoading] = useState(true);
-  const selectedEligible = useMemo(() => eligible.find((row) => Number(row.arrest_id) === Number(selectedArrestId)), [eligible, selectedArrestId]);
+  const selectedEligible = useMemo(() => eligible.find((row) => String(row.candidate_key || row.arrest_id) === String(selectedArrestId)), [eligible, selectedArrestId]);
   const userStationFacility = user?.location?.districtName ? `${user.location.districtName} Station Jail` : null;
   const firstStationFacility = cells.find((cell) => cell.facility)?.facility || null;
   const defaultStationFacility = userStationFacility || firstStationFacility;
@@ -130,6 +130,12 @@ function JailDashboardContent() {
         Object.entries(values).forEach(([key, value]) => {
           if (value !== undefined && value !== null && !['admission_date','property_inventory'].includes(key)) data.append(key, value);
         });
+        if (selectedEligible) {
+          if (selectedEligible.suspect_id) data.append('suspect_id', selectedEligible.suspect_id);
+          if (selectedEligible.case_id) data.append('case_id', selectedEligible.case_id);
+          if (selectedEligible.arrest_id) data.append('arrest_id', selectedEligible.arrest_id);
+          if (selectedEligible.candidate_key) data.append('candidate_key', selectedEligible.candidate_key);
+        }
         const inventory = String(values.property_inventory || '').split(/[,\n]/).map(value => value.trim()).filter(Boolean);
         data.append('property_inventory', JSON.stringify(inventory));
         if (values.admission_date) data.append('admission_date', values.admission_date.format('YYYY-MM-DD HH:mm:ss'));
@@ -241,14 +247,26 @@ function JailDashboardContent() {
 
   const facilityOptions = useMemo(() => [...new Set([...cells.map((cell) => cell.facility), stationFacilityFallback, defaultStationFacility].filter(Boolean))].map((value) => ({ value, label: value })), [cells, stationFacilityFallback, defaultStationFacility]);
   const stationRollAdmissions = useMemo(() => admissions.filter((row) => row.latest_transfer_status !== 'completed'), [admissions]);
-  const blockOptions = useMemo(() => [...new Set(cells.filter((cell) => cell.facility === selectedFacility).map((cell) => cell.block_name))].map((value) => ({ value, label: value })), [cells, selectedFacility]);
-  const cellOptions = useMemo(() => cells
-    .filter((cell) => cell.facility === selectedFacility && cell.block_name === selectedBlock)
-    .map((cell) => ({
-      value: cell.cell_number,
-      label: `Cell ${cell.cell_number} (${cell.occupancy}/${cell.capacity})`,
-      disabled: Number(cell.occupancy) >= Number(cell.capacity),
-    })), [cells, selectedFacility, selectedBlock]);
+  const blockOptions = useMemo(() => {
+    const dbBlocks = cells.filter((cell) => cell.facility === selectedFacility).map((cell) => cell.block_name);
+    const standardBlocks = ['Block A', 'Block B', 'Block C', 'Block D', 'Holding Cell'];
+    const allBlocks = [...new Set([...dbBlocks, ...standardBlocks])].filter(Boolean);
+    return allBlocks.map((value) => ({ value, label: value }));
+  }, [cells, selectedFacility]);
+  const cellOptions = useMemo(() => {
+    const dbCells = cells.filter((cell) => cell.facility === selectedFacility && cell.block_name === selectedBlock);
+    if (dbCells.length > 0) {
+      return dbCells.map((cell) => ({
+        value: cell.cell_number,
+        label: `Cell ${cell.cell_number} (${cell.occupancy}/${cell.capacity})`,
+        disabled: Number(cell.occupancy) >= Number(cell.capacity),
+      }));
+    }
+    return Array.from({ length: 10 }, (_, index) => {
+      const value = String(index + 1).padStart(2, '0');
+      return { value, label: `Cell ${value} (5 boos)`, disabled: false };
+    });
+  }, [cells, selectedFacility, selectedBlock]);
 
   const admissionColumns = [
     { title: 'Lambarka Xabsiga', dataIndex: 'prison_number' },
@@ -259,8 +277,6 @@ function JailDashboardContent() {
     { title: 'Qolka', render: (_, row) => row.cell_number ? `${row.block_name} / ${row.cell_number} (${row.cell_occupancy || 0}/${row.cell_capacity || '?'})` : 'Looma qoondeyn' },
     { title: 'Sentence', dataIndex: 'sentence_status', render: (value) => <Tag>{value}</Tag> },
     { title: 'Transfer', render: (_, row) => row.latest_transfer_status === 'completed' ? <Tag color="green">{`Ku jira Central Jail${row.latest_transfer_to_facility ? ` - ${row.latest_transfer_to_facility}` : ''}`}</Tag> : row.latest_transfer_status ? <Tag color="gold">{`${row.latest_transfer_status} ${row.latest_transfer_to_facility ? `-> ${row.latest_transfer_to_facility}` : ''}`}</Tag> : (['sentenced', 'serving'].includes(row.sentence_status) ? <Tag color="orange">Sugaya transfer</Tag> : <Tag>Ma jiro</Tag>) },
-    { title: 'Release', render: (_, row) => row.expected_release_date ? <Space orientation="vertical" size={0}><span>{dayjs(row.expected_release_date).format('DD MMM YYYY')}</span><Tag color={Number(row.days_remaining) <= 7 ? 'red' : Number(row.days_remaining) <= 30 ? 'orange' : 'blue'}>{row.days_remaining} days left</Tag></Space> : 'N/A' },
-    { title: 'Release workflow', render: (_, row) => row.release_approval_status ? <Tag color={row.release_approval_status === 'rejected' ? 'red' : row.release_approval_status === 'released' ? 'green' : 'gold'}>{row.release_approval_status.replaceAll('_', ' ')}</Tag> : 'Not requested' },
     { title: 'Last roll call', render: (_, row) => row.last_roll_status ? <Tag color={row.last_roll_status === 'present' ? 'green' : 'orange'}>{row.last_roll_status}</Tag> : 'Not recorded' },
     {
       title: 'Ficillada',
@@ -297,7 +313,7 @@ function JailDashboardContent() {
       tableSubtitle="Qaabilaadda, qolalka, muddada iyo tiro-koobka maalinlaha ah"
       tableColumns={admissionColumns}
       tableData={admissions}
-      showTable={false}
+      showTable={true}
     />
     <Modal
       title={modalType === 'admit' ? 'Qaabilaadda Maxbuuska' : modalType === 'cell' ? 'Qol U Qoondee' : modalType === 'capacity' ? 'Awoodda Qolka' : modalType === 'bulk_roll' ? 'Tiro-koobka Maalinlaha' : modalType === 'release' ? 'Codsiga Sii-daynta' : modalType === 'transfer' ? 'Samee Transfer Document' : 'Tiro-koobka Maalinlaha'}
@@ -309,11 +325,29 @@ function JailDashboardContent() {
     >
       <Form form={form} layout="vertical" onFinish={submitAction}>
         {modalType === 'admit' && <>
-          <Form.Item name="arrest_id" label="Prisoner / Case" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={eligible.map((row) => ({ value: row.arrest_id, label: `${row.full_name} - ${row.case_number}` }))} />
+          <Form.Item
+            name="arrest_id"
+            label="Prisoner / Case (Eedeysanaha / Dambiilaha Saldhigga)"
+            rules={[{ required: true, message: 'Fadlan dooro eedeysanaha ama kiiska.' }]}
+          >
+            <Select
+              showSearch
+              placeholder="Dooro ama raadi eedeysane / dambiile (Magac, Tel, ID, Kiis)..."
+              optionFilterProp="filterText"
+              options={eligible.map((row) => {
+                const key = String(row.candidate_key || row.arrest_id || `suspect-${row.suspect_id}-case-${row.case_id}`);
+                const casePart = row.case_number ? `${row.case_number}${row.ob_number ? ` (${row.ob_number})` : ''}` : (row.ob_number || 'Kiis');
+                const idPart = row.id_number ? ` | ID: ${row.id_number}` : (row.phone ? ` | Tel: ${row.phone}` : '');
+                const isArrested = Number(row.is_arrested) === 1 || row.arrest_status === 'arrested';
+                return {
+                  value: key,
+                  filterText: `${row.full_name} ${row.alias || ''} ${row.phone || ''} ${row.id_number || ''} ${row.case_number || ''} ${row.ob_number || ''} ${row.district_name || ''}`,
+                  label: `${row.full_name}${row.alias ? ` (${row.alias})` : ''} — ${casePart}${idPart} — ${isArrested ? '🔒 Gacanta lagu hayaa' : '⚠️ Eedaysane Kiis'}`,
+                };
+              })}
+            />
           </Form.Item>
           <Form.Item name="facility" label="Prison facility" rules={[{ required: true }]}><Select options={facilityOptions} onChange={() => form.setFieldsValue({ block_name: undefined, cell_number: undefined })} /></Form.Item>
-          {!blockOptions.length && <Alert type="warning" showIcon title="Marka hore Awoodda Seliyaasha ka abuuri block/cell Station Jail-kan." style={{ marginBottom: 12 }} />}
           <Space style={{ width: '100%' }} align="start">
             <Form.Item name="block_name" label="Block">
               <Select style={{ width: 180 }} placeholder="Select block" options={blockOptions} onChange={() => form.setFieldValue('cell_number', undefined)} />

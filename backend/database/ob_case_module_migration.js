@@ -46,6 +46,12 @@ async function run() {
     CONSTRAINT fk_ob_status_entry FOREIGN KEY (ob_entry_id) REFERENCES ob_entries(id), INDEX idx_ob_status_entry (ob_entry_id)
   )`);
   console.log('OB case registration module migration completed.');
-  await db.pool.end();
 }
-run().catch(async error => { console.error(error); await db.pool.end(); process.exit(1); });
+
+if (require.main === module) {
+  run()
+    .then(() => db.pool.end())
+    .catch(async error => { console.error(error); await db.pool.end(); process.exit(1); });
+}
+
+module.exports = run;

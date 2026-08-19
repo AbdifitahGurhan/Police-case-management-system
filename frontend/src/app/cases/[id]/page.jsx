@@ -333,7 +333,7 @@ export default function CaseDetailsPage({ caseId, mode = 'page', onClose, onBack
     setIsSuspectModalOpen(true);
   };
 
-  const handleSuspect = async (values) => {
+  const handleSaveSuspect = async (values) => {
     setSubmitting(true);
     try {
       if (editingSuspect) {
@@ -377,16 +377,21 @@ export default function CaseDetailsPage({ caseId, mode = 'page', onClose, onBack
         }
       }
     }
-    if (changedValues.id_number !== undefined || changedValues.id_type !== undefined) {
+    if (changedValues.id_number !== undefined || changedValues.id_type !== undefined || changedValues.phone !== undefined) {
       const idType = allValues.id_type;
-      const idNumber = allValues.id_number;
-      if (idType && idNumber && idNumber.length >= 3) {
+      const idNumber = allValues.id_number ? String(allValues.id_number).trim() : '';
+      const phone = allValues.phone ? String(allValues.phone).trim() : '';
+      if ((idNumber && idNumber.length >= 3) || (phone && phone.length >= 6)) {
         try {
           const res = await api.get('/criminals/check-duplicate', {
-            params: { id_type: idType, id_number: idNumber }
+            params: {
+              id_type: idType || undefined,
+              id_number: idNumber || undefined,
+              phone: phone || undefined,
+            }
           });
           if (res.data.exists) {
-            setDuplicateAlert(res.data.data);
+            setDuplicateAlert({ ...res.data.data, matchReason: res.data.matchReason });
           } else {
             setDuplicateAlert(null);
           }
@@ -402,12 +407,17 @@ export default function CaseDetailsPage({ caseId, mode = 'page', onClose, onBack
   const handleLinkExisting = (criminal) => {
     suspectForm.setFieldsValue({
       full_name: criminal.full_name,
-      alias: criminal.alias,
-      gender: criminal.gender,
-      age: criminal.age,
+      mother_name: criminal.mother_name || undefined,
+      alias: criminal.alias || undefined,
+      gender: criminal.gender || 'male',
+      age: criminal.age || undefined,
+      date_of_birth: criminal.date_of_birth ? dayjs(criminal.date_of_birth) : undefined,
       nationality: criminal.nationality || 'Somali',
-      phone: criminal.phone,
-      address: criminal.address,
+      id_type: criminal.id_type || 'National ID',
+      id_number: criminal.id_number || undefined,
+      phone: criminal.phone || undefined,
+      address: criminal.address || undefined,
+      description: criminal.description || undefined,
     });
     if (criminal.face_capture_image) {
       setSuspectFaceImage(criminal.face_capture_image);
@@ -1614,7 +1624,7 @@ export default function CaseDetailsPage({ caseId, mode = 'page', onClose, onBack
       >
         <Form
           form={suspectForm}
-          onFinish={handleSuspect}
+          onFinish={handleSaveSuspect}
           onFinishFailed={({ errorFields }) => {
             const firstField = errorFields[0]?.name;
             if (firstField) suspectForm.scrollToField(firstField, { behavior: 'smooth', block: 'center' });
@@ -1628,7 +1638,20 @@ export default function CaseDetailsPage({ caseId, mode = 'page', onClose, onBack
               <Col span={24}>
                 <Alert
                   title="Dambiilahan horey ayaa loo diiwaan-geliyey!"
-                  description={`Magaca: ${duplicateAlert.full_name} (${duplicateAlert.gender}, ${duplicateAlert.age} jir) - ID: ${duplicateAlert.id_number}`}
+                  description={
+                    <div>
+                      <div><strong>Magaca:</strong> {duplicateAlert.full_name} ({duplicateAlert.gender === 'female' ? 'Dheddig' : 'Lab'}, {duplicateAlert.age ? `${duplicateAlert.age} jir` : "Da'da lama hayo"})</div>
+                      <div style={{ marginTop: '2px' }}>
+                        {duplicateAlert.id_number && <span><strong>ID:</strong> {duplicateAlert.id_type ? `${duplicateAlert.id_type} - ` : ''}{duplicateAlert.id_number} &nbsp;|&nbsp; </span>}
+                        {duplicateAlert.phone && <span><strong>Tel:</strong> {duplicateAlert.phone}</span>}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}>
+                        {duplicateAlert.matchReason === 'both' && '✅ Waxaa lagu aqoonsaday Aqoonsiga Qaranka iyo Taleefanka labadaba.'}
+                        {duplicateAlert.matchReason === 'id_number' && '🔍 Waxaa lagu aqoonsaday Lambarka Aqoonsiga (National ID / Passport).'}
+                        {duplicateAlert.matchReason === 'phone' && '📞 Waxaa lagu aqoonsaday Lambarka Taleefanka.'}
+                      </div>
+                    </div>
+                  }
                   type="warning"
                   showIcon
                   action={
